@@ -8,22 +8,81 @@
 
 ## Table of Contents
 
-1. [What CareerVault Does](#1-what-careervault-does)
-2. [Who Uses It (User Roles)](#2-who-uses-it-user-roles)
-3. [How a Document Gets Created & Verified](#3-how-a-document-gets-created--verified)
-4. [The "Web 2.5" Architecture](#4-the-web-25-architecture)
-5. [System Components & Tech Stack](#5-system-components--tech-stack)
-6. [Data Model (Simplified)](#6-data-model-simplified)
-7. [Document Lifecycle](#7-document-lifecycle)
-8. [Verification -- The Six-Step Integrity Check](#8-verification----the-six-step-integrity-check)
-9. [Revenue Model & Payment Flows](#9-revenue-model--payment-flows)
-10. [Security, Privacy & Compliance](#10-security-privacy--compliance)
-11. [Smart Contract (On-Chain)](#11-smart-contract-on-chain)
-12. [Key Design Decisions](#12-key-design-decisions)
+1. [Objective](#1-objective)
+2. [Motivation](#2-motivation)
+3. [Problem Statement](#3-problem-statement)
+4. [Algorithm -- How Merkle Trees Work](#4-algorithm----how-merkle-trees-work)
+5. [What CareerVault Does](#5-what-careervault-does)
+6. [Who Uses It (User Roles)](#6-who-uses-it-user-roles)
+7. [How a Document Gets Created & Verified](#7-how-a-document-gets-created--verified)
+8. [The "Web 2.5" Architecture](#8-the-web-25-architecture)
+9. [System Components & Tech Stack](#9-system-components--tech-stack)
+10. [Data Model (Simplified)](#10-data-model-simplified)
+11. [Document Lifecycle](#11-document-lifecycle)
+12. [Verification -- The Six-Step Integrity Check](#12-verification----the-six-step-integrity-check)
+13. [Revenue Model & Payment Flows](#13-revenue-model--payment-flows)
+14. [Security, Privacy & Compliance](#14-security-privacy--compliance)
+15. [Smart Contract (On-Chain)](#15-smart-contract-on-chain)
+16. [Key Design Decisions](#16-key-design-decisions)
 
 ---
 
-## 1. What CareerVault Does
+## 1. Objective
+
+Build a **trusted, tamper-proof career document ecosystem** where companies can issue digitally signed experience letters, salary proofs, and recommendation letters, and any recruiter anywhere in the world can independently verify their authenticity in seconds -- without calling HR.
+
+---
+
+## 2. Motivation
+
+Credential fraud is rampant. According to industry surveys, over **30% of job applicants misrepresent their employment history**. Background verification is slow (days to weeks), expensive ($30–$100 per check), and still fails when companies don't respond. Meanwhile, candidates carry no portable proof of their own work history.
+
+CareerVault flips the model: **put the verified proof in the employee's hands**, cryptographically signed by their employer and immutably timestamped on a public blockchain.
+
+---
+
+## 3. Problem Statement
+
+| Pain Point | Who Feels It | Current Workaround |
+|---|---|---|
+| Fake or inflated experience letters | Recruiters & companies | Slow manual background checks |
+| No portable proof of employment | Employees / candidates | Hoping HR responds to verification calls |
+| No way to prove a document is unaltered | Verifiers | Trust-based, no cryptographic guarantee |
+| Revoked documents still circulating | Issuers (companies) | No mechanism to invalidate distributed copies |
+| GDPR vs. immutable records conflict | Platform operators | Typically ignored or handled poorly |
+
+CareerVault solves all five: digital signatures prove authenticity, blockchain anchoring proves integrity, share links give employees portability, revocation propagates instantly, and salt-based GDPR deletion makes on-chain hashes unlinkable without breaking the blockchain.
+
+---
+
+## 4. Algorithm -- How Merkle Trees Work
+
+Instead of writing every document to the blockchain (costly), CareerVault batches documents daily using a **Merkle tree** -- a binary tree of cryptographic hashes.
+
+```mermaid
+graph BT
+    L1[Hash: Doc A] --> N1[Hash: A+B]
+    L2[Hash: Doc B] --> N1
+    L3[Hash: Doc C] --> N2[Hash: C+D]
+    L4[Hash: Doc D] --> N2
+    N1 --> Root[Merkle Root]
+    N2 --> Root
+
+    style Root fill:#fff3e0
+```
+
+**How it works:**
+
+1. Each issued document is hashed individually (SHA-256 of its content + a random salt).
+2. Hashes are paired and hashed together, level by level, until a single **root hash** remains.
+3. Only the root hash is written to the Polygon blockchain -- **one transaction for thousands of documents**.
+4. Each document gets a **Merkle proof**: a small set of sibling hashes that lets anyone independently recompute the root and confirm inclusion.
+
+**Why it matters:** To verify Document A, you only need its hash and 2–3 sibling hashes (not all documents). This is efficient, private, and independently verifiable by anyone with the public blockchain record.
+
+---
+
+## 5. What CareerVault Does
 
 CareerVault lets companies **issue cryptographically signed career documents** (experience letters, salary proofs, recommendation letters) to employees. These documents are:
 
@@ -35,7 +94,7 @@ Think of it as a **digital notary for career documents**, where the "notary stam
 
 ---
 
-## 2. Who Uses It (User Roles)
+## 6. Who Uses It (User Roles)
 
 ```mermaid
 graph LR
@@ -58,7 +117,7 @@ A single person can hold multiple roles (e.g., be a Manager at Company A and a H
 
 ---
 
-## 3. How a Document Gets Created & Verified
+## 7. How a Document Gets Created & Verified
 
 ### The Happy Path (End-to-End)
 
@@ -89,7 +148,7 @@ flowchart TD
 
 ---
 
-## 4. The "Web 2.5" Architecture
+## 8. The "Web 2.5" Architecture
 
 CareerVault is **not a fully decentralized app**. It's a traditional web application (SQL database, REST API) that uses blockchain as a **trust anchor** -- we call this "Web 2.5."
 
@@ -131,7 +190,7 @@ graph TB
 
 ---
 
-## 5. System Components & Tech Stack
+## 9. System Components & Tech Stack
 
 ```mermaid
 graph TB
@@ -192,7 +251,7 @@ graph TB
 
 ---
 
-## 6. Data Model (Simplified)
+## 10. Data Model (Simplified)
 
 The platform has **13 database tables**. Here's the simplified view of the core entities:
 
@@ -229,7 +288,7 @@ erDiagram
 
 ---
 
-## 7. Document Lifecycle
+## 11. Document Lifecycle
 
 Every document goes through a clear state machine:
 
@@ -268,7 +327,7 @@ stateDiagram-v2
 
 ---
 
-## 8. Verification -- The Six-Step Integrity Check
+## 12. Verification -- The Six-Step Integrity Check
 
 When a recruiter opens a shared link, CareerVault runs **six automated checks** in sequence:
 
@@ -297,7 +356,7 @@ The recruiter sees a clear **Verification Report** with pass/fail for each step 
 
 ---
 
-## 9. Revenue Model & Payment Flows
+## 13. Revenue Model & Payment Flows
 
 ### Revenue Streams
 
@@ -317,7 +376,7 @@ The recruiter sees a clear **Verification Report** with pass/fail for each step 
 
 ---
 
-## 10. Security, Privacy & Compliance
+## 14. Security, Privacy & Compliance
 
 ### Cryptographic Security
 
@@ -353,7 +412,7 @@ Companies must **prove domain ownership** via DNS TXT record before they can iss
 
 ---
 
-## 11. Smart Contract (On-Chain)
+## 15. Smart Contract (On-Chain)
 
 The `AnchorRegistry` smart contract on Polygon is intentionally minimal:
 
@@ -370,7 +429,7 @@ The contract also supports batch operations (`batchAnchorRoots`, `batchRevokeDoc
 
 ---
 
-## 12. Key Design Decisions
+## 16. Key Design Decisions
 
 | Decision | What We Chose | Why |
 |---|---|---|
