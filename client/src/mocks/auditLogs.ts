@@ -1,0 +1,28 @@
+import type { AuditEntry } from "@/features/audit/types";
+
+export const mockAuditLogs: AuditEntry[] = [
+  { id: "a_30", timestamp: "2026-05-08T09:15:00Z", actorName: "Linda Rao", actorEmail: "linda.rao@google.com", action: "DOC_HR_APPROVE", target: "doc_004", ip: "73.214.18.92", tier: "COMPLIANCE", metadata: { holder: "Sarah Chen" } },
+  { id: "a_29", timestamp: "2026-05-08T08:12:00Z", actorName: "James Walsh", actorEmail: "james.walsh@google.com", action: "USER_LOGIN", target: "session_8af2", ip: "98.34.121.7", tier: "STANDARD" },
+  { id: "a_28", timestamp: "2026-05-07T18:30:00Z", actorName: "Mark Johnson", actorEmail: "mark.johnson@google.com", action: "DOC_MANAGER_SIGN", target: "doc_005", ip: "73.214.18.45", tier: "COMPLIANCE", metadata: { holder: "Sarah Chen" } },
+  { id: "a_27", timestamp: "2026-05-07T16:32:00Z", actorName: "Mark Johnson", actorEmail: "mark.johnson@google.com", action: "DOC_MANAGER_SIGN", target: "doc_004", ip: "73.214.18.45", tier: "COMPLIANCE", metadata: { holder: "Sarah Chen" } },
+  { id: "a_26", timestamp: "2026-05-07T14:00:00Z", actorName: "Robert Quinn", actorEmail: "robert.quinn@google.com", action: "DOC_DRAFT", target: "doc_011", ip: "73.214.18.99", tier: "STANDARD" },
+  { id: "a_25", timestamp: "2026-05-07T11:42:00Z", actorName: "Mark Johnson", actorEmail: "mark.johnson@google.com", action: "DOC_MANAGER_SIGN", target: "doc_005", ip: "73.214.18.45", tier: "COMPLIANCE", metadata: { holder: "Sarah Chen" } },
+  { id: "a_24", timestamp: "2026-05-07T00:00:14Z", actorName: "System", actorEmail: "system@careervault", action: "DOC_ANCHOR", target: "root_2026_05_07", ip: "10.0.0.4", tier: "COMPLIANCE", metadata: { documentCount: 184 } },
+  { id: "a_23", timestamp: "2026-05-06T15:20:00Z", actorName: "Sarah Chen", actorEmail: "sarah.chen@example.com", action: "LINK_GENERATE", target: "link_006", ip: "108.41.55.230", tier: "STANDARD" },
+  { id: "a_22", timestamp: "2026-05-06T13:08:00Z", actorName: "Linda Rao", actorEmail: "linda.rao@google.com", action: "DOC_HR_REJECT", target: "doc_098", ip: "73.214.18.92", tier: "COMPLIANCE", metadata: { reason: "Wrong dates" } },
+  { id: "a_21", timestamp: "2026-05-05T18:00:00Z", actorName: "James Walsh", actorEmail: "james.walsh@google.com", action: "MEMBER_INVITE", target: "robert.quinn@google.com", ip: "98.34.121.7", tier: "COMPLIANCE", metadata: { role: "manager" } },
+  { id: "a_20", timestamp: "2026-05-05T10:14:00Z", actorName: "Sarah Chen", actorEmail: "sarah.chen@example.com", action: "LINK_VIEW", target: "link_004", ip: "44.219.102.77", tier: "STANDARD" },
+  { id: "a_19", timestamp: "2026-05-04T22:00:00Z", actorName: "Priya Shah", actorEmail: "priya.shah@reevv.com", action: "LINK_VIEW", target: "link_001", ip: "71.85.20.10", tier: "STANDARD" },
+  { id: "a_18", timestamp: "2026-05-03T11:00:00Z", actorName: "Sarah Chen", actorEmail: "sarah.chen@example.com", action: "LINK_GENERATE", target: "link_004", ip: "108.41.55.230", tier: "STANDARD", metadata: { paid: 0 } },
+  { id: "a_17", timestamp: "2026-05-02T09:30:00Z", actorName: "Linda Rao", actorEmail: "linda.rao@google.com", action: "MEMBER_ROLE_CHANGE", target: "carlos.mendes@google.com", ip: "73.214.18.92", tier: "COMPLIANCE", metadata: { from: "hr", to: "inactive" } },
+  { id: "a_16", timestamp: "2026-04-30T09:00:00Z", actorName: "Sarah Chen", actorEmail: "sarah.chen@example.com", action: "LINK_GENERATE", target: "link_003", ip: "108.41.55.230", tier: "STANDARD" },
+  { id: "a_15", timestamp: "2026-04-28T08:00:00Z", actorName: "Mark Johnson", actorEmail: "mark.johnson@google.com", action: "USER_LOGIN", target: "session_2cf9", ip: "73.214.18.45", tier: "STANDARD" },
+  { id: "a_14", timestamp: "2026-04-25T10:30:00Z", actorName: "Sarah Chen", actorEmail: "sarah.chen@example.com", action: "LINK_GENERATE", target: "link_001", ip: "108.41.55.230", tier: "STANDARD", metadata: { paid: 200 } },
+  { id: "a_13", timestamp: "2026-04-23T00:00:14Z", actorName: "System", actorEmail: "system@careervault", action: "DOC_ANCHOR", target: "root_2026_04_22", ip: "10.0.0.4", tier: "COMPLIANCE", metadata: { documentCount: 167 } },
+  { id: "a_12", timestamp: "2026-04-22T08:42:00Z", actorName: "Linda Rao", actorEmail: "linda.rao@google.com", action: "DOC_HR_APPROVE", target: "doc_001", ip: "73.214.18.92", tier: "COMPLIANCE" },
+  { id: "a_11", timestamp: "2026-04-21T10:14:00Z", actorName: "Mark Johnson", actorEmail: "mark.johnson@google.com", action: "DOC_MANAGER_SIGN", target: "doc_001", ip: "73.214.18.45", tier: "COMPLIANCE" },
+  { id: "a_10", timestamp: "2026-03-13T11:08:00Z", actorName: "Linda Rao", actorEmail: "linda.rao@google.com", action: "DOC_HR_APPROVE", target: "doc_003", ip: "73.214.18.92", tier: "COMPLIANCE" },
+  { id: "a_09", timestamp: "2026-02-05T10:00:00Z", actorName: "Linda Rao", actorEmail: "linda.rao@google.com", action: "DOC_HR_APPROVE", target: "doc_009", ip: "73.214.18.92", tier: "COMPLIANCE" },
+  { id: "a_08", timestamp: "2025-11-08T15:30:00Z", actorName: "Linda Rao", actorEmail: "linda.rao@google.com", action: "DOC_REVOKE", target: "doc_008", ip: "73.214.18.92", tier: "COMPLIANCE", metadata: { reason: "Duplicate issuance" } },
+  { id: "a_07", timestamp: "2025-11-04T09:23:00Z", actorName: "James Walsh", actorEmail: "james.walsh@google.com", action: "DNS_VERIFIED", target: "google.com", ip: "98.34.121.7", tier: "COMPLIANCE", metadata: { token: "cv-verify-9f8a2bc1" } },
+];

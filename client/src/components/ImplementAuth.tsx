@@ -1,15 +1,9 @@
-import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet } from "react-router-dom";
+import { useAppSelector } from "@/app/hooks";
 
-const ImplementAuth: React.FC = () => {
-  const isAuthenticated = true
-
-  // If there's no  authentication failed, redirect to login
-  if ((!isAuthenticated)) {
-    return <Navigate to="/auth/login" replace />;
-  }
-
-  // If authenticated, render the protected routes
+const ImplementAuth = () => {
+  const isAuthenticated = useAppSelector((s) => s.role.isAuthenticated);
+  if (!isAuthenticated) return <Navigate to="/auth/login" replace />;
   return <Outlet />;
 };
 

@@ -16,14 +16,15 @@
 6. [Who Uses It (User Roles)](#6-who-uses-it-user-roles)
 7. [How a Document Gets Created & Verified](#7-how-a-document-gets-created--verified)
 8. [The "Web 2.5" Architecture](#8-the-web-25-architecture)
-9. [System Components & Tech Stack](#9-system-components--tech-stack)
-10. [Data Model (Simplified)](#10-data-model-simplified)
-11. [Document Lifecycle](#11-document-lifecycle)
-12. [Verification -- The Six-Step Integrity Check](#12-verification----the-six-step-integrity-check)
-13. [Revenue Model & Payment Flows](#13-revenue-model--payment-flows)
-14. [Security, Privacy & Compliance](#14-security-privacy--compliance)
-15. [Smart Contract (On-Chain)](#15-smart-contract-on-chain)
-16. [Key Design Decisions](#16-key-design-decisions)
+9. [High Level System Architecture](#9-high-level-system-architecture)
+10. [System Components & Tech Stack](#10-system-components--tech-stack)
+11. [Data Model (Simplified)](#11-data-model-simplified)
+12. [Document Lifecycle](#12-document-lifecycle)
+13. [Verification -- The Six-Step Integrity Check](#13-verification----the-six-step-integrity-check)
+14. [Revenue Model & Payment Flows](#14-revenue-model--payment-flows)
+15. [Security, Privacy & Compliance](#15-security-privacy--compliance)
+16. [Smart Contract (On-Chain)](#16-smart-contract-on-chain)
+17. [Key Design Decisions](#17-key-design-decisions)
 
 ---
 
@@ -190,68 +191,248 @@ graph TB
 
 ---
 
-## 9. System Components & Tech Stack
+## 9. High Level System Architecture
+
+### 9.1 Application Architecture
 
 ```mermaid
-graph TB
-    subgraph "Backend Modules"
-        Auth[Auth Module]
-        Org[Organization Module]
-        Doc[Document Module]
-        Merkle[Merkle Module]
-        Verify[Verification Module]
-        Pay[Payment Module]
-        Notif[Notification Module]
-        Audit[Audit Module]
-        KMSMod[Key Management Module]
+flowchart TD
+    subgraph Frontend["Frontend — React + Vite"]
+        direction LR
+        HD["Holder Dashboard"]
+        HRP["HR / Manager Portal"]
+        VP["Verifier Page (Public)"]
+        AC["Admin Console"]
     end
 
-    subgraph "Infrastructure"
-        PG[(PostgreSQL)]
-        Redis[(Redis)]
-        S3[AWS S3]
-        KMS[AWS KMS]
-        SES[AWS SES Email]
+    subgraph Services["Backend Services — NestJS"]
+        direction LR
+        AUTH["Auth\nJWT · Magic Links · bcrypt"]
+        DOC["Document Engine\nDraft · Sign · Approve · PDF"]
+        MERKLE["Merkle Engine\nBatch · Proof · Anchor"]
+        NOTIFY["Notifications\nEmail + In-App"]
+        PAY["Payments\nStripe"]
+        KMS_SVC["Key Management\nKMS + Vault"]
+        AUDIT["Audit\n90-day / 7-year"]
     end
 
-    subgraph "Blockchain & Decentralized"
-        Polygon[Polygon PoS]
-        IPFS[IPFS]
-        GH[GitHub]
+    subgraph Data["Data Layer"]
+        direction LR
+        PG[("PostgreSQL 16")]
+        REDIS[("Redis 7")]
+        S3["AWS S3"]
     end
 
-    subgraph "Payments"
-        Stripe[Stripe]
+    subgraph Blockchain["Web 3.0 Layer"]
+        direction LR
+        SC["MerkleRootRegistry\n(Polygon PoS)"]
+        MIRROR["IPFS + GitHub"]
     end
 
-    Doc --> KMSMod
-    Doc --> Merkle
-    Doc --> Pay
-    Merkle --> Polygon
-    Merkle --> IPFS
-    Merkle --> GH
-    Pay --> Stripe
-    Auth --> SES
-    Notif --> SES
-    Doc --> S3
+    subgraph External["External Services"]
+        direction LR
+        STRIPE["Stripe"]
+        SES["AWS SES"]
+        DNS["DNS Resolver"]
+        KMS["AWS KMS"]
+        VAULT["HashiCorp Vault"]
+    end
+
+    Frontend -->|"HTTPS / REST"| Services
+
+    AUTH --> PG & REDIS
+    AUTH -->|"TXT Lookup"| DNS
+    DOC --> PG & S3 & KMS_SVC
+    MERKLE --> PG & REDIS
+    MERKLE -->|"Midnight Cron"| SC
+    MERKLE --> MIRROR
+    NOTIFY --> SES
+    PAY --> STRIPE
+    KMS_SVC --> KMS & VAULT
+
+    style Frontend fill:#e3f2fd,stroke:#1565c0,color:#000
+    style Services fill:#f3e5f5,stroke:#6a1b9a,color:#000
+    style Data fill:#e8f5e9,stroke:#2e7d32,color:#000
+    style Blockchain fill:#fce4ec,stroke:#b71c1c,color:#000
+    style External fill:#fff3e0,stroke:#e65100,color:#000
 ```
 
-| Component | Technology | Purpose |
+**Frontend (React + Vite):** Four route-separated views compiled into a single SPA. No SSR -- the Verifier page is publicly accessible with no auth; all other views are JWT-gated.
+
+| View | Users | Key Features |
 |---|---|---|
-| Backend API | **NestJS** (Node.js/TypeScript) | REST API, business logic, cron jobs |
-| Database | **PostgreSQL** | All application data (13 tables) |
-| Cache & Queues | **Redis + BullMQ** | Rate limiting, session cache, async job processing (bulk issuance, Merkle batching) |
-| File Storage | **AWS S3** | PDF document storage |
-| Key Management | **AWS KMS** | RSA 2048-bit key pairs per organization, used for digital signatures |
-| Payments | **Stripe** | Subscriptions and one-time payments |
-| Email | **AWS SES** | Magic links, notifications |
-| Blockchain | **Polygon PoS** | Low-cost Merkle root anchoring (~$0.01/tx) |
-| Decentralized Storage | **IPFS** | Backup of Merkle tree data |
-| Transparency | **GitHub** | Public repo of daily Merkle roots for independent audit |
+| Holder Dashboard | Employees | Career wallet, document requests, share link generation, subscription, GDPR deletion |
+| HR / Manager Portal | HR & Managers | Approval queue, document drafting, bulk CSV issuance, revocation |
+| Verifier Page | Recruiters (no login) | Paste share-link token → instant six-step verification report |
+| Admin Console | Org Admins | DNS verification, member management, KMS key rotation, audit logs |
+
+**API Gateway Layer:** All requests flow through WAF → CloudFront → ALB → Redis rate limiter → NestJS router. Rate limits are endpoint-sensitive: 5 req/min on auth endpoints, 100 req/min on document operations, 30 req/min on public verification.
+
+**Backend Services (NestJS modules with DI):**
+
+| Service | Responsibility |
+|---|---|
+| Auth | Registration, login (bcrypt, cost factor 12), JWT (15-min access / 7-day refresh), magic link generation & validation |
+| Document Engine | Full document lifecycle: draft → sign → HR approve → PDF generation (Puppeteer) → S3 upload → share link → revoke |
+| Merkle Engine | Midnight BullMQ cron: collect ISSUED docs → JCS-canonicalize → SHA-256 hash → build Merkle tree → anchor root to Polygon → store proofs → update PDFs |
+| Notification | Email (SES) + in-app notifications for every lifecycle event |
+| Payment | Stripe subscriptions ($5/mo), per-link Payment Intents, verifier usage billing, webhook processing |
+| Key Management | Wraps AWS KMS (envelope encryption) + HashiCorp Vault Transit Engine (document signing). Keys never leave hardware — signing happens inside Vault |
+| Audit | Structured audit log writes. `COMPLIANCE` tier (7-year): issuance, revocation, anchoring. `STANDARD` tier (90-day): logins, edits, link views |
 
 ---
 
-## 10. Data Model (Simplified)
+### 9.2 Deployment Architecture
+
+```mermaid
+flowchart TB
+    subgraph Edge["Edge Layer"]
+        WAF2["AWS WAF<br/>(SQL Injection, XSS, Rate-based rules)"]
+        CF2["CloudFront CDN<br/>(TLS 1.3, HSTS, CSP headers)"]
+    end
+
+    subgraph Compute["Compute (ECS Fargate — ap-south-1)"]
+        ALB2["ALB<br/>(TLS termination, health checks)"]
+        subgraph ECS["ECS Fargate Auto-scaling"]
+            API1["NestJS API<br/>(Instance 1)"]
+            API2["NestJS API<br/>(Instance 2..N)"]
+            WORKER["Worker Container<br/>(BullMQ: Merkle cron, PDF gen, Email)"]
+        end
+    end
+
+    subgraph Storage["Data Layer"]
+        RDS["RDS PostgreSQL 16<br/>(Multi-AZ, AES-256, auto-backup)"]
+        EC2["ElastiCache Redis 7<br/>(Cluster mode, VPC-only)"]
+        S3B["S3 Bucket<br/>(SSE-KMS, no public access)"]
+    end
+
+    subgraph Security["Security Services"]
+        KMS2["AWS KMS<br/>(Master keys, annual auto-rotation)"]
+        SM["Secrets Manager<br/>(DB creds, API keys — 30-day rotation)"]
+        HCV["HashiCorp Vault<br/>(Signing keys, Transit Engine)"]
+    end
+
+    subgraph Obs["Observability"]
+        CW["CloudWatch<br/>(Structured Pino logs, alarms)"]
+        SENTRY["Sentry<br/>(Error tracking, performance)"]
+        XRAY["AWS X-Ray<br/>(Distributed tracing)"]
+    end
+
+    BROWSER["Browser / API Client"] -->|HTTPS| WAF2 --> CF2
+    CF2 -->|Dynamic| ALB2
+    CF2 -->|Static Assets| S3B
+    ALB2 --> API1 & API2
+    API1 & API2 & WORKER --> RDS & EC2 & S3B & KMS2 & SM
+    WORKER --> HCV
+    WORKER -->|Midnight cron| POLYGON["Polygon RPC"]
+    WORKER --> SES2["AWS SES"] & GH_IPFS["GitHub / IPFS"]
+    API1 & API2 --> STRIPE2["Stripe API"]
+    API1 & API2 & WORKER --> CW & SENTRY & XRAY
+
+    style Edge fill:#fff9c4,stroke:#f9a825,color:#000
+    style Compute fill:#f3e5f5,stroke:#6a1b9a,color:#000
+    style Storage fill:#e8f5e9,stroke:#2e7d32,color:#000
+    style Security fill:#ffebee,stroke:#c62828,color:#000
+    style Obs fill:#e0f7fa,stroke:#00695c,color:#000
+```
+
+- **ECS Fargate:** Serverless containers — no EC2 management. API containers auto-scale on CPU (target 70%, min 2 / max 10 tasks). Worker container scales independently (min 1 / max 3).
+- **Zero-downtime deploys:** ALB connection draining (30s) + rolling ECS task updates. Automated rollback if health checks fail within 5 minutes.
+- **RDS:** Multi-AZ PostgreSQL 16 with point-in-time recovery, 7-day backups, and read replicas when read traffic exceeds 70% of primary capacity.
+- **Redis:** ElastiCache cluster mode. Handles sessions, BullMQ jobs, rate limiter state, magic link token TTLs, and application cache.
+
+---
+
+### 9.3 Security Architecture
+
+```mermaid
+flowchart LR
+    CLIENT["Client"] -->|HTTPS| WAF3["WAF<br/>(Managed rule sets,<br/>IP reputation, DDoS)"]
+    WAF3 --> RL2["Rate Limiter<br/>Sliding window<br/>per endpoint class"]
+    RL2 --> AUTH2["Auth<br/>JWT verify → Role guard<br/>→ Org scope check"]
+    AUTH2 --> SVC["Service Layer<br/>Input validation (Zod)<br/>Parameterized queries (Prisma)<br/>Output sanitization"]
+    SVC --> KEYS["Key Ops<br/>AWS KMS (envelope encrypt)<br/>Vault Transit (doc signing)"]
+    KEYS --> STORE["Encrypted Storage<br/>RDS AES-256 · S3 SSE-KMS<br/>Redis TLS · Pre-signed URLs"]
+```
+
+| Layer | Mechanism |
+|---|---|
+| Perimeter | AWS WAF managed rules (SQLi, XSS, bot signatures), CloudFront TLS 1.3, HSTS, strict CSP |
+| Auth | bcrypt cost-12 passwords; magic links stored as SHA-256 hashes in Redis (raw token never persisted) |
+| Tokens | JWT RS256: 15-min access token + 7-day HTTP-only refresh cookie (rotated on each use) |
+| RBAC | NestJS guards enforce `ORG_ADMIN / HR / MANAGER / HOLDER` per route; all queries org-scoped at service layer |
+| Signing | Vault Transit Engine — org signing keys never leave Vault hardware; every sign operation audit-logged |
+| Encryption | RDS: AES-256 at rest + application-layer envelope encryption for sensitive fields; S3: SSE-KMS; Redis: TLS in transit + at rest |
+| Secrets | All credentials in AWS Secrets Manager with 30-day automatic rotation |
+
+---
+
+### 9.4 Integration Architecture
+
+```mermaid
+flowchart LR
+    subgraph Platform["CareerVault (NestJS API + BullMQ Worker)"]
+        API3["API"]
+        WRK["Worker"]
+    end
+
+    API3 -->|"TXT record lookup<br/>(dns.resolveTxt)"| DNS3["DNS Provider"]
+    API3 -->|"Magic links,<br/>Notifications"| SES3["AWS SES"]
+    API3 -->|"Checkout, Subscriptions,<br/>Usage billing"| STRIPE3["Stripe"]
+    STRIPE3 -->|"Webhooks<br/>(signature-verified)"| API3
+    API3 -->|"PutObject / GetObject<br/>(pre-signed, 15-min expiry)<br/>DeleteObject (GDPR)"| S3_3["AWS S3"]
+    API3 -->|"Encrypt / Decrypt<br/>GenerateDataKey"| KMS3["AWS KMS"]
+
+    WRK -->|"storeRoot(date, hash)<br/>ethers.js v6"| RPC3["Polygon RPC<br/>(Alchemy / Infura fallback)"]
+    WRK -->|"Commit roots/{date}.json"| GH3["GitHub<br/>(public transparency repo)"]
+    WRK -->|"Pin JSON<br/>(Pinata / Infura IPFS)"| IPFS3["IPFS"]
+    WRK -->|"Sign via Transit Engine"| VAULT3["HashiCorp Vault"]
+```
+
+| Integration | Protocol / SDK | Purpose |
+|---|---|---|
+| AWS KMS | AWS SDK v3 | Envelope encryption of sensitive DB fields; master key management |
+| HashiCorp Vault | Vault HTTP API (Transit) | Document signing — keys never exported |
+| Polygon PoS | ethers.js v6 (Alchemy primary + Infura fallback) | Daily Merkle root anchoring |
+| AWS S3 | AWS SDK v3 (pre-signed URLs, 15-min expiry) | PDF storage with zero public access |
+| Stripe | Stripe Node SDK + webhook signature verification | Subscriptions, one-time payments, usage billing |
+| AWS SES | AWS SDK v3 (DKIM + SPF configured) | All transactional email |
+| IPFS | Pinata pinning API | Decentralized Merkle tree backup |
+| GitHub | GitHub REST API | Public transparency repo for daily roots |
+| DNS | Node.js `dns.resolveTxt()` | Org domain ownership verification during onboarding |
+
+---
+
+## 10. System Components & Tech Stack
+
+| Layer | Technology | Version | Purpose |
+|---|---|---|---|
+| **Frontend** | React + Vite | React 18, Vite 5 | SPA with fast HMR dev builds; TailwindCSS + shadcn/ui (Radix primitives) for UI |
+| **Backend API** | NestJS (Node.js 20 LTS) | NestJS 10+ | Modular, DI-based REST API with guards, interceptors, and pipes for RBAC |
+| **Language** | TypeScript | 5 | Shared types frontend ↔ backend; Prisma generates DB types automatically |
+| **ORM** | Prisma | 5+ | Type-safe queries, auto-migrations, parameterized SQL (prevents injection by default) |
+| **Database** | PostgreSQL | 16 | ACID, JSONB for document payloads, complex joins for org membership model |
+| **Cache & Queues** | Redis + BullMQ | Redis 7, BullMQ 5+ | Sessions, rate limiting, magic link TTLs, midnight Merkle cron, bulk issuance jobs |
+| **File Storage** | AWS S3 | — | PDF storage; SSE-KMS encryption; pre-signed URLs (15-min expiry); no public access |
+| **Key Management** | AWS KMS + HashiCorp Vault | — | KMS: envelope encryption of DB fields. Vault Transit: document signing (keys never exported) |
+| **Payments** | Stripe | Node SDK | Subscriptions, Payment Intents, usage metering, coupon-based discounts |
+| **Email** | AWS SES | — | DKIM/SPF-configured transactional email for magic links and notifications |
+| **Blockchain** | Polygon PoS | — | ~$0.01/tx Merkle root anchoring via ethers.js v6 (Alchemy primary / Infura fallback) |
+| **Smart Contract** | Solidity | 0.8+ | Minimal `MerkleRootRegistry` (~20 lines); `storeRoot(date, hash)` + `revokeDocument(hash)` |
+| **Merkle Trees** | merkletreejs | Latest | SHA-256, sorted pairs, deterministic proof generation |
+| **PDF Generation** | Puppeteer + pdf-lib | — | Puppeteer renders HTML → PDF; pdf-lib embeds Merkle proof in PDF metadata |
+| **Canonicalization** | JCS (RFC 8785) | `canonicalize` npm | Deterministic JSON serialization before hashing — same content always = same hash |
+| **IPFS** | Pinata / Infura IPFS | — | Decentralized Merkle root backup |
+| **Transparency** | GitHub REST API | — | Public `roots/YYYY-MM-DD.json` commits for independent verification |
+| **Deployment** | ECS Fargate + ALB | — | Serverless containers, auto-scaling (2–10 API tasks, 1–3 worker tasks), rolling deploys |
+| **CDN / WAF** | CloudFront + AWS WAF | — | Edge caching, TLS 1.3, HSTS, CSP, DDoS and injection protection |
+| **Observability** | CloudWatch + Sentry + X-Ray | — | Structured Pino logs, error tracking, distributed tracing |
+| **CI/CD** | GitHub Actions + ECR | — | Lint → type-check → test → Docker build → ECS deploy on merge to `main` |
+| **Testing** | Jest + Supertest + Playwright | — | Unit, HTTP integration, and E2E cross-browser tests |
+
+---
+
+## 11. Data Model (Simplified)
 
 The platform has **13 database tables**. Here's the simplified view of the core entities:
 
@@ -288,7 +469,7 @@ erDiagram
 
 ---
 
-## 11. Document Lifecycle
+## 12. Document Lifecycle
 
 Every document goes through a clear state machine:
 
@@ -327,7 +508,7 @@ stateDiagram-v2
 
 ---
 
-## 12. Verification -- The Six-Step Integrity Check
+## 13. Verification -- The Six-Step Integrity Check
 
 When a recruiter opens a shared link, CareerVault runs **six automated checks** in sequence:
 
@@ -356,7 +537,7 @@ The recruiter sees a clear **Verification Report** with pass/fail for each step 
 
 ---
 
-## 13. Revenue Model & Payment Flows
+## 14. Revenue Model & Payment Flows
 
 ### Revenue Streams
 
@@ -376,7 +557,7 @@ The recruiter sees a clear **Verification Report** with pass/fail for each step 
 
 ---
 
-## 14. Security, Privacy & Compliance
+## 15. Security, Privacy & Compliance
 
 ### Cryptographic Security
 
@@ -412,7 +593,7 @@ Companies must **prove domain ownership** via DNS TXT record before they can iss
 
 ---
 
-## 15. Smart Contract (On-Chain)
+## 16. Smart Contract (On-Chain)
 
 The `AnchorRegistry` smart contract on Polygon is intentionally minimal:
 
@@ -429,7 +610,7 @@ The contract also supports batch operations (`batchAnchorRoots`, `batchRevokeDoc
 
 ---
 
-## 16. Key Design Decisions
+## 17. Key Design Decisions
 
 | Decision | What We Chose | Why |
 |---|---|---|
