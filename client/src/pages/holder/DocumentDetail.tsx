@@ -10,8 +10,11 @@ import { DocumentPreview } from "@/features/documents/components/DocumentPreview
 import { SixStepCheck } from "@/features/verification/components/SixStepCheck";
 import { evaluateSteps } from "@/features/verification/buildSteps";
 import { findDocument } from "@/mocks/documents";
+import { linksByDocument } from "@/mocks/shareLinks";
 import { mockMerkleRoots, polygonScanUrl } from "@/mocks/merkleRoots";
 import { DOCUMENT_TYPE_LABEL } from "@/features/documents/types";
+import { COPY } from "@/lib/labels";
+import { formatDate } from "@/lib/format";
 
 const DocumentDetail = () => {
   const { id = "" } = useParams<{ id: string }>();
@@ -22,6 +25,10 @@ const DocumentDetail = () => {
     [doc],
   );
   const results = useMemo(() => (doc ? evaluateSteps(doc) : []), [doc]);
+  const activeShareLink = useMemo(
+    () => (doc ? linksByDocument(doc.id).find((l) => l.status === "active") : undefined),
+    [doc],
+  );
 
   if (!doc) {
     return (
@@ -37,6 +44,7 @@ const DocumentDetail = () => {
   return (
     <div className="mx-auto max-w-7xl p-6 lg:p-8">
       <button
+        type="button"
         onClick={() => navigate(-1)}
         className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-text-muted hover:text-text"
       >
@@ -54,7 +62,7 @@ const DocumentDetail = () => {
               <Link to="/holder/links">
                 <Button>
                   <Link2 />
-                  Generate share link
+                  {COPY.generateShareLink}
                 </Button>
               </Link>
             ) : null}
@@ -66,32 +74,34 @@ const DocumentDetail = () => {
         <div className="space-y-6">
           <DocumentPreview doc={doc} />
 
-          {doc.pdfUrl ? (
-            <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
+            {doc.pdfUrl ? (
               <Button variant="outline" asChild>
                 <a href={doc.pdfUrl} download>
                   <Download /> Download PDF
                 </a>
               </Button>
+            ) : null}
+            {activeShareLink ? (
               <Button variant="ghost" asChild>
-                <a href={`/verify/abc-123-def-456`} target="_blank" rel="noreferrer">
-                  <ExternalLink /> Open public verifier
+                <a href={`/verify/${activeShareLink.token}`} target="_blank" rel="noreferrer">
+                  <ExternalLink /> Open verification report
                 </a>
               </Button>
-              {doc.status !== "revoked" && doc.status !== "expired" ? (
-                <Button variant="ghost" className="text-revoked hover:bg-revoked-soft">
-                  <ShieldOff /> Request revocation
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
+            ) : null}
+            {doc.status !== "revoked" && doc.status !== "expired" && doc.status !== "draft" ? (
+              <Button variant="ghost" className="text-revoked hover:bg-revoked-soft">
+                <ShieldOff /> Request revocation
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <div className="space-y-6">
           <Card>
             <CardContent className="p-6">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-text">Verification report</h2>
-              <p className="mt-1 text-xs text-text-muted">Six-step cryptographic check</p>
+              <p className="mt-1 text-xs text-text-muted">{COPY.sixStepVerification}</p>
               <div className="mt-4">
                 <SixStepCheck results={results} autoPlay={false} />
               </div>
@@ -102,7 +112,7 @@ const DocumentDetail = () => {
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold uppercase tracking-wider text-text">Blockchain anchor</h2>
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-text">{COPY.anchoredOnChain}</h2>
                   <a
                     href={polygonScanUrl(root.polygonTxHash)}
                     target="_blank"
@@ -116,7 +126,7 @@ const DocumentDetail = () => {
                   <Row label="Block">
                     <span className="font-mono text-xs tnum">{root.blockNumber.toLocaleString()}</span>
                   </Row>
-                  <Row label="Anchored">{root.date}</Row>
+                  <Row label="Anchored">{formatDate(root.date, "MMM d, yyyy")}</Row>
                   <Row label="Documents in batch">{root.documentCount}</Row>
                   <Row label="Tx hash"><HashChip hash={root.polygonTxHash} /></Row>
                   <Row label="Merkle root"><HashChip hash={root.rootHash} /></Row>

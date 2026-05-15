@@ -63,7 +63,8 @@ const ManagerInbox = () => {
                             {holder?.name} requested {DOCUMENT_TYPE_LABEL[d.type]}
                           </p>
                           <p className="text-xs text-text-muted">
-                            {d.content.role || "Role TBD"} · {formatRelative(d.issuedAt ?? "2026-05-08T08:00:00Z")}
+                            {d.content.role || "Role TBD"}
+                            {d.issuedAt ? ` · ${formatRelative(d.issuedAt)}` : ""}
                           </p>
                         </div>
                       </div>

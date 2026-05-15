@@ -31,12 +31,12 @@ export const LandingHero = () => (
           </Link>
         </div>
         <p className="mt-4 text-xs text-text-subtle">
-          No wallet, no seed phrase, no crypto knowledge needed. Free to issue. $5/mo for unlimited shareable links.
+          No wallet, no seed phrase, no crypto knowledge needed. Free to issue. $5/mo for unlimited share links.
         </p>
       </div>
 
       <div className="relative">
-        <div className="absolute -inset-4 rounded-3xl bg-gradient-to-br from-primary-soft to-anchor-soft opacity-50 blur-2xl" />
+        <div className="absolute -inset-4 rounded-3xl bg-linear-to-br from-primary-soft to-anchor-soft opacity-50 blur-2xl" />
         <div className="relative rounded-2xl border border-border bg-surface p-6 shadow-lg">
           <div className="flex items-center gap-3 border-b border-border pb-4">
             <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-white">

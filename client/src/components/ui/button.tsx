@@ -48,17 +48,21 @@ const Spinner = () => (
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, isLoading = false, disabled, children, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button";
+    const classes = cn(buttonVariants({ variant, size, className }));
+
+    if (asChild) {
+      return (
+        <Slot ref={ref} className={classes} {...props}>
+          {children}
+        </Slot>
+      );
+    }
+
     return (
-      <Comp
-        ref={ref}
-        className={cn(buttonVariants({ variant, size, className }))}
-        disabled={disabled || isLoading}
-        {...props}
-      >
+      <button ref={ref} className={classes} disabled={disabled || isLoading} {...props}>
         {isLoading ? <Spinner /> : null}
         {children}
-      </Comp>
+      </button>
     );
   },
 );

@@ -10,6 +10,8 @@ import { mockShareLinks } from "@/mocks/shareLinks";
 import { documentsByHolder } from "@/mocks/documents";
 import { ACTIVE_HOLDER } from "@/mocks/users";
 import { formatDate, formatRelative } from "@/lib/format";
+import { COPY } from "@/lib/labels";
+import { DOCUMENT_TYPE_LABEL } from "@/features/documents/types";
 
 const HolderShareLinks = () => {
   const docs = documentsByHolder(ACTIVE_HOLDER.id);
@@ -19,16 +21,23 @@ const HolderShareLinks = () => {
   const [generated, setGenerated] = useState<string | null>(null);
 
   const eligible = docs.filter((d) => d.status === "anchored" || d.status === "issued");
+  const firstEligible = eligible[0];
+
+  const handlePaid = () => {
+    setPaywallOpen(false);
+    const token = `cv-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 8)}`;
+    setGenerated(`${window.location.origin}/verify/${token}`);
+  };
 
   return (
     <div className="mx-auto max-w-7xl p-6 lg:p-8">
       <PageHeader
-        title="Share links"
-        description="Generate verifiable links recruiters can open without an account."
+        title={COPY.shareLinks}
+        description="Generate links recruiters can open without an account. Each opens a six-step verification report."
         actions={
           <Button onClick={() => setPaywallOpen(true)} disabled={eligible.length === 0}>
             <Plus />
-            Generate verified link
+            {COPY.generateShareLink}
           </Button>
         }
       />
@@ -37,11 +46,11 @@ const HolderShareLinks = () => {
         <Card className="mt-6 border-verified">
           <CardContent className="flex items-center justify-between gap-4 p-4">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="flex size-9 items-center justify-center rounded-lg bg-verified-soft text-verified">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-verified-soft text-verified">
                 <Link2 className="size-4" />
               </span>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-text">Link generated</p>
+                <p className="text-sm font-semibold text-text">Share link generated</p>
                 <p className="truncate font-mono text-xs text-text-muted tnum">{generated}</p>
               </div>
             </div>
@@ -57,10 +66,10 @@ const HolderShareLinks = () => {
           className="mt-8"
           icon={Link2}
           title="No share links yet"
-          description="Generate your first verified link to share a document with a recruiter."
+          description="Generate your first share link to send a recruiter a verification report."
           action={
             <Button onClick={() => setPaywallOpen(true)} disabled={eligible.length === 0}>
-              <Plus /> Generate verified link
+              <Plus /> {COPY.generateShareLink}
             </Button>
           }
         />
@@ -71,32 +80,36 @@ const HolderShareLinks = () => {
               <CardContent className="p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-semibold text-text">{l.documentTitle}</p>
                       <Badge tone={l.status === "active" ? "verified" : l.status === "expired" ? "expired" : "revoked"}>
-                        {l.status}
+                        {l.status === "active" ? "Active" : l.status === "expired" ? "Expired" : "Revoked"}
                       </Badge>
-                      {l.type === "premium" ? (
-                        <Badge tone="primary">Premium</Badge>
-                      ) : null}
+                      {l.type === "premium" ? <Badge tone="primary">Premium</Badge> : null}
                     </div>
                     <p className="mt-0.5 text-xs text-text-muted">
                       {l.recipientLabel ?? "No recipient note"} · created {formatRelative(l.createdAt)}
                     </p>
-                    <p className="mt-2 inline-flex items-center gap-3 text-xs text-text-muted">
+                    <p className="mt-2 inline-flex flex-wrap items-center gap-3 text-xs text-text-muted">
                       <span className="inline-flex items-center gap-1">
                         <Eye className="size-3.5" /> {l.views}{l.maxViews ? ` / ${l.maxViews}` : ""} views
                       </span>
                       {l.expiresAt ? <span>Expires {formatDate(l.expiresAt)}</span> : <span>No expiry</span>}
                     </p>
                   </div>
-                  <div className="flex shrink-0 gap-2">
+                  <div className="flex shrink-0 flex-wrap gap-2">
                     <Button asChild variant="outline" size="sm">
                       <a href={`/verify/${l.token}`} target="_blank" rel="noreferrer">
                         <ExternalLink /> Open
                       </a>
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/verify/${l.token}`)}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        navigator.clipboard?.writeText(`${window.location.origin}/verify/${l.token}`)
+                      }
+                    >
                       <Copy /> Copy
                     </Button>
                     {l.status === "active" ? (
@@ -115,12 +128,8 @@ const HolderShareLinks = () => {
       <PaywallDialog
         open={paywallOpen}
         onOpenChange={setPaywallOpen}
-        documentTitle={eligible[0]?.content.role ?? "your document"}
-        onPaid={() => {
-          setPaywallOpen(false);
-          const token = `cv-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 8)}`;
-          setGenerated(`${window.location.origin}/verify/${token}`);
-        }}
+        documentTitle={firstEligible ? DOCUMENT_TYPE_LABEL[firstEligible.type] : "your document"}
+        onPaid={handlePaid}
       />
     </div>
   );

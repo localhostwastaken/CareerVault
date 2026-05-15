@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FileText } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { DocumentLifecycle } from "@/components/shared/DocumentLifecycle";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { DocumentCard } from "@/features/documents/components/DocumentCard";
@@ -9,11 +10,20 @@ import { documentsByHolder } from "@/mocks/documents";
 import { ACTIVE_HOLDER } from "@/mocks/users";
 import { DOCUMENT_TYPE_LABEL, type DocumentType } from "@/features/documents/types";
 
-type Filter = "all" | "anchored" | "pending" | "expired_revoked";
+type Filter = "all" | "anchored" | "issued" | "pending" | "inactive";
+
+const FILTER_LABEL: Record<Filter, string> = {
+  all: "All",
+  anchored: "Anchored",
+  issued: "Issued",
+  pending: "In progress",
+  inactive: "Inactive",
+};
 
 const matchesFilter = (status: string, f: Filter): boolean => {
   if (f === "all") return true;
-  if (f === "anchored") return status === "anchored" || status === "issued";
+  if (f === "anchored") return status === "anchored";
+  if (f === "issued") return status === "issued";
   if (f === "pending") return status === "pending_hr" || status === "draft";
   return status === "expired" || status === "revoked";
 };
@@ -61,12 +71,17 @@ const HolderDocuments = () => {
         </select>
       </div>
 
+      <div className="mt-6">
+        <DocumentLifecycle highlight={["draft", "pending_hr", "issued", "anchored"]} compact />
+      </div>
+
       <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="mt-6">
         <TabsList>
-          <TabsTrigger value="all">All ({allDocs.length})</TabsTrigger>
-          <TabsTrigger value="anchored">Verified ({allDocs.filter((d) => matchesFilter(d.status, "anchored")).length})</TabsTrigger>
-          <TabsTrigger value="pending">In progress ({allDocs.filter((d) => matchesFilter(d.status, "pending")).length})</TabsTrigger>
-          <TabsTrigger value="expired_revoked">Inactive ({allDocs.filter((d) => matchesFilter(d.status, "expired_revoked")).length})</TabsTrigger>
+          {(["all", "anchored", "issued", "pending", "inactive"] as Filter[]).map((f) => (
+            <TabsTrigger key={f} value={f}>
+              {FILTER_LABEL[f]} ({allDocs.filter((d) => matchesFilter(d.status, f)).length})
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value={filter}>

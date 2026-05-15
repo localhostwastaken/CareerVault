@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { sleep } from "@/lib/sleep";
+import { DOCUMENT_TYPE_LABEL, type DocumentType } from "@/features/documents/types";
 
 interface Row {
   email: string;
@@ -13,7 +14,7 @@ interface Row {
   role: string;
   start: string;
   end: string;
-  type: string;
+  type: DocumentType;
   valid: boolean;
   errors?: string;
 }
@@ -119,7 +120,7 @@ const BulkIssuance = () => {
                         </td>
                         <td className="px-4 py-2.5 text-text">{r.role}</td>
                         <td className="px-4 py-2.5 text-xs text-text-muted tnum">{r.start} → {r.end}</td>
-                        <td className="px-4 py-2.5 text-text">{r.type}</td>
+                        <td className="px-4 py-2.5 text-text">{DOCUMENT_TYPE_LABEL[r.type]}</td>
                       </tr>
                     ))}
                   </tbody>

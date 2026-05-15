@@ -11,7 +11,7 @@ const STEPS: Step[] = [
   { icon: FileSignature,  title: "Sign",         body: "The manager fills the content and signs digitally. AI extracts skills automatically." },
   { icon: KeyRound,       title: "Approve",      body: "HR cross-checks the dates and co-signs. Two-person integrity prevents fraud." },
   { icon: Anchor,         title: "Anchor",       body: "Every night at midnight, all new documents are batched into a Merkle tree and anchored on Polygon." },
-  { icon: Link2,          title: "Share",        body: "The employee generates a shareable link. Optional one-time fee or premium subscription." },
+  { icon: Link2,          title: "Share",        body: "The holder generates a share link. Optional one-time fee or premium subscription." },
   { icon: ShieldCheck,    title: "Verify",       body: "Recruiter opens the link and sees a six-step cryptographic verification report. No login required." },
 ];
 

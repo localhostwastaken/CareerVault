@@ -1,6 +1,4 @@
-import type { DocStatus } from "@/components/shared/StatusBadge";
-
-export type { DocStatus };
+export type DocStatus = "draft" | "pending_hr" | "issued" | "anchored" | "revoked" | "expired";
 
 export type DocumentType = "experience" | "salary_proof" | "recommendation";
 
