@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Building2, MapPin, Search, ShieldCheck, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,6 +8,9 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { mockCandidates } from "@/mocks/matches";
 import { rankCandidates } from "@/features/matchmaking/scoring";
 import { ShapBreakdown } from "@/features/matchmaking/components/ShapBreakdown";
+import { ExplainableAiPanel } from "@/features/matchmaking/components/ExplainableAiPanel";
+import { useDebounced } from "@/hooks/useDebounced";
+import { useExplainCandidateMutation } from "@/apis/ai/explainabilityApiSlice";
 
 const SUGGESTED = ["React", "TypeScript", "AWS", "System Design", "Python", "Kubernetes"];
 
@@ -15,9 +18,21 @@ const TalentSearch = () => {
   const [skills, setSkills] = useState<string[]>(["React", "TypeScript", "AWS", "System Design"]);
   const [input, setInput] = useState("");
   const [selected, setSelected] = useState<string | null>("u_sarah");
+  const debouncedSkills = useDebounced(skills, 250);
 
-  const ranked = useMemo(() => rankCandidates(mockCandidates, skills), [skills]);
+  const ranked = useMemo(() => rankCandidates(mockCandidates, debouncedSkills), [debouncedSkills]);
   const active = ranked.find((r) => r.candidate.id === selected) ?? ranked[0];
+  const [explainCandidate, { data: explanation, isLoading: isExplaining, isError: explainError }] = useExplainCandidateMutation();
+
+  useEffect(() => {
+    if (!active) return;
+
+    void explainCandidate({
+      candidate: active.candidate,
+      match: active.match,
+      requiredSkills: debouncedSkills,
+    });
+  }, [active, debouncedSkills, explainCandidate]);
 
   const addSkill = (s: string) => {
     if (!s.trim()) return;
@@ -143,6 +158,7 @@ const TalentSearch = () => {
                   </span>
                 </div>
                 <ShapBreakdown shap={active.match.shap} totalScore={active.match.totalScore} />
+                <ExplainableAiPanel explanation={explanation} isLoading={isExplaining} isError={explainError} />
               </div>
             ) : null}
           </CardContent>
