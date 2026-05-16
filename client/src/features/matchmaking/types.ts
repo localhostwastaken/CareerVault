@@ -37,3 +37,24 @@ export interface MatchResult {
   matchedSkills: string[];
   missingSkills: string[];
 }
+
+export interface ExplainCandidateRequest {
+  candidate: Candidate;
+  match: MatchResult;
+  requiredSkills: string[];
+}
+
+export interface ExplainEvidence {
+  label: string;
+  detail: string;
+}
+
+export interface ExplainCandidateResponse {
+  source: "groq" | "fallback";
+  model: string;
+  summary: string;
+  strengths: string[];
+  concerns: string[];
+  recommendation: string;
+  evidence: ExplainEvidence[];
+}

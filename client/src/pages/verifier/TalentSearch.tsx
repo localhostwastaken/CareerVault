@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Building2, MapPin, Search, ShieldCheck, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { rankCandidates } from "@/features/matchmaking/scoring";
 import { ShapBreakdown } from "@/features/matchmaking/components/ShapBreakdown";
 import { ExplainableAiPanel } from "@/features/matchmaking/components/ExplainableAiPanel";
 import { useDebounced } from "@/hooks/useDebounced";
-import { useExplainCandidateMutation } from "@/apis/ai/explainabilityApiSlice";
+import { useExplainCandidate } from "@/features/matchmaking/useExplainCandidate";
 
 const SUGGESTED = ["React", "TypeScript", "AWS", "System Design", "Python", "Kubernetes"];
 
@@ -22,17 +22,11 @@ const TalentSearch = () => {
 
   const ranked = useMemo(() => rankCandidates(mockCandidates, debouncedSkills), [debouncedSkills]);
   const active = ranked.find((r) => r.candidate.id === selected) ?? ranked[0];
-  const [explainCandidate, { data: explanation, isLoading: isExplaining, isError: explainError }] = useExplainCandidateMutation();
-
-  useEffect(() => {
-    if (!active) return;
-
-    void explainCandidate({
-      candidate: active.candidate,
-      match: active.match,
-      requiredSkills: debouncedSkills,
-    });
-  }, [active, debouncedSkills, explainCandidate]);
+  const { data: explanation, isLoading: isExplaining, isError: explainError } = useExplainCandidate(
+    active
+      ? { candidate: active.candidate, match: active.match, requiredSkills: debouncedSkills }
+      : null,
+  );
 
   const addSkill = (s: string) => {
     if (!s.trim()) return;

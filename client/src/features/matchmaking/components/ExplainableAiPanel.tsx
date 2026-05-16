@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import type { ExplainCandidateResponse } from "../../../../../server/src/contracts/explainability";
+import type { ExplainCandidateResponse } from "../types";
 
 interface Props {
   explanation?: ExplainCandidateResponse;
