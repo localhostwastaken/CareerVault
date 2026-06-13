@@ -1,1 +1,129 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/* ── CareerVault design tokens (LOCKED) ──────────────────────────────────────
+   Swiss minimalism + subtle 3D depth. Light theme only. Never use raw hex or
+   Tailwind color literals in components — use the semantic utilities generated
+   from @theme below (bg-primary, text-verified, bg-pending-soft, shadow-raised…). */
+
+:root {
+  --radius: 0.75rem;
+
+  /* surfaces & text */
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --surface-2: #f1f5f9;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --subtle: #94a3b8;
+
+  /* brand */
+  --primary: #1e3a8a; /* trust navy */
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --accent: #eef2ff;
+  --accent-foreground: #1e3a8a;
+
+  /* lines & focus */
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #1e3a8a;
+
+  /* status semantics (FIXED — never remap) */
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --verified: #059669;
+  --verified-soft: #ecfdf5;
+  --pending: #d97706;
+  --pending-soft: #fffbeb;
+  --revoked: #dc2626;
+  --revoked-soft: #fef2f2;
+  --expired: #6b7280;
+  --expired-soft: #f3f4f6;
+  --anchor: #b45309; /* blockchain gold */
+  --anchor-soft: #fef3c7;
+}
+
+@theme inline {
+  --font-sans: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-surface-2: var(--surface-2);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle: var(--subtle);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-verified: var(--verified);
+  --color-verified-soft: var(--verified-soft);
+  --color-pending: var(--pending);
+  --color-pending-soft: var(--pending-soft);
+  --color-revoked: var(--revoked);
+  --color-revoked-soft: var(--revoked-soft);
+  --color-expired: var(--expired);
+  --color-expired-soft: var(--expired-soft);
+  --color-anchor: var(--anchor);
+  --color-anchor-soft: var(--anchor-soft);
+
+  --radius-lg: 0.5rem; /* inputs/buttons (8px) */
+  --radius-xl: 0.75rem; /* cards (12px) */
+
+  /* elevation — the subtle 3D depth */
+  --shadow-soft: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  --shadow-raised: 0 4px 12px -2px rgb(15 23 42 / 0.1), 0 2px 6px -2px rgb(15 23 42 / 0.06);
+  --shadow-overlay: 0 12px 32px -4px rgb(15 23 42 / 0.18), 0 6px 16px -6px rgb(15 23 42 / 0.12);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* tabular numerals for hashes, amounts, dates */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

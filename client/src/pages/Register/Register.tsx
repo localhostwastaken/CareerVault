@@ -1,153 +1,131 @@
-import React, { useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Formik, Form } from 'formik';
-import * as Yup from 'yup';
-import FormikInput from '../../components/ui/FormikInput';
-import Button from '../../components/ui/Button';
+import { useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
+import { useRegisterMutation } from '@/features/auth/authApi'
+import { setCredentials } from '@/features/auth/authSlice'
+import { registerSchema, type RegisterValues } from '@/features/auth/schema'
+import { useAppDispatch, useAuth } from '@/hooks/useAuth'
+import { ROLE_CONFIG, primaryRole } from '@/lib/roles'
+import { toastApiError } from '@/lib/notify'
 
-interface RegisterFormValues {
-  name: string;
-  email: string;
-  password: string;
-  confirmPassword: string;
-}
-
-const registerValidationSchema = Yup.object({
-  name: Yup.string()
-    .min(2, 'Name must be at least 2 characters')
-    .required('Name is required'),
-  email: Yup.string()
-    .email('Please enter a valid email')
-    .required('Email is required'),
-  password: Yup.string()
-    .min(6, 'Password must be at least 6 characters')
-    .matches(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-      'Password must contain at least one uppercase letter, one lowercase letter, and one number'
-    )
-    .required('Password is required'),
-  confirmPassword: Yup.string()
-    .oneOf([Yup.ref('password')], 'Passwords must match')
-    .required('Please confirm your password'),
-});
-
-const Register: React.FC = () => {
-  const navigate = useNavigate();
-  const isAuthenticated = true
-  const authError = false
-  const isLoading = false
-
+const Register = () => {
+  const navigate = useNavigate()
+  const dispatch = useAppDispatch()
+  const { isAuthenticated } = useAuth()
+  const [registerUser, { isLoading }] = useRegisterMutation()
+  const form = useForm<RegisterValues>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { fullName: '', email: '', password: '', accountType: 'HOLDER' },
+  })
 
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/profile');
-    }
-  }, [isAuthenticated, navigate]);
+    if (isAuthenticated) navigate('/app', { replace: true })
+  }, [isAuthenticated, navigate])
 
-  const initialValues: RegisterFormValues = {
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-  };
-
-  const handleSubmit = async (_values: RegisterFormValues) => {
+  const onSubmit = async (values: RegisterValues) => {
     try {
-      // await register(values).unwrap(); --- IGNORE ---
+      const result = await registerUser(values).unwrap()
+      dispatch(setCredentials(result))
+      navigate(
+        values.accountType === 'ORG_ADMIN' ? '/app/org' : ROLE_CONFIG[primaryRole(result.user)].home,
+        { replace: true },
+      )
     } catch (error) {
-      console.error('Registration error:', error);
+      toastApiError(error, 'Registration failed')
     }
-  };
+  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Create your account
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Or{' '}
-            <Link 
-              to="/auth/login" 
-              className="font-medium text-blue-600 hover:text-blue-500"
-            >
-              sign in to your existing account
+    <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-12">
+      <Card className="w-full max-w-md shadow-raised">
+        <CardHeader>
+          <CardTitle>Create your account</CardTitle>
+          <CardDescription>Start your verifiable career wallet.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="fullName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Full name</FormLabel>
+                    <FormControl>
+                      <Input autoComplete="name" placeholder="Jane Smith" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" autoComplete="email" placeholder="you@company.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="new-password" placeholder="••••••••" {...field} />
+                    </FormControl>
+                    <FormDescription>At least 8 chars with upper, lower, and a number.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="accountType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Account type</FormLabel>
+                    <FormControl>
+                      <select
+                        className="flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                        {...field}
+                      >
+                        <option value="HOLDER">Employee — store & share my documents</option>
+                        <option value="ORG_ADMIN">Organization — issue documents</option>
+                      </select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading && <Loader2 className="animate-spin" />}
+                Create account
+              </Button>
+            </form>
+          </Form>
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            Already have an account?{' '}
+            <Link to="/auth/login" className="font-medium text-primary hover:underline">
+              Sign in
             </Link>
           </p>
-        </div>
-        
-        <Formik
-          initialValues={initialValues}
-          validationSchema={registerValidationSchema}
-          onSubmit={handleSubmit}
-        >
-          {({ isSubmitting }) => (
-            <Form className="mt-8 space-y-6">
-              <div className="space-y-4">
-                <FormikInput
-                  name="name"
-                  type="text"
-                  label="Full Name"
-                  placeholder="Enter your full name"
-                  autoComplete="name"
-                />
-                
-                <FormikInput
-                  name="email"
-                  type="email"
-                  label="Email Address"
-                  placeholder="Enter your email"
-                  autoComplete="email"
-                />
-                
-                <FormikInput
-                  name="password"
-                  type="password"
-                  label="Password"
-                  placeholder="Create a password"
-                  helperText="Must contain uppercase, lowercase, and number"
-                  autoComplete="new-password"
-                />
-                
-                <FormikInput
-                  name="confirmPassword"
-                  type="password"
-                  label="Confirm Password"
-                  placeholder="Confirm your password"
-                  autoComplete="new-password"
-                />
-              </div>
-
-              {authError && (
-                <div className="rounded-md bg-red-50 p-4">
-                  <div className="flex">
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-red-800">
-                        {authError}
-                      </h3>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="lg"
-                  isLoading={isLoading || isSubmitting}
-                  className="w-full"
-                >
-                  Create Account
-                </Button>
-              </div>
-            </Form>
-          )}
-        </Formik>
-      </div>
+        </CardContent>
+      </Card>
     </div>
-  );
-};
+  )
+}
 
-export default Register;
+export default Register

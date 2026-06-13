@@ -1,16 +1,17 @@
-import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { useAuth } from '@/hooks/useAuth'
 
-const ImplementAuth: React.FC = () => {
-  const isAuthenticated = true
+// Gate for the authenticated area. Reads real auth state from the store and
+// bounces unauthenticated users to login, preserving the intended destination.
+const ImplementAuth = () => {
+  const { isAuthenticated } = useAuth()
+  const location = useLocation()
 
-  // If there's no  authentication failed, redirect to login
-  if ((!isAuthenticated)) {
-    return <Navigate to="/auth/login" replace />;
+  if (!isAuthenticated) {
+    return <Navigate to="/auth/login" replace state={{ from: location.pathname }} />
   }
 
-  // If authenticated, render the protected routes
-  return <Outlet />;
-};
+  return <Outlet />
+}
 
-export default ImplementAuth;
+export default ImplementAuth

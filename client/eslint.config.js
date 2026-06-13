@@ -20,4 +20,13 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // shadcn-style primitives intentionally co-export variants/hooks alongside
+    // their component (buttonVariants, useFormField, …); HMR fast-refresh purity
+    // does not apply to these owned primitives.
+    files: ['src/components/ui/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])
