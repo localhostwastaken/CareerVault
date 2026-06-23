@@ -5,7 +5,14 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { DOCUMENT_TYPE_LABEL, type DocumentDetail } from '@/features/document/types'
 import { formatDate } from '@/lib/format'
 
+function isReturned(doc: DocumentDetail): boolean {
+  const content = doc.contentJson as Record<string, unknown> | null
+  return content?.returnedByManager === true
+}
+
 export function DocumentCard({ document }: { document: DocumentDetail }) {
+  const returned = isReturned(document)
+
   return (
     <Link to={`/app/documents/${document.id}`} className="block">
       <Card className="flex items-center justify-between gap-4 p-4 transition-shadow hover:shadow-raised">
@@ -20,7 +27,7 @@ export function DocumentCard({ document }: { document: DocumentDetail }) {
             </p>
           </div>
         </div>
-        <StatusBadge status={document.status} />
+        <StatusBadge status={returned ? 'DRAFT' : document.status} label={returned ? 'Returned' : undefined} />
       </Card>
     </Link>
   )

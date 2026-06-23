@@ -38,6 +38,18 @@ export const documentApi = APISlice.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/documents/${id}/revoke`, method: 'POST', body }),
       invalidatesTags: (_result, _error, { id }) => [{ type: 'Document', id }, 'Document'],
     }),
+    deleteDocument: builder.mutation<{ deleted: boolean }, string>({
+      query: (id) => ({ url: `/documents/${id}`, method: 'DELETE' }),
+      invalidatesTags: (_result, _error, id) => [{ type: 'Document', id }, 'Document'],
+    }),
+    returnDocument: builder.mutation<DocumentDetail, { id: string; reason: string }>({
+      query: ({ id, ...body }) => ({ url: `/documents/${id}/return`, method: 'POST', body }),
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'Document', id }, 'Document'],
+    }),
+    resubmitDocument: builder.mutation<DocumentDetail, { id: string; type?: string; managerUserId?: string; notes?: string }>({
+      query: ({ id, ...body }) => ({ url: `/documents/${id}/resubmit`, method: 'PUT', body }),
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'Document', id }, 'Document'],
+    }),
   }),
 })
 
@@ -49,4 +61,7 @@ export const {
   useApproveDocumentMutation,
   useRejectDocumentMutation,
   useRevokeDocumentMutation,
+  useDeleteDocumentMutation,
+  useReturnDocumentMutation,
+  useResubmitDocumentMutation,
 } = documentApi

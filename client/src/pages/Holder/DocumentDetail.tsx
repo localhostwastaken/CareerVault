@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { useGetDocumentQuery } from '@/features/document/api'
 import { DocumentActions } from '@/features/document/components/DocumentActions'
+import { ResubmitForm } from '@/features/document/components/ResubmitForm'
 import { StatusTimeline } from '@/features/document/components/StatusTimeline'
 import { extractContentFields } from '@/features/document/content'
 import { useDownloadDocument } from '@/features/document/hooks'
@@ -78,6 +79,26 @@ const HolderDocumentDetail = () => {
 
       <DocumentActions document={document} />
 
+      {'returnedByManager' in (document.contentJson as Record<string, unknown>) &&
+        (document.contentJson as Record<string, unknown>).returnedByManager === true && (
+        <Card className="border-amber-600/30 bg-amber-50 p-5">
+          <div className="flex items-start gap-3">
+            <FileWarning className="mt-0.5 size-5 shrink-0 text-amber-600" />
+            <div>
+              <p className="text-sm font-semibold text-amber-600">Returned for revision</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {(document.contentJson as Record<string, unknown>).note as string || 'The manager returned this request. Please review and resubmit.'}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {user?.id === document.holderId &&
+        (document.contentJson as Record<string, unknown>).returnedByManager === true && (
+        <ResubmitForm document={document} />
+      )}
+
       <Card className="space-y-6 p-6">
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={document.status} />
@@ -98,6 +119,26 @@ const HolderDocumentDetail = () => {
 
         <StatusTimeline status={document.status} />
       </Card>
+
+      {!PRE_ISSUE.includes(document.status) && (
+        <Card className="space-y-4 p-6">
+            <h2 className="text-sm font-semibold text-foreground">Authenticity</h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SignatureRow label="Manager signature" signed={document.hasManagerSignature} />
+              <SignatureRow label="HR co-signature" signed={document.hasHrSignature} />
+            </div>
+            <dl className="grid gap-x-6 gap-y-3 border-t border-border pt-4 sm:grid-cols-2">
+              <Meta label="Issued" value={formatDate(document.issuedAt)} />
+              <Meta label="Expires" value={document.expiresAt ? formatDate(document.expiresAt) : 'No expiry'} />
+            </dl>
+            {document.documentHash && (
+              <div className="border-t border-border pt-4">
+                <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-subtle">Document hash (SHA-256)</p>
+                <HashDisplay value={document.documentHash} lead={10} tail={10} />
+              </div>
+            )}
+          </Card>
+      )}
 
       {document.status === 'REVOKED' && (
         <Card className="border-revoked/30 bg-revoked-soft/40 p-5">

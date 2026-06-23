@@ -2,14 +2,16 @@ import { Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { DocumentStatus } from '@/features/document/types'
 
+// REQUESTED and DRAFT are merged into one visible step — the holder has requested
+// and the manager is drafting/signing. The real transition to PENDING_HR happens
+// only when the manager signs.
 const STEPS: Array<{ key: string; label: string }> = [
-  { key: 'REQUESTED', label: 'Requested' },
+  { key: 'REQUESTED', label: 'Manager Pending' },
   { key: 'PENDING_HR', label: 'Pending HR' },
   { key: 'ISSUED', label: 'Issued' },
   { key: 'ANCHORED', label: 'Anchored' },
 ]
 
-// Maps a persisted status to the furthest timeline step it has reached (R1 lifecycle).
 const RANK: Record<DocumentStatus, number> = {
   REQUESTED: 0,
   DRAFT: 0,

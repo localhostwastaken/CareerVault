@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   NotFoundException,
@@ -21,6 +22,7 @@ import { ApproveDocumentDto } from './dto/approve-document.dto.js';
 import { ListDocumentsQuery } from './dto/list-documents.query.js';
 import { RejectDocumentDto } from './dto/reject-document.dto.js';
 import { RequestDocumentDto } from './dto/request-document.dto.js';
+import { ResubmitRequestDto } from './dto/resubmit-request.dto.js';
 import { RevokeDocumentDto } from './dto/revoke-document.dto.js';
 import { SignDocumentDto } from './dto/sign-document.dto.js';
 import { UpdateDraftDto } from './dto/update-draft.dto.js';
@@ -96,6 +98,26 @@ export class DocumentController {
     return this.documents.reject(id, user, dto);
   }
 
+  @Post(':id/return')
+  @HttpCode(200)
+  returnToHolder(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RejectDocumentDto,
+  ) {
+    return this.documents.returnByManager(id, user, dto);
+  }
+
+  @Put(':id/resubmit')
+  @HttpCode(200)
+  resubmit(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ResubmitRequestDto,
+  ) {
+    return this.documents.resubmitRequest(id, user, dto);
+  }
+
   @Post(':id/revoke')
   @HttpCode(200)
   revoke(
@@ -104,6 +126,15 @@ export class DocumentController {
     @Body() dto: RevokeDocumentDto,
   ) {
     return this.documents.revoke(id, user, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(200)
+  delete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.documents.delete(id, user);
   }
 
   @Get(':id/download')

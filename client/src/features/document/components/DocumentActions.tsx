@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Ban, CheckCircle2, PenLine, Undo2 } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Ban, CheckCircle2, PenLine, Trash2, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { SelectNative } from '@/components/ui/select-native'
@@ -8,7 +8,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import {
   useApproveDocumentMutation,
+  useDeleteDocumentMutation,
   useRejectDocumentMutation,
+  useReturnDocumentMutation,
   useRevokeDocumentMutation,
 } from '@/features/document/api'
 import type { DocumentDetail, RevocationCode } from '@/features/document/types'
@@ -21,16 +23,19 @@ const REVOCATION_LABEL: Record<RevocationCode, string> = {
   ISSUED_IN_ERROR: 'Issued in error',
 }
 
-type Dialog = null | 'approve' | 'reject' | 'revoke'
+type Dialog = null | 'approve' | 'reject' | 'revoke' | 'delete' | 'return'
 
 // Role-aware action bar. Uses the user's ACTIVE persona (from the persona switcher),
 // not raw memberships, so a user viewing as HOLDER never sees manager sign/draft
 // buttons even if they also hold a manager role at the document's org.
 export function DocumentActions({ document }: { document: DocumentDetail }) {
-  const { role: activeRole, activeOrgId } = useAuth()
+  const { role: activeRole, activeOrgId, user } = useAuth()
+  const navigate = useNavigate()
   const [approve, approveState] = useApproveDocumentMutation()
   const [reject, rejectState] = useRejectDocumentMutation()
   const [revoke, revokeState] = useRevokeDocumentMutation()
+  const [deleteDocument, deleteState] = useDeleteDocumentMutation()
+  const [returnDocument, returnState] = useReturnDocumentMutation()
   const [dialog, setDialog] = useState<Dialog>(null)
   const [reason, setReason] = useState('')
   const [code, setCode] = useState<RevocationCode>('ADMINISTRATIVE_ERROR')
@@ -46,11 +51,16 @@ export function DocumentActions({ document }: { document: DocumentDetail }) {
   const orgMatch = activeOrgId === document.organizationId
   const isHr = orgMatch && (activeRole === 'HR' || activeRole === 'ORG_ADMIN')
   const isManager = orgMatch && activeRole === 'MANAGER'
+  const isHolder = activeRole === 'HOLDER' && user?.id === document.holderId
   const canSign = isManager && (document.status === 'REQUESTED' || document.status === 'DRAFT')
   const canReview = isHr && document.status === 'PENDING_HR'
   const canRevoke = isHr && (document.status === 'ISSUED' || document.status === 'ANCHORED')
+  // Holder can delete their own pre-signing or revoked docs.
+  const canDelete = isHolder && (document.status === 'REQUESTED' || document.status === 'DRAFT' || document.status === 'REVOKED')
+  // Assigned manager can return a request to the holder for revision.
+  const canReturn = isManager && (document.status === 'REQUESTED' || document.status === 'DRAFT')
 
-  if (!canSign && !canReview && !canRevoke) return null
+  if (!canSign && !canReview && !canRevoke && !canDelete && !canReturn) return null
 
   const onApprove = async () => {
     try {
@@ -80,6 +90,27 @@ export function DocumentActions({ document }: { document: DocumentDetail }) {
       close()
     } catch (error) {
       toastApiError(error, 'Could not revoke the document')
+    }
+  }
+
+  const onDelete = async () => {
+    try {
+      await deleteDocument(document.id).unwrap()
+      notify.success('Document deleted.')
+      navigate('/app/documents', { replace: true })
+    } catch (error) {
+      toastApiError(error, 'Could not delete the document')
+    }
+  }
+
+  const onReturn = async () => {
+    if (!reason.trim()) return
+    try {
+      await returnDocument({ id: document.id, reason: reason.trim() }).unwrap()
+      notify.success('Returned to the holder for revision.')
+      navigate('/app/inbox', { replace: true })
+    } catch (error) {
+      toastApiError(error, 'Could not return the document')
     }
   }
 
@@ -113,6 +144,47 @@ export function DocumentActions({ document }: { document: DocumentDetail }) {
           Revoke
         </Button>
       )}
+      {canReturn && (
+        <Button variant="secondary" onClick={() => setDialog('return')}>
+          <Undo2 />
+          Return
+        </Button>
+      )}
+      {canDelete && (
+        <Button variant="destructive" onClick={() => setDialog('delete')}>
+          <Trash2 />
+          Delete
+        </Button>
+      )}
+
+      <ConfirmDialog
+        open={dialog === 'return'}
+        onOpenChange={(open) => !open && close()}
+        title="Return to holder"
+        description="The holder will be notified and can edit the request before resubmitting."
+        confirmLabel="Return"
+        isLoading={returnState.isLoading}
+        onConfirm={onReturn}
+      >
+        <Textarea
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          rows={3}
+          placeholder="Why are you returning this request?"
+          className="resize-none"
+        />
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={dialog === 'delete'}
+        onOpenChange={(open) => !open && close()}
+        title="Delete document"
+        description="This permanently removes the document. It cannot be recovered."
+        confirmLabel="Delete"
+        isDestructive
+        isLoading={deleteState.isLoading}
+        onConfirm={onDelete}
+      />
 
       <ConfirmDialog
         open={dialog === 'approve'}

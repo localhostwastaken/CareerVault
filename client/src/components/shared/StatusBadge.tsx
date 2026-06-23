@@ -14,13 +14,13 @@ const MAP: Record<DocumentStatus, { label: string; variant: NonNullable<BadgePro
   EXPIRED: { label: 'Expired', variant: 'expired', icon: CalendarX },
 }
 
-export function StatusBadge({ status }: { status: DocumentStatus }) {
+export function StatusBadge({ status, label }: { status: DocumentStatus; label?: string }) {
   const config = MAP[status]
   const Icon = config.icon
   return (
     <Badge variant={config.variant}>
       <Icon />
-      {config.label}
+      {label ?? config.label}
     </Badge>
   )
 }

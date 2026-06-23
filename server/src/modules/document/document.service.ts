@@ -24,6 +24,7 @@ import type { ApproveDocumentDto } from './dto/approve-document.dto.js';
 import type { ListDocumentsQuery } from './dto/list-documents.query.js';
 import type { RejectDocumentDto } from './dto/reject-document.dto.js';
 import type { RequestDocumentDto } from './dto/request-document.dto.js';
+import type { ResubmitRequestDto } from './dto/resubmit-request.dto.js';
 import type { RevokeDocumentDto } from './dto/revoke-document.dto.js';
 import type { SignDocumentDto } from './dto/sign-document.dto.js';
 import type { UpdateDraftDto } from './dto/update-draft.dto.js';
@@ -92,10 +93,11 @@ export class DocumentService {
   async updateDraft(id: string, actor: AuthenticatedUser, dto: UpdateDraftDto) {
     const doc = await this.getOrThrow(id);
     this.assertStatus(doc.status, ['REQUESTED', 'DRAFT']);
-    await this.requireMember(actor.id, doc.organizationId, [
-      'MANAGER',
-      'ORG_ADMIN',
-    ]);
+    // The assigned manager or ORG_ADMIN can edit drafts. The holder can also edit
+    // their own REQUESTED document (e.g. after a manager returned it for revision).
+    if (doc.holderId !== actor.id) {
+      await this.requireMember(actor.id, doc.organizationId, ['MANAGER', 'ORG_ADMIN']);
+    }
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.document.update({
         where: { id },
@@ -343,6 +345,96 @@ export class DocumentService {
       'DOCUMENT_REVOKED',
       'A document was revoked',
       `Your ${TYPE_LABEL[doc.type]} was revoked (${dto.code}).`,
+    );
+    return this.present(id);
+  }
+
+  // Holder edits and resubmits a returned/pending request. Re-assigns the signer
+  // if a new manager is selected, auto-assigns otherwise, clears the returned flag,
+  // and notifies the manager.
+  async resubmitRequest(id: string, actor: AuthenticatedUser, dto: ResubmitRequestDto) {
+    const doc = await this.getOrThrow(id);
+    if (doc.holderId !== actor.id) {
+      throw new ForbiddenException('Only the holder can resubmit this request');
+    }
+    this.assertStatus(doc.status, ['REQUESTED', 'DRAFT']);
+    let signerMemberId: string | null = null;
+    if (dto.managerUserId) {
+      const signer = await this.prisma.organizationMember.findFirst({
+        where: { userId: dto.managerUserId, organizationId: doc.organizationId, role: 'MANAGER', isActive: true },
+      });
+      if (!signer) throw new NotFoundException('Selected manager is not available');
+      signerMemberId = signer.id;
+    } else {
+      // Auto-assign a manager — same logic as the initial request.
+      const anyManager = await this.prisma.organizationMember.findFirst({
+        where: { organizationId: doc.organizationId, role: 'MANAGER', isActive: true },
+        orderBy: { joinedAt: 'desc' },
+      });
+      if (!anyManager) throw new UnprocessableEntityException('No managers available at this organization');
+      signerMemberId = anyManager.id;
+    }
+    await this.prisma.document.update({
+      where: { id },
+      data: {
+        ...(dto.type ? { type: dto.type } : {}),
+        signerMemberId,
+        contentJson: {
+          ...(doc.contentJson as Record<string, unknown>),
+          note: dto.notes ?? undefined,
+          returnedByManager: false,
+        } as Prisma.InputJsonObject,
+      },
+    });
+    if (signerMemberId) {
+      const signer = await this.prisma.organizationMember.findUniqueOrThrow({ where: { id: signerMemberId }, select: { userId: true } });
+      await this.notifyUser(signer.userId, 'DOCUMENT_REQUESTED', 'Request resubmitted', `${actor.fullName} resubmitted a ${TYPE_LABEL[doc.type]} request for ${doc.organizationId ? (await this.prisma.organization.findUniqueOrThrow({ where: { id: doc.organizationId }, select: { name: true } })).name : 'your organization'}.`);
+    }
+    return this.present(id);
+  }
+
+  // Holder deletes their own document before it enters the signing pipeline
+  // (REQUESTED, DRAFT) or after it's been revoked.
+  async delete(id: string, actor: AuthenticatedUser) {
+    const doc = await this.getOrThrow(id);
+    if (doc.holderId !== actor.id) {
+      throw new ForbiddenException('Only the document holder can delete this');
+    }
+    this.assertStatus(doc.status, ['REQUESTED', 'DRAFT', 'REVOKED']);
+    await this.prisma.document.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  // Manager returns a request to the holder for revision (mirrors HR reject).
+  // Transitions REQUESTED/DRAFT back to REQUESTED and notifies the holder with
+  // the reason so they can fix and resubmit.
+  async returnByManager(id: string, actor: AuthenticatedUser, dto: RejectDocumentDto) {
+    const doc = await this.getOrThrow(id);
+    this.assertStatus(doc.status, ['REQUESTED', 'DRAFT']);
+    // Must be the assigned signer for this document.
+    await this.requireMember(actor.id, doc.organizationId, ['MANAGER', 'ORG_ADMIN']);
+    if (doc.signerMemberId) {
+      const assigned = await this.prisma.organizationMember.findUnique({
+        where: { id: doc.signerMemberId },
+        select: { userId: true },
+      });
+      if (assigned && assigned.userId !== actor.id) {
+        throw new ForbiddenException('Only the assigned manager can return this request');
+      }
+    }
+    await this.prisma.document.update({
+      where: { id },
+      data: {
+        status: 'REQUESTED',
+        signerMemberId: null,
+        contentJson: { note: dto.reason, returnedByManager: true } as Prisma.InputJsonObject,
+      },
+    });
+    await this.notifyUser(
+      doc.holderId,
+      'DOCUMENT_REJECTED',
+      'Request returned for revision',
+      `Your ${TYPE_LABEL[doc.type]} request was returned: ${dto.reason}`,
     );
     return this.present(id);
   }
