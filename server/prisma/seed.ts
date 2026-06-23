@@ -8,7 +8,6 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '../src/generated/prisma/client.js';
-import { generateSalt, hashDocument } from '../src/common/utils/crypto.util.js';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL as string }),
@@ -53,9 +52,14 @@ async function main(): Promise<void> {
     create: { userId: recruiter.id, organizationId: org.id, searchScope: 'SAME_ORG' },
   });
 
-  // Rebuild demo documents for the holder.
+  // Rebuild demo documents for the holder. Each document sits at a distinct
+  // lifecycle stage so the investor walkthrough can demonstrate every transition.
+  // Docs in PENDING_HR must carry a valid managerSignature — the service enforces
+  // this (dual-signature requirement). Seeded docs that skip real KMS signing stay
+  // in DRAFT or REQUESTED where signatures aren't required.
   await prisma.document.deleteMany({ where: { holderId: holder.id, organizationId: org.id } });
 
+  // Stage 1 — REQUESTED: holder submitted; manager hasn't drafted content yet.
   await prisma.document.create({
     data: {
       type: 'EXPERIENCE_LETTER',
@@ -67,24 +71,23 @@ async function main(): Promise<void> {
     },
   });
 
+  // Stage 2 — DRAFT: manager wrote content; not yet signed.
   const salaryContent = {
     type: ['VerifiableCredential', 'SalaryProof'],
     credentialSubject: { fullName: 'Alice Holder', designation: 'Senior Engineer', baseSalary: 185000, currency: 'USD' },
   };
-  const salarySalt = generateSalt();
   await prisma.document.create({
     data: {
       type: 'SALARY_PROOF',
-      status: 'PENDING_HR',
+      status: 'DRAFT',
       holderId: holder.id,
       organizationId: org.id,
       signerMemberId: managerMember.id,
       contentJson: salaryContent,
-      salt: salarySalt,
-      documentHash: hashDocument(salaryContent, salarySalt),
     },
   });
 
+  // Stage 2 — DRAFT: another doc ready for the manager to sign.
   const lorContent = {
     type: ['VerifiableCredential', 'LetterOfRecommendation'],
     credentialSubject: { fullName: 'Alice Holder', recommender: 'Marcus Manager', relationship: 'Direct manager, 3 years' },

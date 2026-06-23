@@ -4,16 +4,16 @@ import { OrgSettings } from '@/features/organization/components/OrgSettings'
 import { useAuth } from '@/hooks/useAuth'
 
 const AdminOrganization = () => {
-  const { user } = useAuth()
-  const adminOrgId = user?.memberships.find((m) => m.role === 'ORG_ADMIN')?.organizationId
+  const { activeOrgId, role: activeRole } = useAuth()
+  const isAdmin = activeRole === 'ORG_ADMIN'
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Organization"
-        description={adminOrgId ? 'Manage your organization and domain verification.' : 'Set up your organization to start issuing documents.'}
+        description={isAdmin && activeOrgId ? 'Manage your organization and domain verification.' : 'Set up your organization to start issuing documents.'}
       />
-      {adminOrgId ? <OrgSettings orgId={adminOrgId} /> : <OrgOnboarding />}
+      {isAdmin && activeOrgId ? <OrgSettings orgId={activeOrgId} /> : <OrgOnboarding />}
     </div>
   )
 }

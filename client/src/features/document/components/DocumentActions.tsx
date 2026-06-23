@@ -23,11 +23,11 @@ const REVOCATION_LABEL: Record<RevocationCode, string> = {
 
 type Dialog = null | 'approve' | 'reject' | 'revoke'
 
-// Role-aware action bar. The viewer's role for THIS document's org decides what's
-// offered; managers reaching a viewable draft are by definition its signer (R1 scoping).
+// Role-aware action bar. Uses the user's ACTIVE persona (from the persona switcher),
+// not raw memberships, so a user viewing as HOLDER never sees manager sign/draft
+// buttons even if they also hold a manager role at the document's org.
 export function DocumentActions({ document }: { document: DocumentDetail }) {
-  const { user } = useAuth()
-  const role = user?.memberships.find((m) => m.organizationId === document.organizationId)?.role
+  const { role: activeRole, activeOrgId } = useAuth()
   const [approve, approveState] = useApproveDocumentMutation()
   const [reject, rejectState] = useRejectDocumentMutation()
   const [revoke, revokeState] = useRevokeDocumentMutation()
@@ -41,8 +41,12 @@ export function DocumentActions({ document }: { document: DocumentDetail }) {
     setCode('ADMINISTRATIVE_ERROR')
   }
 
-  const isHr = role === 'HR' || role === 'ORG_ADMIN'
-  const canSign = role === 'MANAGER' && (document.status === 'REQUESTED' || document.status === 'DRAFT')
+  // Org-scoped: the active persona must apply to this document's org. Protects
+  // against cross-org action leakage (e.g. ORG_ADMIN at Org A operating on Org B).
+  const orgMatch = activeOrgId === document.organizationId
+  const isHr = orgMatch && (activeRole === 'HR' || activeRole === 'ORG_ADMIN')
+  const isManager = orgMatch && activeRole === 'MANAGER'
+  const canSign = isManager && (document.status === 'REQUESTED' || document.status === 'DRAFT')
   const canReview = isHr && document.status === 'PENDING_HR'
   const canRevoke = isHr && (document.status === 'ISSUED' || document.status === 'ANCHORED')
 

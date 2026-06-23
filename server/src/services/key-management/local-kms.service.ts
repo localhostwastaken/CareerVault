@@ -57,9 +57,10 @@ export class LocalKmsService extends KeyManagementService {
 
   async sign(kmsKeyId: string, documentHashHex: string): Promise<string> {
     const privPem = await this.loadPrivateKey(kmsKeyId);
+    // Sign the raw hash bytes, not the hex-encoded string (standard RS256).
     const signature = cryptoSign(
       'sha256',
-      Buffer.from(documentHashHex, 'utf8'),
+      Buffer.from(documentHashHex, 'hex'),
       createPrivateKey(privPem),
     );
     return signature.toString('base64');
@@ -73,7 +74,7 @@ export class LocalKmsService extends KeyManagementService {
     return Promise.resolve(
       cryptoVerify(
         'sha256',
-        Buffer.from(documentHashHex, 'utf8'),
+        Buffer.from(documentHashHex, 'hex'),
         createPublicKey(publicKeyPem),
         Buffer.from(signatureB64, 'base64'),
       ),

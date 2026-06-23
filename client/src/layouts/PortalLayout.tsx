@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { NotificationBell } from '@/features/notification/components/NotificationBell'
+import { PersonaSwitcher } from '@/features/auth/components/PersonaSwitcher'
 import { logout as logoutAction } from '@/features/auth/authSlice'
 import { useLogoutMutation } from '@/features/auth/authApi'
 import { useAppDispatch, useAuth } from '@/hooks/useAuth'
@@ -73,7 +74,9 @@ export function PortalLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-end gap-1 border-b border-border bg-card px-6">
+        <header className="flex h-16 items-center justify-between gap-1 border-b border-border bg-card px-6">
+          <PersonaSwitcher />
+          <div className="flex items-center gap-1">
           <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -94,6 +97,7 @@ export function PortalLayout() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </header>
         <main className="flex-1 p-6 lg:p-8">
           <Outlet />

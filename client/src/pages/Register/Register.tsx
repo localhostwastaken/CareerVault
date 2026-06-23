@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -8,11 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { useRegisterMutation } from '@/features/auth/authApi'
-import { setCredentials } from '@/features/auth/authSlice'
+import { setActivePersona, setCredentials } from '@/features/auth/authSlice'
 import { registerSchema, type RegisterValues } from '@/features/auth/schema'
 import { useAppDispatch, useAuth } from '@/hooks/useAuth'
-import { ROLE_CONFIG, primaryRole } from '@/lib/roles'
-import { toastApiError } from '@/lib/notify'
+import { ROLE_CONFIG } from '@/lib/roles'
+import { apiErrorMessage, notify } from '@/lib/notify'
 
 const Register = () => {
   const navigate = useNavigate()
@@ -23,21 +23,38 @@ const Register = () => {
     resolver: zodResolver(registerSchema),
     defaultValues: { fullName: '', email: '', password: '', accountType: 'HOLDER' },
   })
+  // Prevent the auth-guard effect from overriding the explicit navigation after a
+  // successful registration. The effect only bounces users who landed here already
+  // authenticated (e.g. manually typed /auth/register while signed in).
+  const didSubmit = useRef(false)
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/app', { replace: true })
+    if (isAuthenticated && !didSubmit.current) navigate('/app', { replace: true })
   }, [isAuthenticated, navigate])
 
   const onSubmit = async (values: RegisterValues) => {
     try {
+      didSubmit.current = true
       const result = await registerUser(values).unwrap()
       dispatch(setCredentials(result))
+      // Override the default HOLDER persona for ORG_ADMIN registrants so the
+      // sidebar shows admin nav before the org is created.
+      if (values.accountType === 'ORG_ADMIN') {
+        dispatch(setActivePersona({ role: 'ORG_ADMIN', organizationId: null }))
+      }
       navigate(
-        values.accountType === 'ORG_ADMIN' ? '/app/org' : ROLE_CONFIG[primaryRole(result.user)].home,
+        values.accountType === 'ORG_ADMIN' ? '/app/org' : ROLE_CONFIG['HOLDER'].home,
         { replace: true },
       )
     } catch (error) {
-      toastApiError(error, 'Registration failed')
+      const msg = apiErrorMessage(error, 'Registration failed')
+      if (msg.toLowerCase().includes('already registered')) {
+        notify.error(
+          'This email is already registered. Please sign in instead. If you were invited to an organization, you may need to use the passwordless sign-in link.',
+        )
+      } else {
+        notify.error(msg)
+      }
     }
   }
 

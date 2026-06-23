@@ -7,7 +7,7 @@ import { DocumentCard } from '@/features/document/components/DocumentCard'
 import { useListDocumentsQuery } from '@/features/document/api'
 
 const HolderDocuments = () => {
-  const { data, isLoading } = useListDocumentsQuery()
+  const { data, isLoading } = useListDocumentsQuery({ role: 'HOLDER' })
   const documents = data ?? []
 
   return (

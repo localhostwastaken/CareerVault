@@ -212,10 +212,13 @@ export class VerificationService {
       integrityOk &&
       issuerOk &&
       approverOk &&
-      anchorStatus !== 'fail'
+      anchorStatus === 'pass'
     )
       verdict = 'VERIFIED';
     else verdict = 'INVALID';
+
+    // Audit every public verification (PRD: COMPLIANCE tier, 7-year retention).
+    await this.writeAuditLog(doc.id, verdict);
 
     return {
       verdict,
@@ -292,6 +295,25 @@ export class VerificationService {
       );
     } catch {
       return false;
+    }
+  }
+
+  // PRD: every public verification writes a COMPLIANCE-tier audit log retained
+  // for 7 years. Best-effort — a failed log write must never break verification.
+  private async writeAuditLog(documentId: string, verdict: Verdict): Promise<void> {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actorType: 'SYSTEM',
+          action: verdict === 'VERIFIED' ? 'DOCUMENT_VERIFIED' : 'DOCUMENT_CHECK_FAILED',
+          entityType: 'DOCUMENT',
+          entityId: documentId,
+          retentionTier: 'COMPLIANCE',
+          newValue: { verdict },
+        },
+      });
+    } catch {
+      // Audit failure is non-fatal to verification.
     }
   }
 

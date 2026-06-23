@@ -19,7 +19,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { useRequestDocumentMutation } from '@/features/document/api'
 import { requestDocumentSchema, type RequestDocumentValues } from '@/features/document/schema'
 import { DOCUMENT_TYPE_LABEL, type DocumentType } from '@/features/document/types'
-import { useListVerifiedOrgsQuery } from '@/features/organization/api'
+import { useListVerifiedOrgsQuery, useListManagersQuery } from '@/features/organization/api'
 import { notify, toastApiError } from '@/lib/notify'
 
 const HolderRequestDocument = () => {
@@ -29,12 +29,17 @@ const HolderRequestDocument = () => {
 
   const form = useForm<RequestDocumentValues>({
     resolver: zodResolver(requestDocumentSchema),
-    defaultValues: { organizationId: '', type: 'EXPERIENCE_LETTER', notes: '', enableSkillExtraction: false },
+    defaultValues: { organizationId: '', type: 'EXPERIENCE_LETTER', managerUserId: '', notes: '', enableSkillExtraction: false },
   })
+
+  const selectedOrgId = form.watch('organizationId')
+  const { data: managers, isLoading: managersLoading } = useListManagersQuery(selectedOrgId, { skip: !selectedOrgId })
 
   const onSubmit = async (values: RequestDocumentValues) => {
     try {
-      const document = await requestDocument(values).unwrap()
+      // Strip empty managerUserId so the server auto-assigns when none selected.
+      const payload = { ...values, managerUserId: values.managerUserId || undefined }
+      const document = await requestDocument(payload).unwrap()
       notify.success('Request sent — the organization will be notified.')
       navigate(`/app/documents/${document.id}`)
     } catch (error) {
@@ -97,6 +102,36 @@ const HolderRequestDocument = () => {
                 )}
               />
 
+              {selectedOrgId && (
+                <FormField
+                  control={form.control}
+                  name="managerUserId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Manager (optional — auto-assigned if left blank)</FormLabel>
+                      <FormControl>
+                        <SelectNative {...field} disabled={managersLoading}>
+                          <option value="">
+                            {managersLoading ? 'Loading managers…' : 'Any available manager'}
+                          </option>
+                          {managers?.map((m) => (
+                            <option key={m.userId} value={m.userId}>
+                              {m.user.fullName}
+                            </option>
+                          ))}
+                        </SelectNative>
+                      </FormControl>
+                      <FormDescription>
+                        {managers && managers.length === 0
+                          ? 'No managers found at this organization. The request cannot be sent.'
+                          : 'Your document will be routed to this manager for signing.'}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
               <FormField
                 control={form.control}
                 name="notes"
@@ -141,7 +176,7 @@ const HolderRequestDocument = () => {
                 )}
               />
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading || (selectedOrgId && managers?.length === 0)}>
                 {isLoading ? <Loader2 className="animate-spin" /> : <Send />}
                 Send request
               </Button>

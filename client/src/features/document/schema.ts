@@ -3,6 +3,7 @@ import { z } from 'zod'
 export const requestDocumentSchema = z.object({
   organizationId: z.string().min(1, 'Select an organization'),
   type: z.enum(['EXPERIENCE_LETTER', 'LETTER_OF_RECOMMENDATION', 'SALARY_PROOF']),
+  managerUserId: z.string().optional(),
   notes: z.string().max(1000).optional(),
   enableSkillExtraction: z.boolean().optional(),
 })

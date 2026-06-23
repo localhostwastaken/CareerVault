@@ -8,8 +8,9 @@ import { MembersTable } from '@/features/member/components/MembersTable'
 import { useAuth } from '@/hooks/useAuth'
 
 const AdminMembers = () => {
-  const { user } = useAuth()
-  const orgId = user?.memberships.find((m) => m.role === 'ORG_ADMIN')?.organizationId
+  const { activeOrgId, role: activeRole } = useAuth()
+  const isAdmin = activeRole === 'ORG_ADMIN'
+  const orgId = isAdmin ? activeOrgId : null
   const { data: members, isLoading } = useListMembersQuery(orgId ?? '', { skip: !orgId })
 
   if (!orgId) {

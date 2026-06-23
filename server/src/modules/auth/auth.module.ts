@@ -30,5 +30,6 @@ import { resolveJwtKeys } from './jwt-keys.js';
   ],
   controllers: [AuthController],
   providers: [AuthService, TokensService, MagicLinkService, JwtStrategy],
+  exports: [MagicLinkService],
 })
 export class AuthModule {}

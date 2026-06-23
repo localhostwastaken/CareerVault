@@ -15,6 +15,7 @@ const VerifyHome = lazy(() => import('@/pages/Verify/VerifyHome'))
 const VerifyResult = lazy(() => import('@/pages/Verify/VerifyResult'))
 const MockCheckout = lazy(() => import('@/pages/Payments/MockCheckout'))
 const Login = lazy(() => import('@/pages/Login/Login'))
+const MagicLink = lazy(() => import('@/pages/MagicLink/MagicLink'))
 const Register = lazy(() => import('@/pages/Register/Register'))
 const Profile = lazy(() => import('@/pages/Profile/Profile'))
 const AdminOrganization = lazy(() => import('@/pages/Admin/Organization'))
@@ -74,9 +75,13 @@ const featureRoutes: RouteObject[] = Array.from(
   ).values(),
 ).map((item) => {
   const key = item.to.replace('/app/', '')
+  // Unaffiliated users (no membership → primaryRole=HOLDER) must be able to reach the
+  // org creation page. The server allows any authenticated user to create an org; the
+  // page itself shows onboarding vs settings based on membership state.
+  const allow: AppRole | AppRole[] = key === 'org' ? ['ORG_ADMIN', 'HOLDER'] : ROUTE_ROLE[key]
   return {
     path: key,
-    element: <RoleGate allow={ROUTE_ROLE[key]}>{IMPLEMENTED[key] ?? <ComingSoon title={item.label} />}</RoleGate>,
+    element: <RoleGate allow={allow}>{IMPLEMENTED[key] ?? <ComingSoon title={item.label} />}</RoleGate>,
   }
 })
 
@@ -96,6 +101,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <Navigate to="/auth/login" replace /> },
       { path: 'login', element: suspense(<Login />) },
+      { path: 'magic', element: suspense(<MagicLink />) },
       { path: 'register', element: suspense(<Register />) },
     ],
   },

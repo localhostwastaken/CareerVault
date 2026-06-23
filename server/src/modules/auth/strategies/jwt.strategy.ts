@@ -43,6 +43,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
+      hasPassword: user.passwordHash !== null,
       memberships: user.memberships.map((m) => ({
         organizationId: m.organizationId,
         organizationName: m.organization.name,

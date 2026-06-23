@@ -11,5 +11,6 @@ export interface AuthenticatedUser {
   id: string;
   email: string;
   fullName: string;
+  hasPassword: boolean;
   memberships: AuthMembership[];
 }

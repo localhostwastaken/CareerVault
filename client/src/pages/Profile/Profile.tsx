@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { PasswordSection } from '@/features/auth/components/PasswordSection'
 import { useDeleteAccountMutation } from '@/features/auth/authApi'
 import { logout as logoutAction } from '@/features/auth/authSlice'
 import { useAppDispatch, useAuth } from '@/hooks/useAuth'
@@ -56,6 +57,8 @@ const Profile = () => {
           ) : null}
         </CardContent>
       </Card>
+
+      <PasswordSection />
 
       <Card className="max-w-xl border-revoked/30 bg-revoked-soft/30 p-5">
         <div className="flex items-start gap-3">

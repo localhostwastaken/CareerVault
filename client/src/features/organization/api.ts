@@ -11,6 +11,9 @@ export const organizationApi = APISlice.injectEndpoints({
       query: () => ({ url: '/orgs' }),
       providesTags: ['Org'],
     }),
+    listManagers: builder.query<Array<{ userId: string; user: { fullName: string; email: string } }>, string>({
+      query: (orgId) => ({ url: `/orgs/${orgId}/managers` }),
+    }),
     getOrganization: builder.query<Organization, string>({
       query: (id) => ({ url: `/orgs/${id}` }),
       providesTags: (_result, _error, id) => [{ type: 'Org', id }],
@@ -29,6 +32,7 @@ export const organizationApi = APISlice.injectEndpoints({
 export const {
   useCreateOrganizationMutation,
   useListVerifiedOrgsQuery,
+  useListManagersQuery,
   useGetOrganizationQuery,
   useVerifyDomainMutation,
   useUpdateOrganizationMutation,

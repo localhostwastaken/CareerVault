@@ -31,7 +31,13 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (existing) throw new ConflictException('Email already registered');
+    // Registration is only for brand-new users. Existing users — even passwordless
+    // ones added via member-add (R9) — must sign in (with password or magic link)
+    // and set their password through the Profile page. This keeps login and
+    // registration as separate, distinct flows.
+    if (existing) {
+      throw new ConflictException('Email already registered');
+    }
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
@@ -96,6 +102,50 @@ export class AuthService {
     return this.loadUser(userId);
   }
 
+  // Set an initial password for a passwordless user (created via member-add / R9).
+  // Only succeeds when the user has no existing password — prevents account takeover.
+  async setPassword(
+    userId: string,
+    newPassword: string,
+  ): Promise<AuthenticatedUser> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+    if (user.passwordHash) {
+      throw new ConflictException(
+        'Password is already set. Use change password instead.',
+      );
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS) },
+    });
+    return this.loadUser(userId);
+  }
+
+  // Change an existing password. Requires the current password for verification.
+  async changePassword(
+    userId: string,
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<AuthenticatedUser> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+    if (!user.passwordHash) {
+      throw new ConflictException(
+        'No password is set. Use set password instead.',
+      );
+    }
+    const valid = await bcrypt.compare(oldPassword, user.passwordHash);
+    if (!valid) throw new UnauthorizedException('Current password is incorrect');
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS) },
+    });
+    return this.loadUser(userId);
+  }
+
   private async buildResult(
     userId: string,
     email: string,
@@ -120,6 +170,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
+      hasPassword: user.passwordHash !== null,
       memberships: user.memberships.map((m) => ({
         organizationId: m.organizationId,
         organizationName: m.organization.name,

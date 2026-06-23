@@ -42,6 +42,13 @@ export class OrganizationController {
     return this.organizations.listVerified();
   }
 
+  // Public list of active managers for a verified org. Used by the document-request
+  // form so holders can select who to route their request to.
+  @Get(':id/managers')
+  listManagers(@Param('id', ParseUUIDPipe) id: string) {
+    return this.organizations.listManagers(id);
+  }
+
   @Get(':id')
   get(
     @Param('id', ParseUUIDPipe) id: string,

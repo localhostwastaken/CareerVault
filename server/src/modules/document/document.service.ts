@@ -119,13 +119,26 @@ export class DocumentService {
   }
 
   // Manager signs: compute salt + hash (R4) and sign the hash with the org key (R3).
+  // Accepts REQUESTED (first-time: drafting and signing in one step) or DRAFT
+  // (already drafted, just signing). Only the manager assigned at request time may
+  // sign; ORG_ADMIN can override.
   async sign(id: string, actor: AuthenticatedUser, dto: SignDocumentDto) {
     const doc = await this.getOrThrow(id);
     this.assertStatus(doc.status, ['REQUESTED', 'DRAFT']);
+
     const member = await this.requireMember(actor.id, doc.organizationId, [
       'MANAGER',
       'ORG_ADMIN',
     ]);
+
+    // Enforce that the signer is the manager assigned at request time. ORG_ADMIN
+    // may override a stale assignment (e.g. original manager left the org).
+    if (member.role !== 'ORG_ADMIN' && doc.signerMemberId !== member.id) {
+      throw new ForbiddenException(
+        'Only the assigned manager can sign this document',
+      );
+    }
+
     const org = await this.prisma.organization.findUniqueOrThrow({
       where: { id: doc.organizationId },
     });
@@ -168,6 +181,8 @@ export class DocumentService {
   }
 
   // HR co-signs and issues; PDF is generated and stored.
+  // Dual-signature requirement: the document must carry a manager signature, and
+  // the manager who signed cannot also be the HR approver (separation of duties).
   async approve(id: string, actor: AuthenticatedUser, dto: ApproveDocumentDto) {
     const doc = await this.getOrThrow(id);
     this.assertStatus(doc.status, ['PENDING_HR']);
@@ -175,11 +190,35 @@ export class DocumentService {
       'HR',
       'ORG_ADMIN',
     ]);
+
+    // Guard: a document must carry a valid manager signature before HR can approve.
+    if (!doc.managerSignature) {
+      throw new ConflictException(
+        'Document has not been signed by a manager yet',
+      );
+    }
+    if (!doc.documentHash)
+      throw new ConflictException('Document is not ready for approval');
+
+    // Dual-signature: the manager who signed must not also approve (separation of
+    // duties). ORG_ADMIN members who sign can still approve if they also hold an HR
+    // role, but they must use a different membership for each action.
+    if (doc.signerMemberId) {
+      const signerMembership =
+        await this.prisma.organizationMember.findUnique({
+          where: { id: doc.signerMemberId },
+          select: { userId: true },
+        });
+      if (signerMembership && signerMembership.userId === actor.id) {
+        throw new ConflictException(
+          'The manager who signed cannot also approve this document',
+        );
+      }
+    }
+
     const org = await this.prisma.organization.findUniqueOrThrow({
       where: { id: doc.organizationId },
     });
-    if (!doc.documentHash)
-      throw new ConflictException('Document is not ready for approval');
     const kmsKeyId = await this.ensureOrgKey(org);
 
     const hrSignature = await this.kms.sign(kmsKeyId, doc.documentHash);
@@ -349,18 +388,34 @@ export class DocumentService {
     throw new ForbiddenException('You cannot access this document');
   }
 
-  // Role-aware listing: holders see their own; HR/Admin/Recruiter see org docs; managers see what they sign.
+  // Role-aware listing. When `query.role` is set, scopes to that persona so a
+  // manager doesn't see their own HOLDER documents mixed into their inbox.
   async list(user: AuthenticatedUser, query: ListDocumentsQuery) {
     const memberships = await this.prisma.organizationMember.findMany({
       where: { userId: user.id, isActive: true },
     });
-    const or: Prisma.DocumentWhereInput[] = [{ holderId: user.id }];
+    const or: Prisma.DocumentWhereInput[] = [];
+    if (!query.role || query.role === 'HOLDER') {
+      or.push({ holderId: user.id });
+    }
     for (const m of memberships) {
+      // ORG_ADMIN and HR share the same org-scoped document view, so passing
+      // either role matches both memberships.
+      if (query.role) {
+        const orgRoles: string[] = ['HR', 'ORG_ADMIN', 'RECRUITER'];
+        const allowed = orgRoles.includes(query.role) ? orgRoles : [query.role];
+        if (!allowed.includes(m.role)) continue;
+      }
       if (m.role === 'HR' || m.role === 'ORG_ADMIN' || m.role === 'RECRUITER') {
         or.push({ organizationId: m.organizationId });
       } else if (m.role === 'MANAGER') {
         or.push({ signerMemberId: m.id });
       }
+    }
+    // Fallback: if no role filter and user has no memberships, they still see
+    // their own documents as HOLDER.
+    if (or.length === 0) {
+      or.push({ holderId: user.id });
     }
     const where: Prisma.DocumentWhereInput = {
       OR: or,

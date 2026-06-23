@@ -105,6 +105,17 @@ export class OrganizationService {
     return this.toPublic(updated);
   }
 
+  // Public list of active managers for a verified org. Used by the document-request
+  // form so holders can choose who to route their request to.
+  async listManagers(orgId: string) {
+    await this.getOrThrow(orgId);
+    return this.prisma.organizationMember.findMany({
+      where: { organizationId: orgId, role: 'MANAGER', isActive: true },
+      select: { userId: true, user: { select: { fullName: true, email: true } } },
+      orderBy: { user: { fullName: 'asc' } },
+    });
+  }
+
   // Public directory of verified orgs — used by the holder's document-request picker.
   async listVerified() {
     return this.prisma.organization.findMany({

@@ -10,7 +10,7 @@ import type {
 
 export const documentApi = APISlice.injectEndpoints({
   endpoints: (builder) => ({
-    listDocuments: builder.query<DocumentDetail[], { status?: string; type?: string } | void>({
+    listDocuments: builder.query<DocumentDetail[], { status?: string; type?: string; role?: string } | void>({
       query: (params) => ({ url: '/documents', params: params ?? undefined }),
       providesTags: ['Document'],
     }),

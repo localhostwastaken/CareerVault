@@ -14,12 +14,14 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
 import { AuthService } from './auth.service.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import {
   MagicLinkRequestDto,
   VerifyMagicLinkDto,
 } from './dto/magic-link.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { SetPasswordDto } from './dto/set-password.dto.js';
 import { MagicLinkService } from './magic-link.service.js';
 
 const REFRESH_COOKIE = 'cv_refresh';
@@ -86,6 +88,28 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser): AuthenticatedUser {
     return user;
+  }
+
+  // Set an initial password for users who were created without one (R9: member-add).
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post('set-password')
+  async setPassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SetPasswordDto,
+  ) {
+    return this.auth.setPassword(user.id, dto.password);
+  }
+
+  // Change an existing password. Requires the current password.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post('change-password')
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.auth.changePassword(user.id, dto.oldPassword, dto.newPassword);
   }
 
   @Public()

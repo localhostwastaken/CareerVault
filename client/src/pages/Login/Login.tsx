@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -23,13 +23,18 @@ const Login = () => {
     resolver: zodResolver(loginSchema),
     defaultValues: { email: '', password: '' },
   })
+  // Prevent the auth-guard effect from overriding the explicit navigation after a
+  // successful login. The effect only bounces users who landed here already
+  // authenticated (e.g. manually typed /auth/login while signed in).
+  const didSubmit = useRef(false)
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/app', { replace: true })
+    if (isAuthenticated && !didSubmit.current) navigate('/app', { replace: true })
   }, [isAuthenticated, navigate])
 
   const onSubmit = async (values: LoginValues) => {
     try {
+      didSubmit.current = true
       const result = await login(values).unwrap()
       dispatch(setCredentials(result))
       navigate(ROLE_CONFIG[primaryRole(result.user)].home, { replace: true })
@@ -84,6 +89,12 @@ const Login = () => {
             No account?{' '}
             <Link to="/auth/register" className="font-medium text-primary hover:underline">
               Create one
+            </Link>
+          </p>
+          <p className="mt-2 text-center text-sm text-muted-foreground">
+            Invited to an organization? You may not have a password yet.{' '}
+            <Link to="/auth/magic" className="font-medium text-primary hover:underline">
+              Sign in without a password
             </Link>
           </p>
         </CardContent>
