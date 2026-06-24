@@ -1,0 +1,23 @@
+{
+  "name": "careervault-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "AnchorRegistry — CareerVault's Merkle-root anchor contract for Polygon",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.ts",
+    "deploy:amoy": "hardhat run scripts/deploy.ts --network amoy"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/chai": "^4.3.0",
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^22.10.0",
+    "dotenv": "^17.4.2",
+    "hardhat": "^2.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.0"
+  }
+}

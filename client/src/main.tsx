@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
+import '@fontsource-variable/plus-jakarta-sans/index.css'
 import { store } from './store.ts'
 import './styles/globals.css'
 import App from './App.tsx'

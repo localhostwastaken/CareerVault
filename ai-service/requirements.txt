@@ -1,0 +1,14 @@
+# CareerVault AI service — Python 3.11+
+# Runtime (skeleton): FastAPI app boots with just these.
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# Phase 5 (full rigor) — embeddings + ranking. Skill extraction uses Groq over HTTP
+# (httpx, already pulled in transitively), so no LLM SDK is needed here.
+sentence-transformers==3.3.1
+scikit-learn==1.6.0
+lightgbm==4.5.0
+numpy==2.2.1
+httpx==0.28.1

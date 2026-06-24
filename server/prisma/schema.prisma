@@ -1,13 +1,599 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// CareerVault data model — see documentation/SystemDesign_UML_Database.md §3 and the
+// approved plan. Column/table names are snake_case (@map/@@map) to match the specs.
+// Cross-doc resolutions baked in: canonical DocumentStatus (R1), MemberRole +RECRUITER (R6),
+// org tier vs user subscription tier kept independent (R5). Vector columns back the AI
+// subsystem (pgvector); the `vector` extension is created in the first migration.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  runtime             = "nodejs"
+  importFileExtension = "js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// ── Enums ────────────────────────────────────────────────────────────────────
+
+enum MemberRole {
+  ORG_ADMIN
+  MANAGER
+  HR
+  RECRUITER
+}
+
+enum OrgTier {
+  FREE
+  STARTER
+  ENTERPRISE
+}
+
+enum SubscriptionTier {
+  HOLDER_PREMIUM
+  VERIFIER_BASIC
+  VERIFIER_ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  PAST_DUE
+}
+
+enum DocumentType {
+  EXPERIENCE_LETTER
+  LETTER_OF_RECOMMENDATION
+  SALARY_PROOF
+}
+
+// R1: canonical lifecycle. Reject is an action returning to DRAFT (no REJECTED state).
+enum DocumentStatus {
+  REQUESTED
+  DRAFT
+  PENDING_HR
+  ISSUED
+  ANCHORED
+  REVOKED
+  EXPIRED
+}
+
+enum RevocationCode {
+  ADMINISTRATIVE_ERROR
+  POLICY_VIOLATION
+  ISSUED_IN_ERROR
+}
+
+enum PaymentType {
+  SUBSCRIPTION
+  ONE_TIME_LINK
+  API_ACCESS
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum MagicLinkPurpose {
+  MANAGER_SIGN
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  CRON
+}
+
+enum RetentionTier {
+  STANDARD
+  COMPLIANCE
+}
+
+enum NotificationType {
+  DOCUMENT_REQUESTED
+  PENDING_HR_REVIEW
+  DOCUMENT_APPROVED
+  DOCUMENT_REJECTED
+  DOCUMENT_ISSUED
+  DOCUMENT_ANCHORED
+  DOCUMENT_REVOKED
+  LINK_VIEWED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  RECRUITER_MESSAGE
+  TALENT_MATCH
+}
+
+enum VerifierKeyTier {
+  BASIC
+  ENTERPRISE
+}
+
+enum VerifierKeyStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum BulkBatchStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum Seniority {
+  JUNIOR
+  MID
+  SENIOR
+  LEAD
+}
+
+enum SearchScope {
+  SAME_ORG
+  ALL_ORGS
+}
+
+enum MessageResponse {
+  PENDING
+  INTERESTED
+  NOT_INTERESTED
+}
+
+// ── Core identity ──────────────────────────────────────────────────────────────
+
+model User {
+  id               String    @id @default(uuid()) @db.Uuid
+  email            String    @unique
+  passwordHash     String?   @map("password_hash") // null for magic-link-only external managers (R9)
+  fullName         String    @map("full_name")
+  phone            String?
+  avatarUrl        String?   @map("avatar_url")
+  isActive         Boolean   @default(true) @map("is_active")
+  emailVerified    Boolean   @default(false) @map("email_verified")
+  emailVerifiedAt  DateTime? @map("email_verified_at")
+  isDiscoverable   Boolean   @default(false) @map("is_discoverable") // talent-matching opt-in
+  gdprDeletedAt    DateTime? @map("gdpr_deleted_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  memberships               OrganizationMember[]
+  documents                 Document[]         @relation("HolderDocuments")
+  documentVersions          DocumentVersion[]  @relation("VersionChangedBy")
+  subscriptions             Subscription[]
+  payments                  Payment[]
+  notifications             Notification[]
+  auditLogs                 AuditLog[]         @relation("ActorAuditLogs")
+  refreshTokens             RefreshToken[]
+  verifierApiKeys           VerifierApiKey[]
+  recruiterProfile          RecruiterProfile?
+  talentMatches             TalentMatch[]      @relation("HolderMatches")
+  recruiterMessagesReceived RecruiterMessage[] @relation("HolderMessages")
+
+  @@index([isActive])
+  @@map("users")
+}
+
+model Organization {
+  id                    String    @id @default(uuid()) @db.Uuid
+  name                  String
+  domain                String    @unique
+  dnsToken              String    @map("dns_token")
+  isVerified            Boolean   @default(false) @map("is_verified")
+  verifiedAt            DateTime? @map("verified_at")
+  verificationAttempts  Int       @default(0) @map("verification_attempts")
+  lastVerificationError String?   @map("last_verification_error")
+  rootDid               String?   @map("root_did")
+  kmsKeyId              String?   @map("kms_key_id")
+  publicKeyPem          String?   @map("public_key_pem") // org signing public key, used for verification (R3)
+  subscriptionTier      OrgTier   @default(FREE) @map("subscription_tier")
+  logoUrl               String?   @map("logo_url")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  members           OrganizationMember[]
+  documents         Document[]
+  bulkBatches       BulkIssuanceBatch[]
+  jobOpenings       RecruiterJobOpening[]
+  recruiterProfiles RecruiterProfile[]
+  verifierApiKeys   VerifierApiKey[]
+
+  @@index([isVerified])
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String     @id @default(uuid()) @db.Uuid
+  userId         String     @map("user_id") @db.Uuid
+  organizationId String     @map("organization_id") @db.Uuid
+  role           MemberRole
+  corporateEmail String     @map("corporate_email")
+  isActive       Boolean    @default(true) @map("is_active")
+  invitedAt      DateTime?  @map("invited_at")
+  joinedAt       DateTime?  @map("joined_at")
+
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  signedDocuments   Document[]   @relation("SignerMember")
+  approvedDocuments Document[]   @relation("ApproverMember")
+  revokedDocuments  Document[]   @relation("RevokedByMember")
+  bulkBatches       BulkIssuanceBatch[] @relation("BatchInitiator")
+
+  @@unique([userId, organizationId, role])
+  @@index([organizationId, role])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+// ── Documents ────────────────────────────────────────────────────────────────
+
+model Document {
+  id                    String          @id @default(uuid()) @db.Uuid
+  type                  DocumentType
+  status                DocumentStatus  @default(REQUESTED)
+  holderId              String          @map("holder_id") @db.Uuid
+  organizationId        String          @map("organization_id") @db.Uuid
+  signerMemberId        String?         @map("signer_member_id") @db.Uuid
+  approverMemberId      String?         @map("approver_member_id") @db.Uuid
+  contentJson           Json            @map("content_json")
+  renderedPdfUrl        String?         @map("rendered_pdf_url")
+  salt                  String? // 32-byte hex; removed on GDPR deletion (dead-hash)
+  documentHash          String?         @map("document_hash") // R4: SHA-256(JCS(content_json)+salt)
+  managerSignature      String?         @map("manager_signature")
+  hrSignature           String?         @map("hr_signature")
+  version               Int             @default(1)
+  enableSkillExtraction Boolean         @default(false) @map("enable_skill_extraction")
+  expiresAt             DateTime?       @map("expires_at")
+  revocationReasonCode  RevocationCode? @map("revocation_reason_code")
+  revocationReasonText  String?         @map("revocation_reason_text")
+  revokedAt             DateTime?       @map("revoked_at")
+  revokedById           String?         @map("revoked_by") @db.Uuid
+  issuedAt              DateTime?       @map("issued_at")
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  holder          User                @relation("HolderDocuments", fields: [holderId], references: [id], onDelete: Restrict)
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  signerMember    OrganizationMember? @relation("SignerMember", fields: [signerMemberId], references: [id], onDelete: SetNull)
+  approverMember  OrganizationMember? @relation("ApproverMember", fields: [approverMemberId], references: [id], onDelete: SetNull)
+  revokedByMember OrganizationMember? @relation("RevokedByMember", fields: [revokedById], references: [id], onDelete: SetNull)
+  versions        DocumentVersion[]
+  merkleProof     DocumentMerkleProof?
+  sharedLinks     SharedLink[]
+  magicLinks      MagicLink[]
+  extractedSkill  ExtractedSkill?
+
+  @@index([holderId, status, createdAt])
+  @@index([organizationId, status])
+  @@index([status])
+  @@index([documentHash])
+  @@index([expiresAt])
+  @@index([signerMemberId])
+  @@index([organizationId, type])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  documentId    String   @map("document_id") @db.Uuid
+  versionNumber Int      @map("version_number")
+  contentJson   Json     @map("content_json")
+  changedById   String   @map("changed_by") @db.Uuid
+  changeSummary String?  @map("change_summary")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  document  Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  changedBy User     @relation("VersionChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([documentId])
+  @@map("document_versions")
+}
+
+// ── Merkle / anchoring ─────────────────────────────────────────────────────────
+
+model MerkleRoot {
+  id                 String    @id @default(uuid()) @db.Uuid
+  rootHash           String    @unique @map("root_hash")
+  polygonTxHash      String?   @unique @map("polygon_tx_hash") // null for LocalAnchor (R7)
+  polygonBlockNumber BigInt?   @map("polygon_block_number")
+  documentCount      Int       @map("document_count")
+  ipfsCid            String?   @map("ipfs_cid")
+  githubCommitUrl    String?   @map("github_commit_url")
+  anchoredAt         DateTime? @map("anchored_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  proofs DocumentMerkleProof[]
+
+  @@map("merkle_roots")
+}
+
+model DocumentMerkleProof {
+  id           String   @id @default(uuid()) @db.Uuid
+  documentId   String   @unique @map("document_id") @db.Uuid
+  merkleRootId String   @map("merkle_root_id") @db.Uuid
+  proofPath    Json     @map("proof_path") // [{ hash, position: "left"|"right" }, ...]
+  leafIndex    Int      @map("leaf_index")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  document   Document   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  merkleRoot MerkleRoot @relation(fields: [merkleRootId], references: [id], onDelete: Cascade)
+
+  @@index([merkleRootId])
+  @@map("document_merkle_proofs")
+}
+
+// ── Sharing & billing ──────────────────────────────────────────────────────────
+
+model SharedLink {
+  id         String    @id @default(uuid()) @db.Uuid
+  documentId String    @map("document_id") @db.Uuid
+  urlToken   String    @unique @map("url_token")
+  isPaid     Boolean   @default(false) @map("is_paid")
+  paymentId  String?   @unique @map("payment_id") @db.Uuid
+  views      Int       @default(0)
+  maxViews   Int?      @map("max_views")
+  isActive   Boolean   @default(true) @map("is_active")
+  expiresAt  DateTime? @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  payment  Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([documentId, isActive, expiresAt])
+  @@map("shared_links")
+}
+
+model Subscription {
+  id                   String             @id @default(uuid()) @db.Uuid
+  userId               String             @map("user_id") @db.Uuid
+  tier                 SubscriptionTier
+  status               SubscriptionStatus @default(ACTIVE)
+  stripeSubscriptionId String?            @map("stripe_subscription_id")
+  startedAt            DateTime?          @map("started_at")
+  currentPeriodEnd     DateTime?          @map("current_period_end")
+  cancelledAt          DateTime?          @map("cancelled_at")
+  createdAt            DateTime           @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([stripeSubscriptionId])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id                    String        @id @default(uuid()) @db.Uuid
+  userId                String        @map("user_id") @db.Uuid
+  amount                Decimal       @db.Decimal(10, 2)
+  currency              String        @default("USD") @db.VarChar(3)
+  type                  PaymentType
+  status                PaymentStatus @default(PENDING)
+  stripePaymentIntentId String?       @map("stripe_payment_intent_id")
+  metadata              Json?
+  createdAt             DateTime      @default(now()) @map("created_at")
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sharedLink SharedLink?
+
+  @@index([userId])
+  @@index([stripePaymentIntentId])
+  @@map("payments")
+}
+
+// ── Auth / tokens ────────────────────────────────────────────────────────────
+
+model MagicLink {
+  id         String           @id @default(uuid()) @db.Uuid
+  email      String
+  tokenHash  String           @unique @map("token_hash")
+  purpose    MagicLinkPurpose
+  documentId String?          @map("document_id") @db.Uuid
+  expiresAt  DateTime         @map("expires_at")
+  usedAt     DateTime?        @map("used_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  document Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([email, purpose])
+  @@map("magic_links")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  ipAddress String?   @map("ip_address")
+  userAgent String?   @map("user_agent")
+  issuedAt  DateTime  @default(now()) @map("issued_at")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("refresh_tokens")
+}
+
+// ── Notifications & audit ──────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  title     String
+  body      String
+  isRead    Boolean          @default(false) @map("is_read")
+  metadata  Json?
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id            String        @id @default(uuid()) @db.Uuid
+  actorId       String?       @map("actor_id") @db.Uuid
+  actorType     ActorType     @map("actor_type")
+  action        String
+  entityType    String        @map("entity_type")
+  entityId      String        @map("entity_id") @db.Uuid
+  oldValue      Json?         @map("old_value")
+  newValue      Json?         @map("new_value")
+  ipAddress     String?       @map("ip_address")
+  userAgent     String?       @map("user_agent")
+  retentionTier RetentionTier @map("retention_tier")
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  actor User? @relation("ActorAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([retentionTier, createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+// ── Verifier API & bulk issuance ───────────────────────────────────────────────
+
+model VerifierApiKey {
+  id               String            @id @default(uuid()) @db.Uuid
+  userId           String            @map("user_id") @db.Uuid
+  organizationId   String?           @map("organization_id") @db.Uuid // set for issuer-verifiers (50% discount, R6)
+  apiKeyHash       String            @unique @map("api_key_hash")
+  name             String?
+  tier             VerifierKeyTier   @default(BASIC)
+  status           VerifierKeyStatus @default(ACTIVE)
+  lastUsedAt       DateTime?         @map("last_used_at")
+  revokedAt        DateTime?         @map("revoked_at")
+  expiresAt        DateTime?         @map("expires_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@map("verifier_api_keys")
+}
+
+model BulkIssuanceBatch {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  initiatedById  String          @map("initiated_by") @db.Uuid
+  documentType   DocumentType    @map("document_type")
+  status         BulkBatchStatus @default(PROCESSING)
+  totalRows      Int             @map("total_rows")
+  processedRows  Int             @default(0) @map("processed_rows")
+  errorRows      Int             @default(0) @map("error_rows")
+  errorsJson     Json?           @map("errors_json")
+  startedAt      DateTime        @default(now()) @map("started_at")
+  completedAt    DateTime?       @map("completed_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  initiatedBy  OrganizationMember @relation("BatchInitiator", fields: [initiatedById], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, startedAt])
+  @@map("bulk_issuance_batches")
+}
+
+// ── AI subsystem: skill extraction + talent matchmaking (pgvector + SHAP) ────────
+
+model ExtractedSkill {
+  id                String                      @id @default(uuid()) @db.Uuid
+  documentId        String                      @unique @map("document_id") @db.Uuid
+  skillsJson        Json                        @map("skills_json")
+  confidenceScores  Json?                       @map("confidence_scores")
+  jobTitle          String?                     @map("job_title")
+  seniority         Seniority?
+  yearsOfExperience Int?                        @map("years_of_experience")
+  industriesJson    Json?                       @map("industries_json")
+  embedding         Unsupported("vector(384)")?
+  nlpModelVersion   String?                     @map("nlp_model_version")
+  extractedAt       DateTime                    @default(now()) @map("extracted_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("extracted_skills")
+}
+
+model RecruiterProfile {
+  id             String      @id @default(uuid()) @db.Uuid
+  userId         String      @unique @map("user_id") @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  searchScope    SearchScope @default(SAME_ORG) @map("search_scope")
+  isActive       Boolean     @default(true) @map("is_active")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobOpenings  RecruiterJobOpening[]
+  messages     RecruiterMessage[]    @relation("RecruiterMessages")
+
+  @@map("recruiter_profiles")
+}
+
+model RecruiterJobOpening {
+  id                 String                      @id @default(uuid()) @db.Uuid
+  recruiterProfileId String                      @map("recruiter_profile_id") @db.Uuid
+  organizationId     String                      @map("organization_id") @db.Uuid
+  title              String
+  description        String
+  requiredSkillsJson Json                        @map("required_skills_json")
+  seniority          Seniority?
+  yearsExpMin        Int?                        @map("years_exp_min")
+  embedding          Unsupported("vector(384)")?
+  closedAt           DateTime?                   @map("closed_at")
+  createdAt          DateTime                    @default(now()) @map("created_at")
+
+  recruiterProfile RecruiterProfile   @relation(fields: [recruiterProfileId], references: [id], onDelete: Cascade)
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  matches          TalentMatch[]
+  messages         RecruiterMessage[]
+
+  @@index([organizationId])
+  @@map("recruiter_job_openings")
+}
+
+model TalentMatch {
+  id                  String   @id @default(uuid()) @db.Uuid
+  jobOpeningId        String   @map("job_opening_id") @db.Uuid
+  holderId            String   @map("holder_id") @db.Uuid
+  matchScore          Float    @map("match_score")
+  shapExplanationJson Json?    @map("shap_explanation_json") // per-feature SHAP contributions
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  jobOpening RecruiterJobOpening @relation(fields: [jobOpeningId], references: [id], onDelete: Cascade)
+  holder     User                @relation("HolderMatches", fields: [holderId], references: [id], onDelete: Cascade)
+
+  @@unique([jobOpeningId, holderId])
+  @@index([jobOpeningId, matchScore])
+  @@map("talent_matches")
+}
+
+model RecruiterMessage {
+  id                 String          @id @default(uuid()) @db.Uuid
+  recruiterProfileId String          @map("recruiter_profile_id") @db.Uuid
+  holderId           String          @map("holder_id") @db.Uuid
+  jobOpeningId       String?         @map("job_opening_id") @db.Uuid
+  subject            String
+  body               String
+  sentAt             DateTime        @default(now()) @map("sent_at")
+  readAt             DateTime?       @map("read_at")
+  responseType       MessageResponse @default(PENDING) @map("response_type")
+
+  recruiterProfile RecruiterProfile     @relation("RecruiterMessages", fields: [recruiterProfileId], references: [id], onDelete: Cascade)
+  holder           User                 @relation("HolderMessages", fields: [holderId], references: [id], onDelete: Cascade)
+  jobOpening       RecruiterJobOpening? @relation(fields: [jobOpeningId], references: [id], onDelete: SetNull)
+
+  @@index([holderId])
+  @@index([recruiterProfileId])
+  @@map("recruiter_messages")
 }
