@@ -12,9 +12,7 @@ A **Web 2.5 career-document verification platform** — organizations issue cryp
 | [`ai-service/`](ai-service/) | Python · FastAPI | Skill extraction, embeddings, explainable (SHAP) talent ranking |
 | [`contracts/`](contracts/) | Hardhat · Solidity | `AnchorRegistry` — Merkle-root anchoring on Polygon |
 
-Per-package engineering rules live in each `Claude.md`. Heavy external integrations
-(KMS, blockchain, payments, email, storage) sit behind swappable adapters — local/mock
-by default, so the whole stack runs with no cloud accounts.
+Per-package engineering rules live in each `Claude.md`. Heavy external integrations (KMS, blockchain, payments, email, storage) sit behind swappable adapters — local/mock by default, so the whole stack runs with no cloud accounts.
 
 ## Prerequisites
 - Node.js 20+
@@ -62,20 +60,25 @@ uvicorn app.main:app --reload --port 9910
 cd contracts && npm install && npm test
 ```
 
+## Verification & offline proof
+A document's authenticity is proven from its **W3C Verifiable Credential**, a standalone JSON-LD payload fetched from `GET /api/v1/documents/:id/credential`. That file embeds everything a third party needs to verify **offline, without CareerVault online**: the
+canonical `credentialSubject`, the `proof.salt` and `proof. documentHash` (R4: `SHA-256( JCS(content) ++ salt )`), the RS256 manager/HR signatures, the issuer's public key, and the Merkle proof once anchored.
+
+> The issued **PDF is a human-readable artifact only** — it shows the document hash in its footer but intentionally does **not** carry the JSON-LD or the salt in its metadata. The salt is kept out of the PDF so it stays portable through the credential file; never rely on PDF metadata for verification. (PDF metadata is used solely to stamp the Merkle anchor for archival once a root is on-chain.)
+
 ## Demo accounts
 After `npm run db:seed`, sign in with password `Password123!`:
 
-| Email | Role |
-|---|---|
-| `admin@acme.example.com` | Org Admin |
-| `manager@acme.example.com` | Manager |
-| `hr@acme.example.com` | HR |
-| `recruiter@acme.example.com` | Recruiter |
-| `alice@holder.example.com` | Holder |
+| Email | Role | Organization |
+|---|---|---|
+| `admin@techcorp.example.com` | Org Admin | TechCorp |
+| `marcus@techcorp.example.com` | Manager | TechCorp |
+| `hr@techcorp.example.com` | HR | TechCorp |
+| `gabriel@globalsolutions.example.com` | Manager | GlobalSolutions |
+| `alice@holder.example.com` | Holder | — |
+| `bob@holder.example.com` | Holder | — |
 
-`prof@university.edu` is an external, magic-link-only manager (no password).
+TechCorp and GlobalSolutions are seeded pre-verified. Holders have no org membership (every authenticated user is implicitly a holder).
 
 ## Status
-Phase 0 foundations complete across all four packages; Phase 1 (identity & org) auth
-backbone is live and verified. Remaining phases: document lifecycle → Merkle &
-verification → sharing & payments → AI subsystem → hardening.
+Phase 0 foundations complete across all four packages; Phase 1 (identity & org) auth backbone is live and verified. Remaining phases: document lifecycle → Merkle & verification → sharing & payments → AI subsystem → hardening.

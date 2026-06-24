@@ -1,7 +1,18 @@
-// Demo fixtures for local development and the investor walkthrough.
-// Idempotent: re-running upserts the org/users/memberships and rebuilds the demo
-// documents. Cryptographic signing + merkle anchoring fixtures are added when the
-// document/merkle modules land (Phase 2/3); here we seed shape + early-lifecycle data.
+// Demo fixtures for local development, QA, and the investor walkthrough.
+//
+// Idempotent: re-running upserts the orgs/users/memberships and rebuilds the demo
+// documents, so `npm run db:seed` is safe to run repeatedly.
+//
+// Actors created (all share DEMO_PASSWORD except the external magic-link-only manager):
+//   TechCorp (verified)        — Olivia (ORG_ADMIN), Marcus (MANAGER), Hannah (HR)
+//   GlobalSolutions (verified) — Gabriel (MANAGER)
+//   Holders (no membership)    — Alice (discoverable), Bob
+//
+// Counts match the QA brief: 2 verified orgs · 1 admin · 2 managers · 1 HR · 2 holders.
+//
+// Note on signing keys: orgs are seeded WITHOUT a kmsKeyId. DocumentService.ensureOrgKey()
+// lazily mints the RSA-2048 key pair on the manager's first signature, so the full
+// REQUESTED → PENDING_HR → ISSUED happy path works against a seeded org with no extra setup.
 //
 // Run:  npm run db:seed
 import 'dotenv/config';
@@ -15,107 +26,109 @@ const prisma = new PrismaClient({
 
 const DEMO_PASSWORD = 'Password123!';
 
+type MemberRole = 'ORG_ADMIN' | 'MANAGER' | 'HR' | 'RECRUITER';
+
 async function main(): Promise<void> {
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
 
-  const org = await prisma.organization.upsert({
-    where: { domain: 'acme.example.com' },
-    update: {},
-    create: {
-      name: 'Acme Corporation',
-      domain: 'acme.example.com',
-      dnsToken: 'careervault-verify=demo_acme',
-      isVerified: true,
-      verifiedAt: new Date(),
-      rootDid: 'did:careervault:demo:acme',
-      subscriptionTier: 'STARTER',
-    },
-  });
+  // ── Organizations (both pre-verified so holders can request immediately) ───────
+  const techCorp = await upsertOrg('TechCorp', 'techcorp.example.com', 'demo_techcorp', 'STARTER');
+  const globalSolutions = await upsertOrg('GlobalSolutions', 'globalsolutions.example.com', 'demo_globalsolutions', 'FREE');
 
-  // Users (all share the demo password except the external, magic-link-only manager).
-  const admin = await upsertUser('admin@acme.example.com', 'Olivia Admin', passwordHash);
-  const manager = await upsertUser('manager@acme.example.com', 'Marcus Manager', passwordHash);
-  const hr = await upsertUser('hr@acme.example.com', 'Hannah HR', passwordHash);
-  const recruiter = await upsertUser('recruiter@acme.example.com', 'Riya Recruiter', passwordHash);
-  const holder = await upsertUser('alice@holder.example.com', 'Alice Holder', passwordHash, true);
-  const professor = await upsertUser('prof@university.edu', 'Dr. Pat Professor', null); // external, magic-link only
+  // ── Org staff ──────────────────────────────────────────────────────────────
+  const olivia = await upsertUser('admin@techcorp.example.com', 'Olivia Admin', passwordHash);
+  const marcus = await upsertUser('marcus@techcorp.example.com', 'Marcus Manager', passwordHash);
+  const hannah = await upsertUser('hr@techcorp.example.com', 'Hannah HR', passwordHash);
+  const gabriel = await upsertUser('gabriel@globalsolutions.example.com', 'Gabriel Manager', passwordHash);
 
-  await upsertMember(admin.id, org.id, 'ORG_ADMIN', 'admin@acme.example.com');
-  const managerMember = await upsertMember(manager.id, org.id, 'MANAGER', 'manager@acme.example.com');
-  await upsertMember(hr.id, org.id, 'HR', 'hr@acme.example.com');
-  await upsertMember(recruiter.id, org.id, 'RECRUITER', 'recruiter@acme.example.com');
-  await upsertMember(professor.id, org.id, 'MANAGER', 'prof@university.edu');
+  await upsertMember(olivia.id, techCorp.id, 'ORG_ADMIN', 'admin@techcorp.example.com');
+  const marcusMember = await upsertMember(marcus.id, techCorp.id, 'MANAGER', 'marcus@techcorp.example.com');
+  await upsertMember(hannah.id, techCorp.id, 'HR', 'hr@techcorp.example.com');
+  await upsertMember(gabriel.id, globalSolutions.id, 'MANAGER', 'gabriel@globalsolutions.example.com');
 
-  await prisma.recruiterProfile.upsert({
-    where: { userId: recruiter.id },
-    update: {},
-    create: { userId: recruiter.id, organizationId: org.id, searchScope: 'SAME_ORG' },
-  });
+  // ── Holders (plain users; "holder" is implicit, not an org membership) ────────
+  // Alice is intentionally left with NO documents so the live E2E happy path starts
+  // from a clean slate. Bob carries seed documents to populate the manager dashboard.
+  const alice = await upsertUser('alice@holder.example.com', 'Alice Holder', passwordHash, true);
+  const bob = await upsertUser('bob@holder.example.com', 'Bob Holder', passwordHash);
 
-  // Rebuild demo documents for the holder. Each document sits at a distinct
-  // lifecycle stage so the investor walkthrough can demonstrate every transition.
-  // Docs in PENDING_HR must carry a valid managerSignature — the service enforces
-  // this (dual-signature requirement). Seeded docs that skip real KMS signing stay
-  // in DRAFT or REQUESTED where signatures aren't required.
-  await prisma.document.deleteMany({ where: { holderId: holder.id, organizationId: org.id } });
+  // ── Demo documents for Bob at TechCorp (Marcus is the signer) ─────────────────
+  // Only REQUESTED/DRAFT stages are seeded — they require no real KMS signature.
+  // PENDING_HR/ISSUED states are produced live through the app so the dual-signature
+  // and hashing pipeline is exercised end-to-end during the demo.
+  await prisma.document.deleteMany({ where: { holderId: bob.id } });
 
-  // Stage 1 — REQUESTED: holder submitted; manager hasn't drafted content yet.
   await prisma.document.create({
     data: {
       type: 'EXPERIENCE_LETTER',
       status: 'REQUESTED',
-      holderId: holder.id,
-      organizationId: org.id,
-      signerMemberId: managerMember.id,
-      contentJson: { note: 'Requesting experience letter for a visa application.' },
+      holderId: bob.id,
+      organizationId: techCorp.id,
+      signerMemberId: marcusMember.id,
+      contentJson: { note: 'Requesting an experience letter for a visa application.' },
     },
   });
 
-  // Stage 2 — DRAFT: manager wrote content; not yet signed.
-  const salaryContent = {
-    type: ['VerifiableCredential', 'SalaryProof'],
-    credentialSubject: { fullName: 'Alice Holder', designation: 'Senior Engineer', baseSalary: 185000, currency: 'USD' },
-  };
-  await prisma.document.create({
-    data: {
-      type: 'SALARY_PROOF',
-      status: 'DRAFT',
-      holderId: holder.id,
-      organizationId: org.id,
-      signerMemberId: managerMember.id,
-      contentJson: salaryContent,
-    },
-  });
-
-  // Stage 2 — DRAFT: another doc ready for the manager to sign.
-  const lorContent = {
-    type: ['VerifiableCredential', 'LetterOfRecommendation'],
-    credentialSubject: { fullName: 'Alice Holder', recommender: 'Marcus Manager', relationship: 'Direct manager, 3 years' },
-  };
   await prisma.document.create({
     data: {
       type: 'LETTER_OF_RECOMMENDATION',
       status: 'DRAFT',
-      holderId: holder.id,
-      organizationId: org.id,
-      signerMemberId: managerMember.id,
-      contentJson: lorContent,
+      holderId: bob.id,
+      organizationId: techCorp.id,
+      signerMemberId: marcusMember.id,
+      contentJson: {
+        '@context': ['https://www.w3.org/2018/credentials/v1'],
+        type: ['VerifiableCredential', 'LetterOfRecommendation'],
+        credentialSubject: {
+          fullName: 'Bob Holder',
+          designation: 'Software Engineer',
+          recommender: 'Marcus Manager',
+          relationship: 'Direct manager, 2 years',
+          body: 'Bob consistently delivered high-quality work and mentored junior engineers.',
+        },
+      },
     },
   });
 
   await prisma.notification.create({
     data: {
-      userId: holder.id,
+      userId: bob.id,
       type: 'DOCUMENT_REQUESTED',
       title: 'Experience letter requested',
-      body: 'Your experience letter request was sent to Acme Corporation.',
+      body: 'Your experience letter request was sent to TechCorp.',
     },
   });
 
   console.log('Seed complete.');
-  console.log(`  Organization: ${org.name} (${org.domain})`);
-  console.log(`  Accounts (password "${DEMO_PASSWORD}"): admin@, manager@, hr@, recruiter@acme.example.com; alice@holder.example.com`);
-  console.log('  External manager (magic-link only): prof@university.edu');
+  console.log('  Organizations (verified): TechCorp, GlobalSolutions');
+  console.log(`  Staff/holders (password "${DEMO_PASSWORD}"):`);
+  console.log('    ORG_ADMIN  admin@techcorp.example.com');
+  console.log('    MANAGER    marcus@techcorp.example.com   (TechCorp)');
+  console.log('    HR         hr@techcorp.example.com');
+  console.log('    MANAGER    gabriel@globalsolutions.example.com  (GlobalSolutions)');
+  console.log('    HOLDER     alice@holder.example.com   (clean slate — run the live happy path here)');
+  console.log('    HOLDER     bob@holder.example.com     (has seeded REQUESTED + DRAFT docs)');
+}
+
+function upsertOrg(
+  name: string,
+  domain: string,
+  tokenSlug: string,
+  subscriptionTier: 'FREE' | 'STARTER' | 'ENTERPRISE',
+) {
+  return prisma.organization.upsert({
+    where: { domain },
+    update: { name },
+    create: {
+      name,
+      domain,
+      dnsToken: `careervault-verify=${tokenSlug}`,
+      isVerified: true,
+      verifiedAt: new Date(),
+      rootDid: `did:careervault:demo:${tokenSlug}`,
+      subscriptionTier,
+    },
+  });
 }
 
 function upsertUser(email: string, fullName: string, passwordHash: string | null, isDiscoverable = false) {
@@ -126,12 +139,7 @@ function upsertUser(email: string, fullName: string, passwordHash: string | null
   });
 }
 
-function upsertMember(
-  userId: string,
-  organizationId: string,
-  role: 'ORG_ADMIN' | 'MANAGER' | 'HR' | 'RECRUITER',
-  corporateEmail: string,
-) {
+function upsertMember(userId: string, organizationId: string, role: MemberRole, corporateEmail: string) {
   return prisma.organizationMember.upsert({
     where: { userId_organizationId_role: { userId, organizationId, role } },
     update: { isActive: true },

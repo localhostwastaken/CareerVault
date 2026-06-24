@@ -14,6 +14,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Connection URLs live in prisma.config.ts (Prisma 7 removed url/directUrl from the schema). Migrations resolve to DIRECT_URL (Supabase 5432, direct) there to avoid running DDL through the PgBouncer pool (6543); the runtime client uses the pooled DATABASE_URL via the pg driver adapter (see src/prisma/prisma.service.ts).
 }
 
 // ── Enums ────────────────────────────────────────────────────────────────────
