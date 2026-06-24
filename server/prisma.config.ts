@@ -9,6 +9,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // CLI/migrations connect over the direct connection (Supabase 5432) to avoid running DDL through the PgBouncer pool (6543). Falls back to DATABASE_URL so local dev keeps working when DIRECT_URL is unset. The runtime client uses the pooled DATABASE_URL via the pg driver adapter (see src/prisma/prisma.service.ts).
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });
