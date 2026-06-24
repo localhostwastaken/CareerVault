@@ -21,3 +21,26 @@ export function useDownloadDocument() {
     }
   }
 }
+
+// The JSON-LD verification credential embeds the salt + signatures + Merkle proof so the
+// holder can verify authenticity offline. Saved as a file (not opened) like any attachment.
+export function useDownloadCredential() {
+  const token = useSelector((state: RootState) => state.auth.token)
+  return async (documentId: string) => {
+    try {
+      const response = await fetch(`${apiConfig.getEndpoint()}/documents/${documentId}/credential`, {
+        headers: token ? { authorization: `Bearer ${token}` } : undefined,
+        credentials: 'include',
+      })
+      if (!response.ok) throw new Error('download failed')
+      const url = URL.createObjectURL(await response.blob())
+      const link = window.document.createElement('a')
+      link.href = url
+      link.download = `careervault-credential-${documentId}.jsonld`
+      link.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch {
+      notify.error('Could not download the verification credential')
+    }
+  }
+}

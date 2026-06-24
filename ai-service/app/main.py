@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from . import embeddings, extraction, ranking
@@ -10,7 +12,16 @@ from .schemas import (
     RankResponse,
 )
 
-app = FastAPI(title="CareerVault AI Service", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Load (or, on first ever boot, fit-and-persist) the ranking model once per worker
+    # process at startup — never at import — so extra uvicorn workers don't each re-train.
+    ranking.load_model()
+    yield
+
+
+app = FastAPI(title="CareerVault AI Service", version="1.0.0", lifespan=lifespan)
 
 
 @app.get("/health")

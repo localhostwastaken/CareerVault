@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
-import { Anchor, ArrowLeft, CheckCircle2, Circle, Download, FileWarning, Share2 } from 'lucide-react'
+import { Anchor, ArrowLeft, CheckCircle2, Circle, Download, FileJson, FileWarning, Share2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -12,7 +12,7 @@ import { DocumentActions } from '@/features/document/components/DocumentActions'
 import { ResubmitForm } from '@/features/document/components/ResubmitForm'
 import { StatusTimeline } from '@/features/document/components/StatusTimeline'
 import { extractContentFields } from '@/features/document/content'
-import { useDownloadDocument } from '@/features/document/hooks'
+import { useDownloadCredential, useDownloadDocument } from '@/features/document/hooks'
 import { DOCUMENT_TYPE_LABEL } from '@/features/document/types'
 import { useAuth } from '@/hooks/useAuth'
 import { formatDate } from '@/lib/format'
@@ -24,6 +24,7 @@ const HolderDocumentDetail = () => {
   const { user } = useAuth()
   const { data: document, isLoading, isError } = useGetDocumentQuery(id, { skip: !id })
   const downloadDocument = useDownloadDocument()
+  const downloadCredential = useDownloadCredential()
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>
   if (isError || !document) {
@@ -67,6 +68,12 @@ const HolderDocumentDetail = () => {
                   </Link>
                 </Button>
               )}
+            {document.documentHash && (
+              <Button variant="secondary" onClick={() => downloadCredential(document.id)}>
+                <FileJson />
+                Proof (JSON-LD)
+              </Button>
+            )}
             {document.renderedPdfUrl && (
               <Button onClick={() => downloadDocument(document.id)}>
                 <Download />
