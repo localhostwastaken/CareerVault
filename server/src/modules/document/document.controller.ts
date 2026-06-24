@@ -150,4 +150,22 @@ export class DocumentController {
     res.setHeader('Content-Disposition', `inline; filename="${id}.pdf"`);
     res.send(buffer);
   }
+
+  // Downloadable JSON-LD verification credential — embeds the salt + signatures + Merkle
+  // proof so the holder can prove authenticity offline, independent of CareerVault's DB.
+  // Uses @Res() to stream the raw file (bypasses the {success,data} envelope), like /download.
+  @Get(':id/credential')
+  async credential(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ) {
+    const credential = await this.documents.buildCredential(id, user);
+    res.setHeader('Content-Type', 'application/ld+json');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="careervault-credential-${id}.jsonld"`,
+    );
+    res.send(JSON.stringify(credential, null, 2));
+  }
 }
