@@ -1,0 +1,31 @@
+# Dependencies — reinstalled inside Docker
+**/node_modules
+**/.npm
+ai-service/venv
+ai-service/__pycache__
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# Build artifacts
+server/dist
+client/dist
+
+# Dev key material (prod keys come from Render env vars)
+server/keys
+
+# Not needed in the backend image
+client/
+contracts/
+documentation/
+
+# Git and editor
+.git
+.gitignore
+**/.vscode
+**/.idea
+
+# Secrets — injected at runtime via Render env vars
+**/.env
+**/.env.local
+!**/.env.example

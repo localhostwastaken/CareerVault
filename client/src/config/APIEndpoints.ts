@@ -1,8 +1,8 @@
 const config = {
   environment: import.meta.env.VITE_APP_ENV || 'local',
   endpoints: {
-    prod: '',
-    dev: '',
+    prod: import.meta.env.VITE_API_URL || '',
+    dev: import.meta.env.VITE_API_URL || '',
     local: 'http://localhost:9900/api/v1',
   },
   getEndpoint(): string {
