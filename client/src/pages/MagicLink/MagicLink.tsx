@@ -8,14 +8,14 @@ import { useRequestMagicLinkMutation, useVerifyMagicLinkMutation } from '@/featu
 import { setCredentials } from '@/features/auth/authSlice'
 import { useAppDispatch } from '@/hooks/useAuth'
 import { ROLE_CONFIG, primaryRole } from '@/lib/roles'
-import { notify, toastApiError } from '@/lib/notify'
+import { toastApiError } from '@/lib/notify'
 
 const MagicLink = () => {
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
-  const [verify, { isLoading }] = useVerifyMagicLinkMutation()
+  const [verify] = useVerifyMagicLinkMutation()
   const [requestLink, { isLoading: isRequesting }] = useRequestMagicLinkMutation()
   const [error, setError] = useState<string | null>(null)
   const [email, setEmail] = useState('')
