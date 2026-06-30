@@ -176,7 +176,7 @@ const HolderRequestDocument = () => {
                 )}
               />
 
-              <Button type="submit" className="w-full" disabled={isLoading || (selectedOrgId && managers?.length === 0)}>
+              <Button type="submit" className="w-full" disabled={isLoading || Boolean(selectedOrgId && managers?.length === 0)}>
                 {isLoading ? <Loader2 className="animate-spin" /> : <Send />}
                 Send request
               </Button>
