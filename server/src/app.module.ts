@@ -30,6 +30,7 @@ import { SkillModule } from './modules/skill/skill.module.js';
 import { RecruiterModule } from './modules/recruiter/recruiter.module.js';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module.js';
 import { AnalyticsModule } from './modules/analytics/analytics.module.js';
+import { AuditModule } from './modules/audit/audit.module.js';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module.js';
     RecruiterModule,
     MaintenanceModule,
     AnalyticsModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [
