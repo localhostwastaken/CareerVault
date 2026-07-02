@@ -25,8 +25,7 @@ Per-package engineering rules live in each `Claude.md`. Heavy external integrati
 
 ### 1. Database
 ```bash
-createdb careervault
-psql -d careervault -c "CREATE EXTENSION IF NOT EXISTS vector;"
+psql -h localhost -U postgres -d careervault -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
 ### 2. Server — http://localhost:9900/api/v1 (Swagger at `/api/docs`)
