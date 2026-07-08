@@ -19,6 +19,7 @@ import type {
 } from '../../generated/prisma/enums.js';
 import { NotificationService } from '../notification/notification.service.js';
 import { SkillService } from '../skill/skill.service.js';
+import { EXPIRY_DAYS, TYPE_LABEL } from './document.constants.js';
 import { PdfGenerationService } from './pdf-generation.service.js';
 import type { ApproveDocumentDto } from './dto/approve-document.dto.js';
 import type { ListDocumentsQuery } from './dto/list-documents.query.js';
@@ -28,13 +29,6 @@ import type { ResubmitRequestDto } from './dto/resubmit-request.dto.js';
 import type { RevokeDocumentDto } from './dto/revoke-document.dto.js';
 import type { SignDocumentDto } from './dto/sign-document.dto.js';
 import type { UpdateDraftDto } from './dto/update-draft.dto.js';
-
-const EXPIRY_DAYS = 90;
-const TYPE_LABEL: Record<string, string> = {
-  EXPERIENCE_LETTER: 'experience letter',
-  LETTER_OF_RECOMMENDATION: 'letter of recommendation',
-  SALARY_PROOF: 'salary proof',
-};
 
 type PresentedDocument = Prisma.DocumentGetPayload<{
   include: {
@@ -678,7 +672,8 @@ export class DocumentService {
     return this.toPublic(doc);
   }
 
-  private async requireMember(
+  // Public: reused by BulkIssuanceService to verify the initiating HR member.
+  async requireMember(
     userId: string,
     orgId: string,
     roles: MemberRole[],
@@ -699,7 +694,8 @@ export class DocumentService {
   }
 
   // Mint the org signing key on first use (covers seeded/legacy orgs verified without one).
-  private async ensureOrgKey(org: {
+  // Public: reused by BulkIssuanceService, which signs directly without going through the normal sign/approve pipeline.
+  async ensureOrgKey(org: {
     id: string;
     kmsKeyId: string | null;
   }): Promise<string> {
