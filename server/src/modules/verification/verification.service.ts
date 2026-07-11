@@ -62,6 +62,17 @@ export class VerificationService {
     return doc ? this.present(doc) : this.notFound();
   }
 
+  // Bulk API (R6): enterprise/basic verifiers submit many hashes per call. Reuses verifyByHash's full report per hash — no shortcuts on the recomputed guarantees.
+  async verifyBulk(hashes: string[]) {
+    const results = await Promise.all(
+      hashes.map(async (hash) => ({
+        hash,
+        result: await this.verifyByHash(hash),
+      })),
+    );
+    return results;
+  }
+
   async verifyByToken(token: string) {
     const link = await this.prisma.sharedLink.findUnique({
       where: { urlToken: token },
