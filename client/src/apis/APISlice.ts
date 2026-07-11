@@ -47,6 +47,8 @@ export const APISlice = createApi({
     'Match',
     'Skill',
     'Message',
+    'BulkBatch',
+    'VerifierKey',
   ],
   endpoints: () => ({}),
 })
