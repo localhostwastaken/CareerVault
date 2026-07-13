@@ -16,9 +16,12 @@ all later starts (and all extra workers) just read the saved weights.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from .schemas import Candidate, RankResponse, RankedCandidate, ShapContribution
+
+_logger = logging.getLogger(__name__)
 
 # Saved booster (LightGBM text format). Gitignored — generated on first run, not committed, so the checked-in artifact can never drift from the LightGBM version actually installed.
 _MODEL_PATH = Path(__file__).resolve().parent / "artifacts" / "ranking_model.txt"
@@ -91,7 +94,8 @@ def load_model() -> None:
             tmp.replace(_MODEL_PATH)
         _model = booster
         _version = f"lightgbm-{lgb.__version__}+treeshap"
-    except Exception:  # noqa: BLE001 - fall back to the transparent weighted sum
+    except Exception as exc:  # noqa: BLE001 - fall back to the transparent weighted sum
+        _logger.warning("Ranking model unavailable, using weighted-sum fallback: %s", exc)
         _model = None
         _version = "weighted-sum-0.1.0"
 

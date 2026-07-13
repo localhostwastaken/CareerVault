@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     port: int = 9910
+    # Shared secret with the NestJS backend (X-Service-Secret header). Empty disables the check — fine for local dev where this only ever binds to localhost; set it once this service is reachable from outside the backend's own host.
+    ai_service_secret: str = ""
     # Skill extraction: Groq (OpenAI-compatible LLM API) when keyed, else a heuristic.
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"

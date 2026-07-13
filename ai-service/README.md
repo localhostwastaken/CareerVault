@@ -1,8 +1,6 @@
 # CareerVault AI Service
 
-FastAPI service for skill extraction, embeddings, and explainable talent ranking
-(SHAP). Stateless compute — the NestJS server owns the database and pgvector
-retrieval and calls this over HTTP via its `AiClient` adapter.
+FastAPI service for skill extraction, embeddings, and explainable talent ranking (SHAP). Stateless compute - the NestJS server owns the database and pgvector retrieval and calls this over HTTP via its `AiClient` adapter.
 
 ## Run (skeleton)
 
@@ -14,9 +12,7 @@ uvicorn app.main:app --reload --port 9910
 # http://localhost:9910/health
 ```
 
-Phase 5 installs the full `requirements.txt` (Claude, sentence-transformers,
-LightGBM, SHAP) and replaces the stub endpoint bodies with real implementations.
-The request/response shapes in `app/schemas.py` are the locked contract.
+Phase 5 installs the full `requirements.txt` (Groq, sentence-transformers, LightGBM) and replaces the stub endpoint bodies with real implementations. The request/response shapes in `app/schemas.py` are the locked contract.
 
 ## Endpoints
 - `GET /health`
