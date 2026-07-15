@@ -38,6 +38,7 @@ export const envValidationSchema = Joi.object({
 
   REDIS_URL: Joi.string().allow('').optional(),
   AI_SERVICE_URL: Joi.string().default('http://localhost:9910'),
+  AI_SERVICE_SECRET: Joi.string().allow('').optional(),
 
   POLYGON_RPC_URL: Joi.string().allow('').optional(),
   ANCHOR_REGISTRY_ADDRESS: Joi.string().allow('').optional(),
