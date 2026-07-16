@@ -15,6 +15,7 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
+import { Roles } from '../../common/decorators/roles.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
 import { StorageService } from '../../services/storage/storage.service.js';
 import { DocumentService } from './document.service.js';
@@ -70,6 +71,7 @@ export class DocumentController {
 
   @Post(':id/sign')
   @HttpCode(200)
+  @Roles('MANAGER', 'ORG_ADMIN')
   sign(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -80,6 +82,7 @@ export class DocumentController {
 
   @Post(':id/approve')
   @HttpCode(200)
+  @Roles('HR', 'ORG_ADMIN')
   approve(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -90,6 +93,7 @@ export class DocumentController {
 
   @Post(':id/reject')
   @HttpCode(200)
+  @Roles('HR', 'ORG_ADMIN')
   reject(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -100,6 +104,7 @@ export class DocumentController {
 
   @Post(':id/return')
   @HttpCode(200)
+  @Roles('MANAGER', 'ORG_ADMIN')
   returnToHolder(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -120,6 +125,7 @@ export class DocumentController {
 
   @Post(':id/revoke')
   @HttpCode(200)
+  @Roles('HR', 'ORG_ADMIN')
   revoke(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
