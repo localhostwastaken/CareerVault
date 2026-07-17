@@ -266,10 +266,58 @@ Run `npm run db:seed` in `server/`. All accounts use password: `Password123!`
 
 ---
 
+## Bulk Issuance ✅
+
+HR uploads a CSV of employees and issues `EXPERIENCE_LETTER`/`SALARY_PROOF` documents in
+batch, skipping `PENDING_HR` — HR acts as both signer and approver.
+
+**Backend routes:**
+- `POST /api/v1/bulk-issuance` — upload CSV (multipart), returns `202` with the batch
+- `GET /api/v1/bulk-issuance` — list an org's batches
+- `GET /api/v1/bulk-issuance/:id` — poll a single batch's progress
+
+**Features:** all-or-nothing CSV validation (max 500 rows), async in-process processing,
+`BULK_ISSUANCE_STARTED`/`COMPLETED` compliance-tier audit logs, dual manager+HR signature
+from a single KMS signing operation, 90-day expiry, new holders get a magic link.
+
+**Frontend page:** `/app/bulk` (HR nav — "Bulk Issue")
+
+---
+
+## Verifier API Keys ✅
+
+Paid Bulk Verification API for enterprise/basic verifiers (R6), gated by an active
+`VERIFIER_BASIC`/`VERIFIER_ENTERPRISE` subscription.
+
+**Backend routes:**
+- `POST /api/v1/verifier-keys` — mint a key (raw value shown once)
+- `GET /api/v1/verifier-keys` — list the caller's keys
+- `DELETE /api/v1/verifier-keys/:id` — revoke a key
+- `POST /api/v1/verify/bulk` — `X-API-Key`-authenticated bulk hash verification, with
+  a per-tier rate limit (BASIC 100/min, ENTERPRISE 1000/min)
+
+**Frontend page:** `/app/verifier-api` (Holder nav — "Verifier API"; subscribe, then
+manage keys)
+
+---
+
+## AI Service Hardening ✅
+
+- Pytest suite covering the heuristic extraction path, Groq-failure fallback, embedding
+  hashing-fallback, and the ranking weighted-sum path
+- Warning-level logging on every silent fallback (Groq failure, embedding model
+  unavailable, ranking model unavailable)
+- Request size caps on `/extract` and `/embed` (422 over 50,000 characters)
+- Timeout on the NestJS → ai-service call (`AiClientService`), just above the ai-service's
+  own 30s Groq timeout
+- Optional shared secret (`AI_SERVICE_SECRET` / `X-Service-Secret` header) between the two
+  services, no-op when unset
+
+---
+
 ## Partial / Upcoming
 
 | Feature | Status |
 |---------|--------|
-| Bulk issuance | DB models & API stubs exist; controller not wired |
-| Verifier API keys (enterprise) | Models exist; no controller yet |
-| AI service Phase 5 hardening | Extraction & ranking work; marked for further hardening |
+| Bulk API metering | Verifier API keys exist; usage-based Stripe metering (per SystemDesign) not yet wired |
+| Verifier API keys UI polish | Functional; no usage/analytics dashboard yet |
