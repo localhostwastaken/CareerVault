@@ -10,9 +10,9 @@ RUN npx prisma generate && npm run build
 # ── Stage 2: Runtime (Node 20 + Python 3.11 in one container) ─────────────────
 FROM python:3.11-slim
 
-# Install Node.js 20
+# Install Node.js 20 + libgomp1 (LightGBM's compiled extension needs it at runtime; python:3.11-slim doesn't ship it, so ranking silently degrades to the weighted-sum fallback without this).
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates && \
+    apt-get install -y --no-install-recommends curl ca-certificates libgomp1 && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
