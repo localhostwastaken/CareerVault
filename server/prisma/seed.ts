@@ -24,7 +24,7 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL as string }),
 });
 
-const DEMO_PASSWORD = 'Password123!';
+const DEMO_PASSWORD = 'Password123@';
 
 type MemberRole = 'ORG_ADMIN' | 'MANAGER' | 'HR' | 'RECRUITER';
 

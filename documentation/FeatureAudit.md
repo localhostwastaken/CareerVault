@@ -270,7 +270,7 @@ All external integrations are behind swappable adapters — local/mock by defaul
 
 ## Seeded Demo Accounts
 
-Run `npm run db:seed` in `server/`. All accounts use password: `Password123!`
+Run `npm run db:seed` in `server/`. All accounts use password: `Password123@`
 
 | Name | Role | Org |
 |------|------|-----|
