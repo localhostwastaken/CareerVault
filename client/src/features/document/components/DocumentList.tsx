@@ -28,7 +28,7 @@ export function DocumentList({ statuses, emptyTitle, emptyDescription, role }: D
   return (
     <div className="space-y-3">
       {documents.map((document) => (
-        <DocumentCard key={document.id} document={document} />
+        <DocumentCard key={document.id} document={document} role={role} />
       ))}
     </div>
   )

@@ -36,11 +36,17 @@ const TYPE_LABEL: Record<string, string> = {
   SALARY_PROOF: 'salary proof',
 };
 
+// Single source for the relations every presented document needs. Signer/approver
+// names let each portal show "who signed / who approved" without extra round-trips.
+const DOCUMENT_INCLUDE = {
+  organization: { select: { name: true } },
+  holder: { select: { fullName: true, email: true } },
+  signerMember: { include: { user: { select: { fullName: true } } } },
+  approverMember: { include: { user: { select: { fullName: true } } } },
+} satisfies Prisma.DocumentInclude;
+
 type PresentedDocument = Prisma.DocumentGetPayload<{
-  include: {
-    organization: { select: { name: true } };
-    holder: { select: { fullName: true; email: true } };
-  };
+  include: typeof DOCUMENT_INCLUDE;
 }>;
 
 @Injectable()
@@ -612,10 +618,7 @@ export class DocumentService {
         orderBy: { createdAt: 'desc' },
         skip: query.skip,
         take: query.limit,
-        include: {
-          organization: { select: { name: true } },
-          holder: { select: { fullName: true, email: true } },
-        },
+        include: DOCUMENT_INCLUDE,
       }),
       this.prisma.document.count({ where }),
     ]);
@@ -669,10 +672,7 @@ export class DocumentService {
   ): Promise<ReturnType<DocumentService['toPublic']>> {
     const doc = await this.prisma.document.findUnique({
       where: { id },
-      include: {
-        organization: { select: { name: true } },
-        holder: { select: { fullName: true, email: true } },
-      },
+      include: DOCUMENT_INCLUDE,
     });
     if (!doc) throw new NotFoundException('Document not found');
     return this.toPublic(doc);
@@ -769,6 +769,8 @@ export class DocumentService {
       holderEmail: doc.holder.email,
       organizationId: doc.organizationId,
       organizationName: doc.organization.name,
+      signerName: doc.signerMember?.user.fullName ?? null,
+      approverName: doc.approverMember?.user.fullName ?? null,
       contentJson: doc.contentJson,
       documentHash: doc.documentHash,
       version: doc.version,

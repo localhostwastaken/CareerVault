@@ -24,7 +24,7 @@ const AdminAnalytics = lazy(() => import('@/pages/Admin/Analytics'))
 const HolderWallet = lazy(() => import('@/pages/Holder/Wallet'))
 const HolderDocuments = lazy(() => import('@/pages/Holder/Documents'))
 const HolderRequestDocument = lazy(() => import('@/pages/Holder/RequestDocument'))
-const HolderDocumentDetail = lazy(() => import('@/pages/Holder/DocumentDetail'))
+const DocumentDetail = lazy(() => import('@/pages/Documents/DocumentDetail'))
 const HolderShareLinks = lazy(() => import('@/pages/Holder/ShareLinks'))
 const HolderBilling = lazy(() => import('@/pages/Holder/Billing'))
 const HolderTalentProfile = lazy(() => import('@/pages/Holder/TalentProfile'))
@@ -115,7 +115,7 @@ export const routes: RouteObject[] = [
           { index: true, element: <RoleHomeRedirect /> },
           { path: 'profile', element: suspense(<Profile />) },
           { path: 'request', element: suspense(<HolderRequestDocument />) },
-          { path: 'documents/:id', element: suspense(<HolderDocumentDetail />) },
+          { path: 'documents/:id', element: suspense(<DocumentDetail />) },
           { path: 'documents/:id/sign', element: suspense(<ManagerSignDocument />) },
           ...featureRoutes,
         ],
