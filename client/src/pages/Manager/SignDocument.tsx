@@ -1,10 +1,12 @@
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, FileWarning } from 'lucide-react'
+import { ArrowLeft, FileWarning, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Callout } from '@/components/shared/Callout'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { useGetDocumentQuery } from '@/features/document/api'
+import { DocumentPartiesSummary } from '@/features/document/components/DocumentPartiesSummary'
 import { SignDocumentForm } from '@/features/document/components/SignDocumentForm'
 import { DOCUMENT_TYPE_LABEL } from '@/features/document/types'
 
@@ -29,7 +31,6 @@ const ManagerSignDocument = () => {
   }
 
   const canSign = document.status === 'REQUESTED' || document.status === 'DRAFT'
-  const requestNote = typeof document.contentJson.note === 'string' ? document.contentJson.note : null
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -41,27 +42,32 @@ const ManagerSignDocument = () => {
       </Button>
       <PageHeader
         title={`Draft & sign — ${DOCUMENT_TYPE_LABEL[document.type]}`}
-        description={`For ${document.holderName} · ${document.organizationName}`}
+        description={`For ${document.holderName}`}
       />
 
-      {requestNote && (
-        <Card className="bg-surface-2 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-subtle">Holder&rsquo;s note</p>
-          <p className="mt-1 text-sm text-foreground">{requestNote}</p>
-        </Card>
-      )}
+      <DocumentPartiesSummary document={document} />
 
-      <Card>
-        <CardContent className="pt-6">
-          {canSign ? (
-            <SignDocumentForm document={document} />
-          ) : (
+      {canSign ? (
+        <>
+          <Callout variant="info" title="You're attesting to this record" icon={ShieldCheck}>
+            By signing, you confirm — on behalf of {document.organizationName} — that the details below are true about{' '}
+            {document.holderName}. Your signature is cryptographically bound to this content and sent to HR for approval.
+          </Callout>
+          <Card>
+            <CardContent className="pt-6">
+              <SignDocumentForm document={document} />
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <Card>
+          <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">
               This document is {document.status.toLowerCase().replace('_', ' ')} and can no longer be signed.
             </p>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

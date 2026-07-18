@@ -1,5 +1,6 @@
-import { Anchor, ShieldOff } from 'lucide-react'
+import { Anchor } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { Callout } from '@/components/shared/Callout'
 import { HashDisplay } from '@/components/shared/HashDisplay'
 import { extractContentFields } from '@/features/document/content'
 import { DOCUMENT_TYPE_LABEL } from '@/features/document/types'
@@ -23,20 +24,28 @@ export function VerificationReport({ result }: { result: VerificationResult }) {
       <VerdictBanner verdict={result.verdict} anchored={result.anchored} />
 
       {revocation && (
-        <Card className="border-revoked/30 bg-revoked-soft/40 p-5">
-          <div className="flex items-start gap-3">
-            <ShieldOff className="mt-0.5 size-5 shrink-0 text-revoked" />
-            <div>
-              <p className="text-sm font-semibold text-revoked">
-                Revoked{revocation.revokedAt ? ` on ${formatDate(revocation.revokedAt)}` : ''}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {revocation.reason ||
-                  (revocation.code ? REVOCATION_LABEL[revocation.code] ?? revocation.code : 'No reason provided.')}
-              </p>
-            </div>
-          </div>
-        </Card>
+        <Callout variant="danger" title={`Revoked${revocation.revokedAt ? ` on ${formatDate(revocation.revokedAt)}` : ''}`}>
+          {revocation.reason ||
+            (revocation.code ? REVOCATION_LABEL[revocation.code] ?? revocation.code : 'No reason provided.')}{' '}
+          Ask the holder for a replacement issued after this date.
+        </Callout>
+      )}
+      {result.verdict === 'EXPIRED' && (
+        <Callout variant="warning" title="This credential has expired">
+          It was valid when issued but is now past its expiry date. Ask the holder for an up-to-date document from the
+          issuer.
+        </Callout>
+      )}
+      {result.verdict === 'INVALID' && (
+        <Callout variant="danger" title="This credential could not be verified">
+          One or more authenticity checks failed — the content may have been altered. Don't rely on it; contact the
+          issuing organization directly.
+        </Callout>
+      )}
+      {result.verdict === 'NOT_FOUND' && (
+        <Callout variant="info" title="Nothing to show for this reference">
+          Double-check the share link or document hash. If it's correct, the issuer may have removed the document.
+        </Callout>
       )}
 
       {document && (

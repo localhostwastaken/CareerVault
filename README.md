@@ -66,7 +66,7 @@ canonical `credentialSubject`, the `proof.salt` and `proof. documentHash` (R4: `
 > The issued **PDF is a human-readable artifact only** — it shows the document hash in its footer but intentionally does **not** carry the JSON-LD or the salt in its metadata. The salt is kept out of the PDF so it stays portable through the credential file; never rely on PDF metadata for verification. (PDF metadata is used solely to stamp the Merkle anchor for archival once a root is on-chain.)
 
 ## Demo accounts
-After `npm run db:seed`, sign in with password `Password123!`:
+After `npm run db:seed`, sign in with password `Password123@`:
 
 | Email | Role | Organization |
 |---|---|---|

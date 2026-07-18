@@ -1,6 +1,6 @@
 # CareerVault — Feature Audit
 
-> Status as of June 2026. Covers all implemented and working features across backend, frontend, and AI service.
+> Status as of July 2026. Covers all implemented and working features across backend, frontend, and AI service.
 
 ---
 
@@ -16,6 +16,11 @@
 - `POST /api/v1/auth/verify-magic-link` — consume magic link token
 - `POST /api/v1/auth/set-password` — set initial password
 - `POST /api/v1/auth/change-password` — change existing password
+
+**User profile (User module):**
+- `GET /api/v1/users/me` — full user profile
+- `PATCH /api/v1/users/me` — update profile (name, phone, avatar)
+- `DELETE /api/v1/users/me` — GDPR account deletion (anonymize PII, drop discovery/AI data, revoke sessions)
 
 **Frontend pages:** `/auth/login`, `/auth/register`, `/auth/magic`, `/app/profile`
 
@@ -77,12 +82,16 @@ REQUESTED → DRAFT → PENDING_HR → ISSUED → ANCHORED
 
 | Role | Pages |
 |------|-------|
-| Holder | `/app/documents`, `/app/request`, `/app/documents/:id` |
+| Holder | `/app/wallet`, `/app/documents`, `/app/request`, `/app/documents/:id` |
 | Manager | `/app/inbox`, `/app/documents/:id/sign`, `/app/signed` |
 | HR | `/app/approvals`, `/app/issued` |
 | Org Admin | `/app/org`, `/app/members`, `/app/analytics` |
 | Recruiter | `/app/talent`, `/app/matches` |
 | Verifier | `/verify`, `/verify/hash/:hash`, `/verify/:token` |
+
+Plus a public marketing landing at `/`.
+
+**Expiry:** Experience letters & salary proofs expire 90 days after issuance (`expiresAt = issued_at + 90d`); LORs never expire (`expiresAt = null`). A daily retention cron (3 AM, gated by `WORKER=true`) flips past-validity `ISSUED`/`ANCHORED` docs to `EXPIRED`; verification also treats them as expired dynamically.
 
 ---
 
@@ -92,8 +101,8 @@ Per R3 & R4 spec:
 
 - **Hash:** `SHA-256(JCS(contentJson) ++ salt)` — JCS = JSON Canonicalization Scheme; salt = 32-byte random hex
 - **Signatures:** RSA-2048 / RS256 — Manager signs first, then HR (dual approval)
-- **Key Management:** LocalKMS (Node crypto) in dev; AWS KMS adapter in prod
-- **Key files:** auto-generated and persisted under `server/keys/` if not set in `.env`
+- **Key Management:** LocalKMS (Node crypto) in dev; AWS KMS planned (adapter stub — not yet wired)
+- **Key files:** JWT RS256 keys auto-generated under `server/keys/` if not set in `.env`; per-org signing keys under `storage/kms/` (owner-only)
 - **Document versions:** each draft edit creates an auditable version record
 
 ---
@@ -106,9 +115,8 @@ Per R3 & R4 spec:
 
 **Features:**
 - Daily midnight cron batch (gated by `WORKER=true`)
-- LocalAnchor in dev (in-memory); Polygon Amoy testnet in prod (ethers v6)
+- LocalAnchor in dev (persistent JSON ledger at `./storage/chain/ledger.json`); Polygon Amoy adapter planned (ethers v6) — stub, not yet wired
 - Merkle proofs embedded per document → included in JSON-LD credential download
-- Documents not anchored within 90 days → status transitions to `EXPIRED`
 
 ---
 
@@ -146,7 +154,7 @@ No account required.
 
 **Features:**
 - Per-link view tracking and analytics
-- MockStripe in dev; real Stripe in prod
+- MockStripe in dev; Stripe planned (adapter stub — not yet wired)
 
 ---
 
@@ -236,24 +244,33 @@ No account required.
 
 ---
 
+## Platform / Ops ✅
+
+- `GET /api/v1/health` — liveness + DB connectivity check (`SELECT 1`)
+- `GET /api/v1/` — root liveness message
+
+---
+
 ## Adapter Abstractions ✅
 
 All external integrations are behind swappable adapters — local/mock by default, no cloud accounts needed for dev.
 
-| Adapter | Dev | Prod |
-|---------|-----|------|
-| Key Management | LocalKMS (Node crypto) | AWS KMS |
-| Blockchain | LocalAnchor (in-memory) | Polygon Amoy (ethers v6) |
-| Payment | MockStripe | Stripe |
-| Email | ConsoleEmail (stdout) | AWS SES |
-| Storage | LocalDisk (`./storage`) | AWS S3 |
-| DNS Verification | LocalDns (always passes) | Real TXT lookup |
+| Adapter | Dev (wired) | Prod target | Wired? |
+|---------|-------------|-------------|--------|
+| Key Management | LocalKMS (Node crypto) | AWS KMS | ✗ stub |
+| Blockchain | LocalAnchor (JSON ledger) | Polygon Amoy (ethers v6) | ✗ stub |
+| Payment | MockStripe | Stripe | ✗ stub |
+| Email | ConsoleEmail (stdout) | AWS SES | ✗ stub |
+| Storage | LocalDisk (`./storage`) | AWS S3 | ✗ stub |
+| DNS Verification | LocalDns (always passes) | Real TXT lookup | ✓ wired |
+
+> **Wired today:** all Dev implementations plus the real DNS adapter. Selecting any other prod driver throws `<DRIVER>="..." not implemented` — the prod adapters are interface-ready stubs pending cloud accounts.
 
 ---
 
 ## Seeded Demo Accounts
 
-Run `npm run db:seed` in `server/`. All accounts use password: `Password123!`
+Run `npm run db:seed` in `server/`. All accounts use password: `Password123@`
 
 | Name | Role | Org |
 |------|------|-----|

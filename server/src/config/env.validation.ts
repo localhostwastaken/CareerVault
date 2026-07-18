@@ -32,7 +32,7 @@ export const envValidationSchema = Joi.object({
   KEY_MANAGEMENT_DRIVER: Joi.string().valid('local', 'aws').default('local'),
   BLOCKCHAIN_DRIVER: Joi.string().valid('local', 'amoy').default('local'),
   PAYMENT_DRIVER: Joi.string().valid('mock', 'stripe').default('mock'),
-  EMAIL_DRIVER: Joi.string().valid('console', 'ses').default('console'),
+  EMAIL_DRIVER: Joi.string().valid('console', 'gmail', 'ses').default('console'),
   STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
   DNS_DRIVER: Joi.string().valid('local', 'real').default('local'),
 
