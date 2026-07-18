@@ -1,4 +1,5 @@
 import { Anchor, FileText, ShieldCheck, Share2, Sparkles, Users } from 'lucide-react'
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { Card } from '@/components/ui/card'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -16,6 +17,17 @@ const STATUS_ORDER: DocumentStatus[] = [
   'EXPIRED',
 ]
 
+// Colours sourced directly from globals.css design tokens
+const STATUS_COLORS: Record<DocumentStatus, string> = {
+  REQUESTED: '#1e3a8a',
+  DRAFT:      '#d97706',
+  PENDING_HR: '#f59e0b',
+  ISSUED:     '#059669',
+  ANCHORED:   '#b45309',
+  REVOKED:    '#dc2626',
+  EXPIRED:    '#6b7280',
+}
+
 const AdminAnalytics = () => {
   const { data, isLoading } = useGetAnalyticsOverviewQuery()
 
@@ -28,7 +40,9 @@ const AdminAnalytics = () => {
     )
   }
 
-  const maxStatus = Math.max(1, ...Object.values(data.documents.byStatus))
+  const pieData = STATUS_ORDER
+    .filter((status) => data.documents.byStatus[status])
+    .map((status) => ({ status, value: data.documents.byStatus[status] }))
 
   return (
     <div className="space-y-6">
@@ -51,22 +65,59 @@ const AdminAnalytics = () => {
               description="Issued documents will appear here as your team requests and signs them."
             />
           ) : (
-          <div className="space-y-3">
-            {STATUS_ORDER.filter((status) => data.documents.byStatus[status]).map((status) => {
-              const count = data.documents.byStatus[status]
-              return (
-                <div key={status} className="flex items-center gap-3">
-                  <div className="w-32 shrink-0">
-                    <StatusBadge status={status} />
-                  </div>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
-                    <div className="h-full rounded-full bg-primary" style={{ width: `${(count / maxStatus) * 100}%` }} />
-                  </div>
-                  <span className="tnum w-8 text-right text-sm font-medium text-foreground">{count}</span>
+            <div className="flex flex-col items-center gap-4">
+              <div className="relative w-full" style={{ height: 220 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      dataKey="value"
+                      strokeWidth={0}
+                    >
+                      {pieData.map((entry) => (
+                        <Cell key={entry.status} fill={STATUS_COLORS[entry.status as DocumentStatus]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value, _name, props) =>
+                        [value, (props.payload as { status?: DocumentStatus })?.status ?? '']
+                      }
+                      contentStyle={{
+                        background: 'var(--card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '0.75rem',
+                        fontSize: '0.75rem',
+                        color: 'var(--foreground)',
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                {/* total in donut centre */}
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="tnum text-2xl font-bold text-foreground">{data.documents.total}</span>
+                  <span className="text-xs text-muted-foreground">total</span>
                 </div>
-              )
-            })}
-          </div>
+              </div>
+
+              {/* legend */}
+              <div className="flex flex-wrap justify-center gap-x-3 gap-y-2">
+                {pieData.map((entry) => (
+                  <div key={entry.status} className="flex items-center gap-1.5">
+                    <span
+                      className="inline-block size-2.5 rounded-full shrink-0"
+                      style={{ background: STATUS_COLORS[entry.status as DocumentStatus] }}
+                    />
+                    <StatusBadge status={entry.status as DocumentStatus} />
+                    <span className="tnum text-xs font-medium text-muted-foreground">{entry.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </Card>
 

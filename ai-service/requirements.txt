@@ -12,3 +12,6 @@ scikit-learn==1.6.0
 lightgbm==4.5.0
 numpy==2.2.1
 httpx==0.28.1
+
+# Testing
+pytest==8.3.4

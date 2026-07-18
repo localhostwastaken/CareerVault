@@ -120,11 +120,39 @@ export class LocalKmsService extends KeyManagementService {
   }
 
   // Use KMS_MASTER_KEY if set; otherwise persist a generated dev key so signatures survive restarts.
+  // AES-256-GCM requires exactly 32 bytes; fail fast with clear error if misconfigured.
   private resolveMasterKey(envKey?: string): Buffer {
-    if (envKey && envKey.trim()) return Buffer.from(envKey, 'base64');
+    // Try env var first (preferred for production).
+    if (envKey && envKey.trim()) {
+      const key = Buffer.from(envKey, 'base64');
+      if (key.length !== 32)
+        throw new Error(
+          `KMS_MASTER_KEY must decode to exactly 32 bytes (256 bits); got ${key.length}. ` +
+          `Generate with: openssl rand -base64 32`,
+        );
+      return key;
+    }
+
+    // Fall back to file-based key (dev).
     const file = join(this.keysDir, 'master.key');
-    if (existsSync(file))
-      return Buffer.from(readFileSync(file, 'utf8'), 'base64');
+    if (existsSync(file)) {
+      const key = Buffer.from(readFileSync(file, 'utf8'), 'base64');
+      if (key.length !== 32) {
+        this.logger.error(
+          `Corrupted master key file (${key.length} bytes, expected 32). Regenerating.`,
+        );
+        // Regenerate if file is corrupted.
+        const newKey = randomBytes(32);
+        writeFileSync(file, newKey.toString('base64'), {
+          encoding: 'utf8',
+          mode: 0o600,
+        });
+        return newKey;
+      }
+      return key;
+    }
+
+    // Generate new key if no env var and no file.
     const key = randomBytes(32);
     mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
     writeFileSync(file, key.toString('base64'), {

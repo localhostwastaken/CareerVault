@@ -17,7 +17,17 @@ export const envValidationSchema = Joi.object({
   JWT_ACCESS_TTL: Joi.string().default('15m'),
   JWT_REFRESH_TTL: Joi.string().default('7d'),
 
-  KMS_MASTER_KEY: Joi.string().allow('').optional(),
+  KMS_MASTER_KEY: Joi.string().allow('').optional().custom((value) => {
+    if (value && value.trim()) {
+      const buf = Buffer.from(value.trim(), 'base64');
+      if (buf.length !== 32)
+        throw new Error(
+          `KMS_MASTER_KEY must be a base64-encoded 32-byte key (256 bits). ` +
+          `Got ${buf.length} bytes. Generate with: openssl rand -base64 32`,
+        );
+    }
+    return value;
+  }),
 
   KEY_MANAGEMENT_DRIVER: Joi.string().valid('local', 'aws').default('local'),
   BLOCKCHAIN_DRIVER: Joi.string().valid('local', 'amoy').default('local'),
@@ -28,6 +38,7 @@ export const envValidationSchema = Joi.object({
 
   REDIS_URL: Joi.string().allow('').optional(),
   AI_SERVICE_URL: Joi.string().default('http://localhost:9910'),
+  AI_SERVICE_SECRET: Joi.string().allow('').optional(),
 
   POLYGON_RPC_URL: Joi.string().allow('').optional(),
   ANCHOR_REGISTRY_ADDRESS: Joi.string().allow('').optional(),

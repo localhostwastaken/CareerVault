@@ -1,6 +1,6 @@
 """Structured skill extraction from document text.
 
-Primary: Claude (when ANTHROPIC_API_KEY is set) for high-quality structured output.
+Primary: Groq (when GROQ_API_KEY is set) for high-quality structured output.
 Fallback: a deterministic vocabulary + heuristic parser, so extraction is useful even
 without an API key. The server only calls this once the holder has consented.
 """
@@ -8,12 +8,14 @@ without an API key. The server only calls this once the holder has consented.
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from .config import get_settings
 from .schemas import ExtractResponse
 
 _settings = get_settings()
+_logger = logging.getLogger(__name__)
 
 # Curated vocabulary for the heuristic path. Phrases are matched case-insensitively as
 # whole words; this is intentionally broad-but-finite rather than open-vocabulary.
@@ -132,6 +134,6 @@ def extract(text: str) -> ExtractResponse:
     if _settings.groq_api_key:
         try:
             return _groq(text)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("Groq extraction failed, falling back to heuristic: %s", exc)
     return _heuristic(text)

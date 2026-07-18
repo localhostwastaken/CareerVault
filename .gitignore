@@ -1,3 +1,22 @@
-# macOS
+# OS
 .DS_Store
 **/.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+
+# Dependencies / build output 
+node_modules/
+dist/
+
+# Env files 
+.env
+.env.local
+.env.*.local

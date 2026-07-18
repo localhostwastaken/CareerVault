@@ -1,11 +1,13 @@
 from pydantic import BaseModel, Field
 
-# HTTP contract consumed by the NestJS AiClient. Keep field names in sync with
-# server/src/services/ai/ai-client.service.ts.
+# HTTP contract consumed by the NestJS AiClient. Keep field names in sync with server/src/services/ai/ai-client.service.ts.
+
+# Bounds worst-case latency/cost on the Groq call and embedding compute — well above any real document (a few pages of plain text), so it never clips legitimate input.
+MAX_TEXT_LENGTH = 50_000
 
 
 class ExtractRequest(BaseModel):
-    text: str
+    text: str = Field(max_length=MAX_TEXT_LENGTH)
 
 
 class ExtractResponse(BaseModel):
@@ -19,7 +21,7 @@ class ExtractResponse(BaseModel):
 
 
 class EmbedRequest(BaseModel):
-    text: str
+    text: str = Field(max_length=MAX_TEXT_LENGTH)
 
 
 class EmbedResponse(BaseModel):

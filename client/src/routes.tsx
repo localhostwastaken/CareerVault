@@ -27,14 +27,17 @@ const HolderRequestDocument = lazy(() => import('@/pages/Holder/RequestDocument'
 const DocumentDetail = lazy(() => import('@/pages/Documents/DocumentDetail'))
 const HolderShareLinks = lazy(() => import('@/pages/Holder/ShareLinks'))
 const HolderBilling = lazy(() => import('@/pages/Holder/Billing'))
+const HolderVerifierApi = lazy(() => import('@/pages/Holder/VerifierApi'))
 const HolderTalentProfile = lazy(() => import('@/pages/Holder/TalentProfile'))
 const RecruiterTalentSearch = lazy(() => import('@/pages/Recruiter/TalentSearch'))
 const RecruiterMatches = lazy(() => import('@/pages/Recruiter/Matches'))
 const ManagerInbox = lazy(() => import('@/pages/Manager/Inbox'))
 const ManagerSigned = lazy(() => import('@/pages/Manager/Signed'))
 const ManagerSignDocument = lazy(() => import('@/pages/Manager/SignDocument'))
-const HrApprovals = lazy(() => import('@/pages/HR/Approvals'))
-const HrIssued = lazy(() => import('@/pages/HR/Issued'))
+const HrApprovals            = lazy(() => import('@/pages/HR/Approvals'))
+const HrBulkIssuance         = lazy(() => import('@/pages/HR/BulkIssuance'))
+const HrIssued               = lazy(() => import('@/pages/HR/Issued'))
+const AdminAuditLog          = lazy(() => import('@/pages/Admin/AuditLog'))
 
 const suspense = (node: ReactNode): ReactNode => <Suspense fallback={<LoadingScreen />}>{node}</Suspense>
 
@@ -42,15 +45,18 @@ const suspense = (node: ReactNode): ReactNode => <Suspense fallback={<LoadingScr
 const IMPLEMENTED: Record<string, ReactNode> = {
   org: suspense(<AdminOrganization />),
   members: suspense(<AdminMembers />),
-  analytics: suspense(<AdminAnalytics />),
+  analytics:     suspense(<AdminAnalytics />),
+  audit:         suspense(<AdminAuditLog />),
   wallet: suspense(<HolderWallet />),
   documents: suspense(<HolderDocuments />),
   inbox: suspense(<ManagerInbox />),
   signed: suspense(<ManagerSigned />),
   approvals: suspense(<HrApprovals />),
+  bulk: suspense(<HrBulkIssuance />),
   issued: suspense(<HrIssued />),
   'share-links': suspense(<HolderShareLinks />),
   billing: suspense(<HolderBilling />),
+  'verifier-api': suspense(<HolderVerifierApi />),
   skills: suspense(<HolderTalentProfile />),
   talent: suspense(<RecruiterTalentSearch />),
   matches: suspense(<RecruiterMatches />),

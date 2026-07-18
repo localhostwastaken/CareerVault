@@ -9,6 +9,6 @@ import { PdfGenerationService } from './pdf-generation.service.js';
   imports: [NotificationModule, SkillModule],
   controllers: [DocumentController],
   providers: [DocumentService, PdfGenerationService],
-  exports: [PdfGenerationService],
+  exports: [DocumentService, PdfGenerationService],
 })
 export class DocumentModule {}

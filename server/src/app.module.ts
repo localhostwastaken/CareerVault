@@ -5,8 +5,6 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
 import { envValidationSchema } from './config/env.validation.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js';
@@ -21,15 +19,18 @@ import { MemberModule } from './modules/member/member.module.js';
 import { UserModule } from './modules/user/user.module.js';
 import { NotificationModule } from './modules/notification/notification.module.js';
 import { DocumentModule } from './modules/document/document.module.js';
+import { BulkIssuanceModule } from './modules/bulk-issuance/bulk-issuance.module.js';
 import { MerkleModule } from './modules/merkle/merkle.module.js';
 import { VerificationModule } from './modules/verification/verification.module.js';
 import { PaymentsModule } from './modules/payment/payments.module.js';
 import { ShareLinkModule } from './modules/share-link/share-link.module.js';
 import { SubscriptionModule } from './modules/subscription/subscription.module.js';
+import { VerifierKeyModule } from './modules/verifier-key/verifier-key.module.js';
 import { SkillModule } from './modules/skill/skill.module.js';
 import { RecruiterModule } from './modules/recruiter/recruiter.module.js';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module.js';
 import { AnalyticsModule } from './modules/analytics/analytics.module.js';
+import { AuditModule } from './modules/audit/audit.module.js';
 
 @Module({
   imports: [
@@ -59,19 +60,20 @@ import { AnalyticsModule } from './modules/analytics/analytics.module.js';
     UserModule,
     NotificationModule,
     DocumentModule,
+    BulkIssuanceModule,
     MerkleModule,
     VerificationModule,
     PaymentsModule,
     ShareLinkModule,
     SubscriptionModule,
+    VerifierKeyModule,
     SkillModule,
     RecruiterModule,
     MaintenanceModule,
     AnalyticsModule,
+    AuditModule,
   ],
-  controllers: [AppController],
   providers: [
-    AppService,
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
     // ThrottlerGuard first so even @Public routes (verify, auth) are rate-limited.

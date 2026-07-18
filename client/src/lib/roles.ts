@@ -5,6 +5,7 @@ import {
   CreditCard,
   FileText,
   Inbox,
+  KeyRound,
   LayoutDashboard,
   Search,
   Share2,
@@ -50,6 +51,7 @@ export const ROLE_CONFIG: Record<AppRole, RoleConfig> = {
       { label: 'Share Links', to: '/app/share-links', icon: Share2 },
       { label: 'Talent Profile', to: '/app/skills', icon: Sparkles },
       { label: 'Billing', to: '/app/billing', icon: CreditCard },
+      { label: 'Verifier API', to: '/app/verifier-api', icon: KeyRound },
     ],
   },
   MANAGER: {

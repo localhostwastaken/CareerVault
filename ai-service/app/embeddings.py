@@ -9,6 +9,7 @@ eagerly at import (main thread), so request handlers only ever read a fully-buil
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import re
 import threading
@@ -17,6 +18,7 @@ from .config import get_settings
 
 _settings = get_settings()
 _DIM = _settings.embedding_dim
+_logger = logging.getLogger(__name__)
 
 _model = None
 _loaded = False
@@ -35,7 +37,8 @@ def _load_model():
             from sentence_transformers import SentenceTransformer
 
             model = SentenceTransformer(_settings.embedding_model)
-        except Exception:  # noqa: BLE001 - any import/load failure falls back gracefully
+        except Exception as exc:  # noqa: BLE001 - any import/load failure falls back gracefully
+            _logger.warning("Embedding model unavailable, using hashing fallback: %s", exc)
             model = None
         _model = model
         _loaded = True  # set only after _model is assigned (no torn read)

@@ -5,8 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-// Typed HTTP client for the Python ai-service (skill extraction, embeddings, ranking
-// + SHAP). The ai-service is built in Phase 5; until then these throw a clear 503.
+// Typed HTTP client for the Python ai-service (skill extraction, embeddings, ranking + SHAP).
 export interface ExtractedSkillResult {
   skills: string[];
   jobTitle?: string;
@@ -17,14 +16,19 @@ export interface ExtractedSkillResult {
   confidenceScores?: Record<string, number>;
 }
 
+// Just above the ai-service's own 30s Groq timeout (extraction.py), so a hung Groq call surfaces as a 503 from there first rather than hanging this request forever.
+const REQUEST_TIMEOUT_MS = 35_000;
+
 @Injectable()
 export class AiClientService {
   private readonly logger = new Logger(AiClientService.name);
   private readonly baseUrl: string;
+  private readonly serviceSecret?: string;
 
   constructor(config: ConfigService) {
     this.baseUrl =
       config.get<string>('AI_SERVICE_URL') ?? 'http://localhost:9910';
+    this.serviceSecret = config.get<string>('AI_SERVICE_SECRET') || undefined;
   }
 
   async extractSkills(text: string): Promise<ExtractedSkillResult> {
@@ -59,17 +63,27 @@ export class AiClientService {
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
       const res = await fetch(`${this.baseUrl}${path}`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(this.serviceSecret
+            ? { 'x-service-secret': this.serviceSecret }
+            : {}),
+        },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error(`ai-service ${path} -> ${res.status}`);
       return (await res.json()) as T;
     } catch (err) {
       this.logger.error(`ai-service call failed: ${(err as Error).message}`);
       throw new ServiceUnavailableException('AI service is unavailable');
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }

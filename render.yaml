@@ -3,7 +3,7 @@ services:
     name: careervault-backend
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter          # upgrade to standard for more RAM (sentence-transformers needs ~1 GB)
+    plan: starter          # upgrade to standard for more RAM 
     healthCheckPath: /api/v1/health
 
     envVars:
@@ -38,7 +38,7 @@ services:
         sync: false
       - key: DIRECT_URL              # Supabase session pooler (port 5432) — for migrations
         sync: false
-      - key: CORS_ORIGIN             # your Vercel frontend URL, e.g. https://careervault.vercel.app
+      - key: CORS_ORIGIN             # your Vercel frontend URL
         sync: false
       - key: JWT_PRIVATE_KEY         # contents of server/keys/jwt_private.pem with \n escaped as \\n
         sync: false
@@ -46,5 +46,7 @@ services:
         sync: false
       - key: KMS_MASTER_KEY          # 32-byte hex string (openssl rand -hex 32)
         sync: false
-      - key: GROQ_API_KEY            # optional — enables LLM skill extraction
+      - key: GROQ_API_KEY            # enables LLM skill extraction
+        sync: false
+      - key: AI_SERVICE_SECRET        # shared secret between server and ai-service
         sync: false

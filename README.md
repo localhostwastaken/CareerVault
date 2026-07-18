@@ -25,8 +25,7 @@ Per-package engineering rules live in each `Claude.md`. Heavy external integrati
 
 ### 1. Database
 ```bash
-createdb careervault
-psql -d careervault -c "CREATE EXTENSION IF NOT EXISTS vector;"
+psql -h localhost -U postgres -d careervault -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
 ### 2. Server — http://localhost:9900/api/v1 (Swagger at `/api/docs`)
@@ -81,4 +80,6 @@ After `npm run db:seed`, sign in with password `Password123!`:
 TechCorp and GlobalSolutions are seeded pre-verified. Holders have no org membership (every authenticated user is implicitly a holder).
 
 ## Status
-Phase 0 foundations complete across all four packages; Phase 1 (identity & org) auth backbone is live and verified. Remaining phases: document lifecycle → Merkle & verification → sharing & payments → AI subsystem → hardening.
+Feature-complete across all four packages: auth, org/membership, the full document lifecycle (request → sign → HR approval → issuance → Merkle anchoring → revoke/expire), bulk issuance, public verification, verifier API keys (Bulk API), sharing & payments, subscriptions, notifications & audit logging, recruiter talent matching (AI service, tested and hardened), skills extraction, and analytics. See [`documentation/FeatureAudit.md`](documentation/FeatureAudit.md) for the full route-by-route breakdown.
+
+Partial/upcoming: usage-based Stripe metering for the Bulk Verification API, and a verifier usage/analytics dashboard.
