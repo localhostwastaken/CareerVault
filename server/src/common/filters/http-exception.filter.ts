@@ -21,7 +21,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code = 'INTERNAL_ERROR';
-    let message = 'An unexpected error occurred.';
+    // Default stays generic: non-HttpException errors (e.g. Prisma/DB failures)
+    // must never leak their raw message to the client.
+    let message = 'Internal server error';
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -38,13 +40,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
             : exception.message;
         if (typeof b.code === 'string') code = b.code;
       }
-    } else if (exception instanceof Error) {
-      message = exception.message;
     }
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      // Log the real error server-side while the client only sees `message`.
+      const detail =
+        exception instanceof Error ? exception.message : String(exception);
       this.logger.error(
-        `${req.method} ${req.url} -> ${status}: ${message}`,
+        `${req.method} ${req.url} -> ${status}: ${detail}`,
         (exception as Error)?.stack,
       );
     }

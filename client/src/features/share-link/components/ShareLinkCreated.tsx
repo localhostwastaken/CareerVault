@@ -29,7 +29,7 @@ export function ShareLinkCreated({ link, onDismiss }: ShareLinkCreatedProps) {
         { label: 'View limit', value: link.maxViews ? `${link.maxViews} views` : 'Unlimited' },
       ]}
       artifact={
-        <div className="inset-well flex items-center gap-2 py-1 pl-3 pr-1">
+        <div className="inset-well flex min-w-0 items-center gap-2 py-1 pl-3 pr-1">
           <span className="tnum min-w-0 flex-1 truncate font-mono text-label text-foreground">{url}</span>
           <CopyButton value={url} label="Copy share link" />
         </div>

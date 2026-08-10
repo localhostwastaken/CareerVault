@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { ErrorState } from '@/components/shared/ErrorState'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { ListSkeleton } from '@/components/shared/Skeletons'
@@ -26,9 +27,11 @@ const RecruiterTalentSearch = () => {
   const openings = openingsQuery.data ?? []
   const selectedId = picked ?? openings[0]?.id ?? null
   const selected = openings.find((opening) => opening.id === selectedId) ?? null
-  const { data: matches } = useGetMatchesQuery(selectedId ?? '', { skip: !selectedId })
+  const matchesQuery = useGetMatchesQuery(selectedId ?? '', {
+    skip: !selectedId,
+  })
 
-  const candidates: CandidateView[] = (matches ?? []).map((match) => ({
+  const candidates: CandidateView[] = (matchesQuery.data ?? []).map((match) => ({
     holderId: match.holderId,
     holderName: match.holderName,
     skills: match.skills,
@@ -108,11 +111,21 @@ const RecruiterTalentSearch = () => {
                 </Card>
               )}
 
-              {isSearching ? (
+              {isSearching || matchesQuery.isLoading ? (
                 <ListSkeleton rows={3} />
+              ) : matchesQuery.isError ? (
+                // A failed fetch is not "no matches" — saying so would tell a recruiter
+                // this opening has no candidates when it may have many.
+                <ErrorState
+                  headingLevel={3}
+                  title="Couldn't load matches"
+                  error={matchesQuery.error}
+                  onRetry={matchesQuery.refetch}
+                />
               ) : candidates.length === 0 ? (
                 <EmptyState
                   icon={Sparkles}
+                  headingLevel={3}
                   title="No matches yet"
                   description="Run a search to rank consented candidates against this opening."
                   action={

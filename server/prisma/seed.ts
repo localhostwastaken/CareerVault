@@ -79,16 +79,18 @@ async function main(): Promise<void> {
       holderId:        bob.id,
       organizationId:  techCorp.id,
       signerMemberId:  marcusMember.id,
+      // Flat draft in the new India-first LOR shape (matches the sign form's field
+      // names). It is only a starting point — the manager finalizes and signs live.
       contentJson: {
-        '@context': ['https://www.w3.org/2018/credentials/v1'],
-        type:       ['VerifiableCredential', 'LetterOfRecommendation'],
-        credentialSubject: {
-          fullName:     'Bob Holder',
-          designation:  'Software Engineer',
-          recommender:  'Marcus Manager',
-          relationship: 'Direct manager, 2 years',
-          body:         'Bob consistently delivered high-quality work and mentored junior engineers.',
-        },
+        candidateName:        'Bob Holder',
+        candidateTitle:       'Software Engineer',
+        recommenderName:      'Marcus Manager',
+        recommenderTitle:     'Engineering Manager',
+        recommenderEmail:     'marcus@techcorp.example.com',
+        relationshipType:     'DIRECT_SUPERVISOR',
+        organizationContext:  'Platform Engineering, TechCorp',
+        relationshipStartDate:'2022-06-01',
+        overallAssessment:    'Bob consistently delivered high-quality work and mentored junior engineers over two years on the platform team.',
       },
     },
   });

@@ -7,7 +7,8 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { Section } from '@/components/shared/Section'
-import { CardGridSkeleton } from '@/components/shared/Skeletons'
+import { ErrorState } from '@/components/shared/ErrorState'
+import { CardGridSkeleton, TableSkeleton } from '@/components/shared/Skeletons'
 import { PlanCard } from '@/features/subscription/components/PlanCard'
 import { useGetMySubscriptionQuery, useGetPlansQuery, useSubscribeMutation } from '@/features/subscription/api'
 import type { SubscriptionTier } from '@/features/subscription/types'
@@ -21,18 +22,24 @@ const VERIFIER_TIERS: SubscriptionTier[] = ['VERIFIER_BASIC', 'VERIFIER_ENTERPRI
 const VerifierApi = () => {
   useDocumentTitle('Verifier API')
   const navigate = useNavigate()
-  const { data: subscription } = useGetMySubscriptionQuery()
+  const subscriptionQuery = useGetMySubscriptionQuery()
+  const subscription = subscriptionQuery.data
   const plansQuery = useGetPlansQuery()
   const [subscribe, { isLoading: isSubscribing }] = useSubscribeMutation()
   const [createOpen, setCreateOpen] = useState(false)
 
   const isActiveVerifier = subscription?.status === 'ACTIVE' && VERIFIER_TIERS.includes(subscription.tier)
+  // Absence of a subscription and failure to load one are different facts. Treating
+  // them alike told paying subscribers they had no plan whenever the request failed.
+  const entitlementUnknown = subscriptionQuery.isLoading || subscriptionQuery.isError
 
   const onSubscribe = async (tier: SubscriptionTier) => {
     try {
       const result = await subscribe(tier).unwrap()
       const url = new URL(result.checkout.checkoutUrl)
-      navigate(url.pathname + url.search, { state: { amountDollars: result.checkout.amount } })
+      navigate(url.pathname + url.search, {
+        state: { amountDollars: result.checkout.amount },
+      })
     } catch (error) {
       toastApiError(error, 'Could not start checkout')
     }
@@ -47,7 +54,12 @@ const VerifierApi = () => {
       />
 
       <Section title="Plans" description="Pick a tier, then generate the keys that authenticate your calls.">
-        <QueryBoundary query={plansQuery} skeleton={<CardGridSkeleton count={2} />} errorTitle="Couldn't load plans">
+        <QueryBoundary
+          query={plansQuery}
+          skeleton={<CardGridSkeleton count={2} />}
+          errorTitle="Couldn't load plans"
+          headingLevel={3}
+        >
           {(plans) => (
             <div className="grid gap-4 sm:max-w-2xl sm:grid-cols-2">
               {plans
@@ -70,7 +82,8 @@ const VerifierApi = () => {
         title="API keys"
         description="Keys are shown once at creation. Store them somewhere safe."
         actions={
-          isActiveVerifier && (
+          isActiveVerifier &&
+          !entitlementUnknown && (
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus />
               New key
@@ -78,7 +91,17 @@ const VerifierApi = () => {
           )
         }
       >
-        {isActiveVerifier ? (
+        {subscriptionQuery.isLoading ? (
+          <TableSkeleton rows={3} columns={5} />
+        ) : subscriptionQuery.isError ? (
+          <ErrorState
+            headingLevel={3}
+            title="Couldn't check your plan"
+            description="We can't tell whether your Verifier subscription is active, so your keys are hidden for now. This does not affect keys already in use."
+            error={subscriptionQuery.error}
+            onRetry={subscriptionQuery.refetch}
+          />
+        ) : isActiveVerifier ? (
           <Card className="overflow-hidden p-0">
             <VerifierKeyList />
           </Card>
@@ -86,6 +109,7 @@ const VerifierApi = () => {
           // Locked rather than hidden: the user should see what subscribing unlocks.
           <EmptyState
             icon={Lock}
+            headingLevel={3}
             title="Keys unlock with a Verifier plan"
             description="Subscribe above to create API keys for the Bulk Verification API."
             action={

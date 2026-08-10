@@ -46,15 +46,16 @@ const VerifyHome = () => {
       </div>
 
       <Card className="mt-8 p-5">
-        {/* Two references, two shapes — the tabs prevent a 48-char token being
-            rejected against the 64-char hash rule. */}
-        <div role="tablist" aria-label="Reference type" className="mb-5 flex gap-1 rounded-lg bg-surface-2 p-1">
+        {/* Two references, two shapes — picking one prevents a 48-char token being
+            rejected against the 64-char hash rule. Modelled as a pressed-button group,
+            not role="tab": the ARIA tabs pattern promises arrow-key navigation and an
+            associated tabpanel, and there is neither here. */}
+        <div role="group" aria-label="Reference type" className="mb-5 flex gap-1 rounded-lg bg-surface-2 p-1">
           {MODES.map((option) => (
             <button
               key={option.value}
               type="button"
-              role="tab"
-              aria-selected={mode === option.value}
+              aria-pressed={mode === option.value}
               onClick={() => {
                 setMode(option.value)
                 setValue('')

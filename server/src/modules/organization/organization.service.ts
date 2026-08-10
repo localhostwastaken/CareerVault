@@ -24,6 +24,21 @@ export class OrganizationService {
 
   // Any authenticated user can found an org; they become its first ORG_ADMIN.
   async create(actor: AuthenticatedUser, dto: CreateOrganizationDto) {
+    // Anti-squatting (cheapest control): the founding ORG_ADMIN must prove they
+    // belong to the domain they claim — their email host must equal `dto.domain`
+    // (case-insensitive). `domain` is globally unique with no dispute path, so
+    // without this anyone could claim google.com. DNS TXT verification
+    // (verifyDomain) is the second gate before any signing key is minted; a full
+    // ownership/dispute system is deliberately out of scope.
+    const emailHost = actor.email.split('@')[1]?.toLowerCase() ?? '';
+    const claimedDomain = dto.domain.trim().toLowerCase();
+    if (emailHost !== claimedDomain)
+      throw new UnprocessableEntityException(
+        `You must sign up with an email address at "${claimedDomain}" to found ` +
+          `an organization for that domain (your email domain is ` +
+          `"${emailHost || 'unknown'}").`,
+      );
+
     const existing = await this.prisma.organization.findUnique({
       where: { domain: dto.domain },
     });

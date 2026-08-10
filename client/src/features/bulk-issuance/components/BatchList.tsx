@@ -21,9 +21,11 @@ export function BatchList({ organizationId }: { organizationId: string }) {
       query={query}
       skeleton={<TableSkeleton rows={4} columns={4} />}
       errorTitle="Couldn't load your batches"
+      headingLevel={3}
       empty={
         <EmptyState
           icon={FileSpreadsheet}
+          headingLevel={3}
           title="No batches yet"
           description="Upload a CSV above to issue experience letters or salary proofs in bulk."
         />
@@ -57,9 +59,7 @@ export function BatchList({ organizationId }: { organizationId: string }) {
                         </TableCell>
                         <TableCell className="tnum text-label">
                           {batch.processedRows}/{batch.totalRows}
-                          {batch.errorRows > 0 && (
-                            <span className="text-revoked"> · {batch.errorRows} errors</span>
-                          )}
+                          {batch.errorRows > 0 && <span className="text-revoked"> · {batch.errorRows} errors</span>}
                         </TableCell>
                       </TableRow>
                     ))}

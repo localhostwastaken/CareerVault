@@ -13,7 +13,7 @@ const VerifyResult = () => {
   const tokenQuery = useVerifyByTokenQuery(token ?? '', { skip: !token })
   const { data, isLoading, isError, error, refetch } = hash ? hashQuery : tokenQuery
 
-  useDocumentTitle(data ? `Verification — ${data.verdict.toLowerCase().replace('_', ' ')}` : 'Verifying document')
+  useDocumentTitle(data ? `Verification — ${data.verdict.toLowerCase().replaceAll('_', ' ')}` : 'Verifying document')
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 lg:px-8">
@@ -38,6 +38,8 @@ const VerifyResult = () => {
         <VerifyingProgress />
       ) : isError || !data ? (
         <ErrorState
+          // Replaces the whole report, verdict banner h1 included, so it carries the h1.
+          headingLevel={1}
           title="Verification unavailable"
           description="We couldn’t reach the verification service. This says nothing about the document itself — please try again."
           error={error}

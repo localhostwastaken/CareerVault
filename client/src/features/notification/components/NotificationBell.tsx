@@ -31,7 +31,7 @@ export function NotificationBell() {
         <Button variant="ghost" size="icon" className="relative" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}>
           <Bell />
           {unread > 0 && (
-            <span className="tnum absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-revoked text-[10px] font-semibold text-primary-foreground">
+            <span className="tnum absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-revoked text-micro tracking-normal text-primary-foreground">
               {unread > 9 ? '9+' : unread}
             </span>
           )}
@@ -65,7 +65,7 @@ export function NotificationBell() {
                 </span>
               </div>
               <span className="line-clamp-2 text-label text-muted-foreground">{item.body}</span>
-              <span className="text-[10px] text-subtle">{formatRelativeTime(item.createdAt)}</span>
+              <span className="text-micro text-subtle">{formatRelativeTime(item.createdAt)}</span>
             </DropdownMenuItem>
           ))
         )}

@@ -25,7 +25,9 @@ const MockCheckout = () => {
   if (!session) return <Navigate to="/" replace />
 
   // Authoritative amount (dollars) is passed via router state; the URL carries cents.
-  const stateAmount = (location.state as { amountDollars?: number } | null)?.amountDollars
+  // `shareLink` rides along so the origin page can confirm what was bought.
+  const checkoutState = location.state as { amountDollars?: number; shareLink?: unknown } | null
+  const stateAmount = checkoutState?.amountDollars
   const urlAmount = params.get('amount')
   const dollars = stateAmount ?? (urlAmount ? Number(urlAmount) / 100 : null)
   const hasAmount = dollars != null && !Number.isNaN(dollars)
@@ -36,7 +38,7 @@ const MockCheckout = () => {
     try {
       await complete(session).unwrap()
       notify.success('Payment successful.')
-      navigate(returnTo, { replace: true })
+      navigate(returnTo, { replace: true, state: { createdShareLink: checkoutState?.shareLink ?? null } })
     } catch (error) {
       toastApiError(error, 'Payment could not be completed')
     }
@@ -51,7 +53,9 @@ const MockCheckout = () => {
 
       <Card className="w-full max-w-sm p-6">
         <div className="flex items-center justify-between gap-2">
-          <span className="label-micro">Secure checkout</span>
+          {/* The page's only h1. The brand lockup above it is a mark, not a title, so
+              promoting this eyebrow is what gives the page a heading at all. */}
+          <h1 className="label-micro">Secure checkout</h1>
           <span className="inline-flex items-center gap-1 rounded-full border border-pending/25 bg-pending-soft px-2 py-0.5 text-micro text-pending">
             Test mode
           </span>

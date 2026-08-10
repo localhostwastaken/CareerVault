@@ -96,7 +96,15 @@ export class SubscriptionService {
       throw new UnprocessableEntityException(
         'No active subscription to cancel',
       );
-    return { cancelled: result.count };
+    // Cancelling the plan must revoke the verifier API keys it gated - a key must never
+    // outlive the subscription that paid for it (R6). ApiKeyGuard re-checks entitlement
+    // per request as a second line of defence, but we revoke eagerly so the key list and
+    // any cached credentials reflect the loss of access immediately.
+    const revoked = await this.prisma.verifierApiKey.updateMany({
+      where: { userId: user.id, status: 'ACTIVE' },
+      data: { status: 'REVOKED', revokedAt: new Date() },
+    });
+    return { cancelled: result.count, keysRevoked: revoked.count };
   }
 
   private async hasVerifiedMembership(userId: string): Promise<boolean> {

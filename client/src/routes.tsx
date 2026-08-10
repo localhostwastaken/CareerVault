@@ -17,6 +17,8 @@ const VerifyResult = lazy(() => import('@/pages/Verify/VerifyResult'))
 const MockCheckout = lazy(() => import('@/pages/Payments/MockCheckout'))
 const Login = lazy(() => import('@/pages/Login/Login'))
 const MagicLink = lazy(() => import('@/pages/MagicLink/MagicLink'))
+const ForgotPassword = lazy(() => import('@/pages/ForgotPassword/ForgotPassword'))
+const ResetPassword = lazy(() => import('@/pages/ResetPassword/ResetPassword'))
 const Register = lazy(() => import('@/pages/Register/Register'))
 const Profile = lazy(() => import('@/pages/Profile/Profile'))
 const AdminOrganization = lazy(() => import('@/pages/Admin/Organization'))
@@ -113,6 +115,10 @@ export const routes: RouteObject[] = [
       { index: true, element: <Navigate to="/auth/login" replace /> },
       { path: 'login', element: suspense(<Login />) },
       { path: 'magic', element: suspense(<MagicLink />) },
+      { path: 'forgot-password', element: suspense(<ForgotPassword />) },
+      // Target of the emailed reset link (…/auth/reset-password?token=…) — the path
+      // is fixed by the server's email template, so don't rename it.
+      { path: 'reset-password', element: suspense(<ResetPassword />) },
       { path: 'register', element: suspense(<Register />) },
     ],
   },

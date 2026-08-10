@@ -20,6 +20,7 @@ const HolderRequestDocument = () => {
     return (
       <div className="mx-auto flex max-w-xl flex-col gap-6">
         <SuccessPanel
+          headingLevel={1}
           title="Request sent"
           description={`${sent.organizationName} has been notified. You'll get a notification when a manager signs it.`}
           summary={[

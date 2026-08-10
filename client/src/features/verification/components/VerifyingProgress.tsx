@@ -34,7 +34,9 @@ export function VerifyingProgress() {
     <Card className="p-6" aria-busy="true" aria-live="polite">
       <div className="flex items-center gap-2">
         <Loader2 className="size-4 animate-spin text-seal" />
-        <h2 className="text-h3 text-foreground">Running verification…</h2>
+        {/* Sole heading on the page while the request is in flight, so it is the h1;
+            the verdict banner takes over the h1 role once the report lands. */}
+        <h1 className="text-h3 text-foreground">Running verification…</h1>
       </div>
       <ol className="mt-4">
         {STEPS.map((step, index) => {

@@ -32,9 +32,13 @@ const ManagerSignDocument = () => {
         skeleton={<DetailSkeleton />}
         errorTitle="Couldn't load this request"
         isEmpty={(document) => !document}
+        // The PageHeader h1 lives in the success branch, so on these two paths the
+        // state component is the page's only heading.
+        headingLevel={1}
         empty={
           <EmptyState
             icon={FileWarning}
+            headingLevel={1}
             title="Document not found"
             description="It may have been removed, or you don't have access to it."
             action={

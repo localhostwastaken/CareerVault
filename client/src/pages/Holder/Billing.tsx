@@ -96,6 +96,7 @@ const HolderBilling = () => {
           query={plansQuery}
           skeleton={<CardGridSkeleton count={1} />}
           errorTitle="Couldn't load plans"
+          headingLevel={3}
         >
           {(plans) => (
             <div className="grid gap-4 sm:max-w-md">

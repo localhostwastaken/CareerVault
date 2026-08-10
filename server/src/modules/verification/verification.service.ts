@@ -3,12 +3,20 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { KeyManagementService } from '../../services/key-management/key-management.service.js';
 import { BlockchainService } from '../../services/blockchain/blockchain.service.js';
 import { NotificationService } from '../notification/notification.service.js';
-import { hashDocument } from '../../common/utils/crypto.util.js';
+import {
+  hashDocument,
+  signingStatementHash,
+} from '../../common/utils/crypto.util.js';
+import {
+  PUBLIC_SUBJECT_FIELDS,
+  SALARY_PROOF_TYPE,
+} from '../document/public-fields.js';
 import {
   verifyMerkleProof,
   type MerkleProofStep,
 } from '../../common/utils/merkle.util.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import type { DocumentType } from '../../generated/prisma/enums.js';
 
 const TYPE_LABEL: Record<string, string> = {
   EXPERIENCE_LETTER: 'experience letter',
@@ -19,10 +27,17 @@ const TYPE_LABEL: Record<string, string> = {
 export type CheckStatus = 'pass' | 'fail' | 'pending';
 export type Verdict =
   | 'VERIFIED'
+  // Signed and cryptographically valid, but the daily Merkle anchor is still pending.
+  // This is a PASS state (not INVALID) — a document is fully usable before it anchors.
+  | 'VERIFIED_PENDING_ANCHOR'
   | 'REVOKED'
   | 'EXPIRED'
   | 'INVALID'
   | 'NOT_FOUND';
+
+// 'public' = anonymous hash lookup (privacy-gated content); 'shared' = holder shared
+// this specific document via a link and opted into full disclosure.
+type Disclosure = 'public' | 'shared';
 
 export interface Check {
   key: string;
@@ -59,7 +74,7 @@ export class VerificationService {
       where: { documentHash: hash.toLowerCase() },
       include: INCLUDE,
     });
-    return doc ? this.present(doc) : this.notFound();
+    return doc ? this.present(doc, 'public') : this.notFound();
   }
 
   // Bulk API (R6): enterprise/basic verifiers submit many hashes per call. Reuses verifyByHash's full report per hash — no shortcuts on the recomputed guarantees.
@@ -105,10 +120,11 @@ export class VerificationService {
         `A ${TYPE_LABEL[link.document.type] ?? 'document'} you shared was just opened by a verifier.`,
       )
       .catch(() => undefined);
-    return this.present(link.document);
+    // The holder deliberately shared THIS document via a link, so full content is shown.
+    return this.present(link.document, 'shared');
   }
 
-  private async present(doc: VerifiableDocument) {
+  private async present(doc: VerifiableDocument, disclosure: Disclosure) {
     const now = new Date();
     const checks: Check[] = [];
 
@@ -141,8 +157,14 @@ export class VerificationService {
           : 'Original content is unavailable.',
     });
 
-    // 3 & 4. RS256 signatures verified against the org public key.
-    const issuerOk = await this.verifySignature(doc, doc.managerSignature);
+    // 3 & 4. RS256 signatures verified against the org public key. Each co-signature is
+    // over a distinct role+identity statement (C1), so they attest two separate acts.
+    const issuerOk = await this.verifySignature(
+      doc,
+      doc.managerSignature,
+      'MANAGER',
+      doc.signerMemberId,
+    );
     checks.push({
       key: 'issuerSignature',
       label: 'Issuer signature',
@@ -151,7 +173,12 @@ export class VerificationService {
         ? 'Signed by the issuing manager.'
         : 'Issuer signature could not be verified.',
     });
-    const approverOk = await this.verifySignature(doc, doc.hrSignature);
+    const approverOk = await this.verifySignature(
+      doc,
+      doc.hrSignature,
+      'HR',
+      doc.approverMemberId,
+    );
     checks.push({
       key: 'approverSignature',
       label: 'Approver signature',
@@ -215,17 +242,16 @@ export class VerificationService {
       detail: statusDetail,
     });
 
+    // A document is fully valid once it is issued, hash-intact, and dual-signed. On-chain
+    // anchoring happens in the daily batch, so between issuance and that batch the anchor
+    // is legitimately 'pending' — that is VERIFIED_PENDING_ANCHOR, NOT invalid (B1).
+    const coreOk = isIssued && integrityOk && issuerOk && approverOk;
     let verdict: Verdict;
     if (revoked) verdict = 'REVOKED';
     else if (expired) verdict = 'EXPIRED';
-    else if (
-      isIssued &&
-      integrityOk &&
-      issuerOk &&
-      approverOk &&
-      anchorStatus === 'pass'
-    )
-      verdict = 'VERIFIED';
+    else if (coreOk && anchorStatus === 'pass') verdict = 'VERIFIED';
+    else if (coreOk && anchorStatus === 'pending')
+      verdict = 'VERIFIED_PENDING_ANCHOR';
     else verdict = 'INVALID';
 
     // Audit every public verification (PRD: COMPLIANCE tier, 7-year retention).
@@ -241,12 +267,17 @@ export class VerificationService {
             type: doc.type,
             status: doc.status,
             organizationName: doc.organization.name,
-            holderName: doc.holder.fullName,
+            // Anonymous salary lookups don't disclose whose salary it is; a holder-shared
+            // link and every other document type still show the name.
+            holderName:
+              disclosure === 'public' && doc.type === SALARY_PROOF_TYPE
+                ? null
+                : doc.holder.fullName,
             issuedAt: doc.issuedAt,
             expiresAt: doc.expiresAt,
             documentHash: doc.documentHash,
             version: doc.version,
-            content: this.publicContent(doc.contentJson),
+            content: this.publicContent(doc.contentJson, doc.type, disclosure),
           }
         : null,
       anchor,
@@ -261,10 +292,13 @@ export class VerificationService {
     };
   }
 
-  // Only scalar credential fields are exposed publicly — the same set the issued PDF
-  // renders — so the API never discloses more than the document itself already shows.
+  // Public ('public') hash lookups expose only the per-type allow-listed scalar fields
+  // (D2/B6) — never salary paise, PAN/UAN, or personal contact. A holder-shared link
+  // ('shared') opts into full disclosure of that one document.
   private publicContent(
     contentJson: Prisma.JsonValue,
+    type: DocumentType,
+    disclosure: Disclosure,
   ): Record<string, string | number | boolean> {
     if (
       !contentJson ||
@@ -273,14 +307,18 @@ export class VerificationService {
     )
       return {};
     const root = contentJson as Record<string, unknown>;
+    // New documents store the flat subject; tolerate the legacy nested shape too.
     const subject =
       root.credentialSubject &&
       typeof root.credentialSubject === 'object' &&
       !Array.isArray(root.credentialSubject)
         ? (root.credentialSubject as Record<string, unknown>)
         : root;
+    const allow =
+      disclosure === 'public' ? new Set(PUBLIC_SUBJECT_FIELDS[type]) : null;
     const out: Record<string, string | number | boolean> = {};
     for (const [key, value] of Object.entries(subject)) {
+      if (allow && !allow.has(key)) continue;
       if (
         typeof value === 'string' ||
         typeof value === 'number' ||
@@ -292,16 +330,25 @@ export class VerificationService {
     return out;
   }
 
+  // Each co-signature is over a role+identity statement (C1), recomputed here from the
+  // stored signer/approver member ids — so a manager sig and an HR sig are distinct acts.
   private async verifySignature(
     doc: VerifiableDocument,
     signature: string | null,
+    role: 'MANAGER' | 'HR',
+    memberId: string | null,
   ): Promise<boolean> {
-    if (!signature || !doc.documentHash || !doc.organization.publicKeyPem)
+    if (
+      !signature ||
+      !doc.documentHash ||
+      !doc.organization.publicKeyPem ||
+      !memberId
+    )
       return false;
     try {
       return await this.kms.verify(
         doc.organization.publicKeyPem,
-        doc.documentHash,
+        signingStatementHash(doc.documentHash, role, memberId),
         signature,
       );
     } catch {
@@ -313,10 +360,12 @@ export class VerificationService {
   // for 7 years. Best-effort — a failed log write must never break verification.
   private async writeAuditLog(documentId: string, verdict: Verdict): Promise<void> {
     try {
+      const passed =
+        verdict === 'VERIFIED' || verdict === 'VERIFIED_PENDING_ANCHOR';
       await this.prisma.auditLog.create({
         data: {
           actorType: 'SYSTEM',
-          action: verdict === 'VERIFIED' ? 'DOCUMENT_VERIFIED' : 'DOCUMENT_CHECK_FAILED',
+          action: passed ? 'DOCUMENT_VERIFIED' : 'DOCUMENT_CHECK_FAILED',
           entityType: 'DOCUMENT',
           entityId: documentId,
           retentionTier: 'COMPLIANCE',

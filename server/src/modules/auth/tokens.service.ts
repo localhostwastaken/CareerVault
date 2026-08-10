@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
@@ -15,6 +15,8 @@ export interface TokenContext {
 // Access tokens are stateless RS256 JWTs (15-min). Refresh tokens are opaque random strings; only their SHA-256 hash is stored, and they rotate on every use.
 @Injectable()
 export class TokensService {
+  private readonly logger = new Logger(TokensService.name);
+
   constructor(
     private readonly jwt: JwtService,
     private readonly prisma: PrismaService,
@@ -51,7 +53,18 @@ export class TokensService {
     }
     if (record.revokedAt) {
       // Already rotated by a concurrent request. If it happened moments ago, follow the chain to whichever token replaced it instead of failing the loser.
-      if (Date.now() - record.revokedAt.getTime() > REUSE_GRACE_MS) return null;
+      if (Date.now() - record.revokedAt.getTime() > REUSE_GRACE_MS) {
+        // Outside the race window a revoked token has no legitimate holder: the
+        // rightful client swapped it for a successor long ago, so whoever is
+        // presenting it copied it. The stolen cookie may well be the *successor*
+        // too, so the only safe response is to kill the whole family and force
+        // every session for this user to re-authenticate.
+        this.logger.warn(
+          `Refresh token reuse detected for user ${record.userId}; revoking all sessions`,
+        );
+        await this.revokeAllForUser(record.userId);
+        return null;
+      }
       const successor = await this.prisma.refreshToken.findFirst({
         where: {
           userId: record.userId,
@@ -86,6 +99,16 @@ export class TokensService {
     });
     const refreshToken = await this.issueRefreshToken(record.userId, ctx);
     return { userId: record.userId, email, refreshToken };
+  }
+
+  // Revokes every live refresh token for a user — i.e. signs out all their sessions.
+  // Used on credential change (a leaked password must not leave sessions minted with
+  // it alive) and on refresh-token reuse detection above.
+  async revokeAllForUser(userId: string): Promise<void> {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   async revoke(rawToken: string): Promise<void> {

@@ -86,7 +86,17 @@ const Login = () => {
             name="password"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Password</FormLabel>
+                {/* Beside the field it belongs to: a user who mistypes their password
+                    looks here, not at the bottom of the card. */}
+                <div className="flex items-center justify-between gap-3">
+                  <FormLabel>Password</FormLabel>
+                  <Link
+                    to="/auth/forgot-password"
+                    className="focus-ring rounded text-label font-medium leading-none text-seal hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
                 <FormControl>
                   <Input type="password" autoComplete="current-password" placeholder="••••••••" {...field} />
                 </FormControl>

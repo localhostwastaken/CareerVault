@@ -34,9 +34,11 @@ export function VerifierKeyList() {
         query={query}
         skeleton={<TableSkeleton rows={3} columns={5} />}
         errorTitle="Couldn't load your API keys"
+        headingLevel={3}
         empty={
           <EmptyState
             icon={KeyRound}
+            headingLevel={3}
             title="No API keys yet"
             description="Create a key to start calling the Bulk Verification API."
             className="border-0"
@@ -67,7 +69,12 @@ export function VerifierKeyList() {
                   </TableCell>
                   <TableCell className="text-right">
                     {key.status === 'ACTIVE' && (
-                      <Button variant="ghost" size="sm" className="text-revoked hover:bg-revoked-soft hover:text-revoked" onClick={() => setTarget(key)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-revoked hover:bg-revoked-soft hover:text-revoked"
+                        onClick={() => setTarget(key)}
+                      >
                         Revoke
                       </Button>
                     )}

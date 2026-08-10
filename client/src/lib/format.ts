@@ -48,6 +48,21 @@ export function formatCurrency(amount: number, currency = 'USD'): string {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount)
 }
 
+// Rupee amounts are stored and transmitted as integer paise so canonicalization is
+// byte-stable; display divides back to rupees with Indian digit grouping (1,00,000).
+const inrFmt = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+})
+
+/** Format integer paise as INR, e.g. `5000000` → `₹50,000`, `12345` → `₹123.45`. */
+export function formatInr(paise: number): string {
+  if (!Number.isFinite(paise)) return '—'
+  return inrFmt.format(paise / 100)
+}
+
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat(undefined).format(value)
 }

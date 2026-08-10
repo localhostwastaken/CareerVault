@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, Share2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -21,6 +21,18 @@ const HolderShareLinks = () => {
   const [createOpen, setCreateOpen] = useState(Boolean(presetDoc))
   const [created, setCreated] = useState<ShareLink | null>(null)
   const query = useListShareLinksQuery()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  // Returning from checkout: show the same confirmation the free path gets, then
+  // strip the history state so a refresh doesn't resurrect it.
+  const paidLink = (location.state as { createdShareLink?: ShareLink } | null)?.createdShareLink
+  useEffect(() => {
+    if (!paidLink) return
+    setCreated(paidLink)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [paidLink, navigate, location.pathname])
+
   const [deactivate, { isLoading: isDeactivating }] = useDeactivateShareLinkMutation()
 
   const onDeactivate = async (id: string) => {

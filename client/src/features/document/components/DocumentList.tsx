@@ -58,7 +58,7 @@ export function DocumentList({ statuses, emptyTitle, emptyDescription, role, isF
               sort={filters.sort}
               onSortChange={filters.setSort}
               isFiltered={filters.isFiltered}
-              onClear={filters.clear}
+              onClear={() => filters.clear()}
               resultCount={filters.isFiltered ? visible.length : undefined}
             />
           )}
@@ -69,7 +69,7 @@ export function DocumentList({ statuses, emptyTitle, emptyDescription, role, isF
               title="Nothing matches"
               description={`None of these ${scoped.length} documents match your filters.`}
               action={
-                <Button variant="outline" onClick={filters.clear}>
+                <Button variant="outline" onClick={() => filters.clear()}>
                   Clear filters
                 </Button>
               }

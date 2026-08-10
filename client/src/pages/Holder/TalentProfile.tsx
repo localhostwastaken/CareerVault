@@ -19,11 +19,10 @@ const HolderTalentProfile = () => {
   useDocumentTitle('Talent profile')
   const skillsQuery = useGetMySkillsQuery()
   const [setDiscoverability, { isLoading: isToggling }] = useSetDiscoverabilityMutation()
-  const { data: messages } = useListReceivedMessagesQuery()
+  const messagesQuery = useListReceivedMessagesQuery()
   const [respond, { isLoading: isResponding }] = useRespondMessageMutation()
 
   const discoverable = skillsQuery.data?.isDiscoverable ?? false
-  const received = messages ?? []
 
   const toggle = async () => {
     try {
@@ -84,10 +83,12 @@ const HolderTalentProfile = () => {
           query={skillsQuery}
           skeleton={<ListSkeleton rows={2} />}
           errorTitle="Couldn't load your skills"
+          headingLevel={3}
           isEmpty={(profile) => (profile.skills ?? []).length === 0}
           empty={
             <EmptyState
               icon={Sparkles}
+              headingLevel={3}
               title="No skills extracted yet"
               description="Tick “Enable AI skill extraction” when requesting a document to start building this profile."
             />
@@ -104,55 +105,66 @@ const HolderTalentProfile = () => {
       </Section>
 
       <Section title="Recruiter messages" description="Outreach from recruiters who matched your profile.">
-        {received.length === 0 ? (
-          <EmptyState
-            icon={MailOpen}
-            title="No messages yet"
-            description={
-              discoverable
-                ? 'Recruiters who match you will reach out here.'
-                : 'Turn on discovery above so recruiters can reach you.'
-            }
-          />
-        ) : (
-          <div className="flex flex-col gap-3">
-            {received.map((message) => (
-              <Card key={message.id} className="flex flex-col gap-2 p-4">
-                <div className="flex items-center gap-2">
-                  <Mail className="size-4 shrink-0 text-seal" />
-                  <p className="text-label font-semibold text-foreground">{message.subject}</p>
-                  <span className="tnum ml-auto text-label text-subtle">{formatDate(message.sentAt)}</span>
-                </div>
-                <p className="text-label text-muted-foreground">
-                  {message.recruiterName} · {message.organizationName}
-                  {message.jobTitle ? ` · ${message.jobTitle}` : ''}
-                </p>
-                <p className="text-body text-foreground">{message.body}</p>
-                <div className="flex items-center gap-2 pt-1">
-                  {message.responseType === 'PENDING' ? (
-                    <>
-                      <Button size="sm" onClick={() => reply(message.id, 'INTERESTED')} disabled={isResponding}>
-                        I'm interested
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => reply(message.id, 'NOT_INTERESTED')}
-                        disabled={isResponding}
-                      >
-                        Not interested
-                      </Button>
-                    </>
-                  ) : (
-                    <Badge variant={message.responseType === 'INTERESTED' ? 'verified' : 'neutral'}>
-                      {message.responseType === 'INTERESTED' ? 'You replied: interested' : 'You replied: not interested'}
-                    </Badge>
-                  )}
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
+        <QueryBoundary
+          query={messagesQuery}
+          skeleton={<ListSkeleton rows={2} />}
+          errorTitle="Couldn't load your messages"
+          headingLevel={3}
+          empty={
+            <EmptyState
+              icon={MailOpen}
+              headingLevel={3}
+              title="No messages yet"
+              description={
+                discoverable
+                  ? 'Recruiters who match you will reach out here.'
+                  : 'Turn on discovery above so recruiters can reach you.'
+              }
+            />
+          }
+        >
+          {(received) => (
+            <div className="flex flex-col gap-3">
+              {received.map((message) => (
+                <Card key={message.id} className="flex flex-col gap-2 p-4">
+                  <div className="flex items-center gap-2">
+                    <Mail className="size-4 shrink-0 text-seal" />
+                    <p className="text-label font-semibold text-foreground">{message.subject}</p>
+                    <span className="tnum ml-auto text-label text-subtle">{formatDate(message.sentAt)}</span>
+                  </div>
+                  <p className="text-label text-muted-foreground">
+                    {message.recruiterName} · {message.organizationName}
+                    {message.jobTitle ? ` · ${message.jobTitle}` : ''}
+                  </p>
+                  <p className="text-body text-foreground">{message.body}</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    {message.responseType === 'PENDING' ? (
+                      <>
+                        <Button size="sm" onClick={() => reply(message.id, 'INTERESTED')} disabled={isResponding}>
+                          I'm interested
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => reply(message.id, 'NOT_INTERESTED')}
+                          disabled={isResponding}
+                        >
+                          Not interested
+                        </Button>
+                      </>
+                    ) : (
+                      <Badge variant={message.responseType === 'INTERESTED' ? 'verified' : 'neutral'}>
+                        {message.responseType === 'INTERESTED'
+                          ? 'You replied: interested'
+                          : 'You replied: not interested'}
+                      </Badge>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </QueryBoundary>
       </Section>
     </div>
   )

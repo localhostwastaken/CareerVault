@@ -11,6 +11,15 @@ const VERDICTS: Record<Verdict, { label: string; sub: string; icon: LucideIcon; 
     wrap: 'border-verified/30 bg-verified-soft',
     seal: 'bg-verified text-primary-foreground',
   },
+  VERIFIED_PENDING_ANCHOR: {
+    // A genuine PASS: signature and hash checks succeeded; only the on-chain anchor is
+    // still queued for the next Merkle batch. Never render this as failed/red.
+    label: 'Verified — anchoring pending',
+    sub: 'Signature and integrity checks passed. On-chain anchoring is scheduled and does not affect validity.',
+    icon: ShieldCheck,
+    wrap: 'border-anchor/30 bg-anchor-soft',
+    seal: 'bg-anchor text-primary-foreground',
+  },
   REVOKED: {
     label: 'Document revoked',
     sub: 'The issuer has withdrawn this document. Do not rely on it.',
@@ -60,6 +69,12 @@ export function VerdictBanner({ verdict, anchored }: { verdict: Verdict; anchore
             <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-anchor/25 bg-anchor-soft px-2.5 py-1 text-micro text-anchor">
               <Anchor className="size-3.5" />
               Anchored on-chain
+            </p>
+          )}
+          {verdict === 'VERIFIED_PENDING_ANCHOR' && (
+            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-anchor/25 bg-anchor-soft px-2.5 py-1 text-micro text-anchor">
+              <Anchor className="size-3.5" />
+              Anchoring pending
             </p>
           )}
         </div>

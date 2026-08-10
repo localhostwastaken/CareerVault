@@ -14,9 +14,14 @@ interface NoticeProps {
 }
 
 // Full class strings per tone so Tailwind can statically detect them.
-const TONE: Record<NoticeTone, { wrap: string; text: string; icon: LucideIcon }> = {
-  pending: { wrap: 'border-pending/30 bg-pending-soft', text: 'text-pending', icon: AlertTriangle },
-  revoked: { wrap: 'border-revoked/30 bg-revoked-soft', text: 'text-revoked', icon: ShieldOff },
+// `role` follows the tone's urgency: a revocation invalidates what the reader is
+// looking at, so it interrupts; a pending warning is announced at the next pause;
+// verified and neutral are ordinary prose and get no live region at all. (The
+// previous `role="note"` is not an ARIA role, so screen readers ignored it and the
+// urgent cases were announced as nothing.)
+const TONE: Record<NoticeTone, { wrap: string; text: string; icon: LucideIcon; role?: 'alert' | 'status' }> = {
+  pending: { wrap: 'border-pending/30 bg-pending-soft', text: 'text-pending', icon: AlertTriangle, role: 'status' },
+  revoked: { wrap: 'border-revoked/30 bg-revoked-soft', text: 'text-revoked', icon: ShieldOff, role: 'alert' },
   verified: { wrap: 'border-verified/30 bg-verified-soft', text: 'text-verified', icon: BadgeCheck },
   neutral: { wrap: 'border-border bg-surface-2', text: 'text-foreground', icon: Info },
 }
@@ -29,7 +34,7 @@ export function Notice({ tone, title, icon, children, actions, className }: Noti
   const Icon = icon ?? config.icon
 
   return (
-    <div role="note" className={cn('rounded-xl border p-5', config.wrap, className)}>
+    <div role={config.role} className={cn('rounded-xl border p-5', config.wrap, className)}>
       <div className="flex items-start gap-3">
         <Icon className={cn('mt-0.5 size-5 shrink-0', config.text)} />
         <div className="flex min-w-0 flex-1 flex-col gap-2">

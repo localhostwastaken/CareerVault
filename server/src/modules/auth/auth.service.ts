@@ -120,6 +120,7 @@ export class AuthService {
       where: { id: userId },
       data: { passwordHash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS) },
     });
+    await this.revokeSessions(userId);
     return this.loadUser(userId);
   }
 
@@ -143,7 +144,45 @@ export class AuthService {
       where: { id: userId },
       data: { passwordHash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS) },
     });
+    await this.revokeSessions(userId);
     return this.loadUser(userId);
+  }
+
+  // Start password recovery. A user who forgot their password can use neither
+  // setPassword (409s once a hash exists) nor changePassword (needs the old one), so
+  // recovery runs through a single-use, 15-minute PASSWORD_RESET magic link.
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    // Unknown, disabled and erased accounts are a silent no-op: the controller returns
+    // the same message either way, so the response cannot enumerate registered emails.
+    if (!user || !user.isActive || user.gdprDeletedAt) return;
+    await this.magicLink.request(user.email, 'PASSWORD_RESET');
+  }
+
+  // Complete password recovery. The link is consumed against PASSWORD_RESET specifically
+  // so a sign-in or manager-sign link can never be redeemed for a password change.
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const { email } = await this.magicLink.verifyAndConsume(
+      token,
+      'PASSWORD_RESET',
+    );
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.isActive || user.gdprDeletedAt) {
+      throw new UnauthorizedException('Invalid or expired link');
+    }
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS) },
+    });
+    await this.revokeSessions(user.id);
+  }
+
+  // Every credential change invalidates all refresh tokens, including the caller's own:
+  // after a reset the attacker's session must die, and there is no way to tell the
+  // victim's cookie from the thief's. Clients re-authenticate once the 15-min access
+  // token expires (or immediately, if they refresh sooner).
+  private revokeSessions(userId: string): Promise<void> {
+    return this.tokens.revokeAllForUser(userId);
   }
 
   private async buildResult(

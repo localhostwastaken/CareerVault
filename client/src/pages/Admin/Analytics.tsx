@@ -77,6 +77,7 @@ const AdminAnalytics = () => {
                 {data.documents.total === 0 ? (
                   <EmptyState
                     icon={FileText}
+                    headingLevel={3}
                     title="No documents yet"
                     description="Issued documents will appear here as your team requests and signs them."
                   />

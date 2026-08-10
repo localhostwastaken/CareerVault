@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { BadgeCheck } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { Heading, type HeadingLevel } from '@/components/shared/Heading'
 import { cn } from '@/lib/utils'
 
 export interface SummaryRow {
@@ -17,13 +18,23 @@ interface SuccessPanelProps {
   artifact?: ReactNode
   /** Where to go next. Lead with the action most users want. */
   actions?: ReactNode
+  /** 1 when the panel replaces the page (no PageHeader above it), otherwise 2. */
+  headingLevel?: HeadingLevel
   className?: string
 }
 
 // Act III. Every mutation in this app used to end at a toast that vanished in four
 // seconds, leaving the user on the same screen wondering whether it worked. This is
 // the durable confirmation: what happened, the proof of it, and the next step.
-export function SuccessPanel({ title, description, summary, artifact, actions, className }: SuccessPanelProps) {
+export function SuccessPanel({
+  title,
+  description,
+  summary,
+  artifact,
+  actions,
+  headingLevel = 2,
+  className,
+}: SuccessPanelProps) {
   return (
     <Card
       // Announced politely rather than assertively — the user just acted, so they
@@ -37,7 +48,9 @@ export function SuccessPanel({ title, description, summary, artifact, actions, c
           <BadgeCheck className="size-6" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-serif text-h1 text-foreground">{title}</h2>
+          <Heading level={headingLevel} className="font-serif text-h1 text-foreground">
+            {title}
+          </Heading>
           {description && <p className="mt-1 text-body text-muted-foreground">{description}</p>}
 
           {summary && summary.length > 0 && (

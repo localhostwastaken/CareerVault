@@ -4,7 +4,6 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { SelectNative } from '@/components/ui/select-native'
 import {
   Dialog,
@@ -15,6 +14,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { ShareLinkLimitFields } from '@/features/share-link/components/ShareLinkLimitFields'
+import { ErrorState } from '@/components/shared/ErrorState'
 import { useListDocumentsQuery } from '@/features/document/api'
 import { DOCUMENT_TYPE_LABEL } from '@/features/document/types'
 import { useCreateShareLinkMutation } from '@/features/share-link/api'
@@ -30,19 +31,18 @@ interface CreateShareLinkDialogProps {
   onCreated?: (link: ShareLink) => void
 }
 
-export function CreateShareLinkDialog({
-  open,
-  onOpenChange,
-  presetDocumentId,
-  onCreated,
-}: CreateShareLinkDialogProps) {
+export function CreateShareLinkDialog({ open, onOpenChange, presetDocumentId, onCreated }: CreateShareLinkDialogProps) {
   const navigate = useNavigate()
-  const { data: documents } = useListDocumentsQuery()
+  // Same query arg as Wallet/Documents so this shares their cache entry — a bare
+  // useListDocumentsQuery() is a *different* entry and always starts cold, which made
+  // the dialog claim "no issued documents" while its own request was still in flight.
+  const documentsQuery = useListDocumentsQuery({ role: 'HOLDER' })
   const [createShareLink, { isLoading }] = useCreateShareLinkMutation()
-  const shareable = (documents ?? []).filter((d) => d.status === 'ISSUED' || d.status === 'ANCHORED')
+  const shareable = (documentsQuery.data ?? []).filter((d) => d.status === 'ISSUED' || d.status === 'ANCHORED')
 
   const form = useForm<CreateShareLinkValues>({
     resolver: zodResolver(createShareLinkSchema),
+    mode: 'onBlur',
     defaultValues: { documentId: presetDocumentId ?? '', expiresInDays: '', maxViews: '' },
   })
 
@@ -60,7 +60,11 @@ export function CreateShareLinkDialog({
       }).unwrap()
       if (result.checkout) {
         const url = new URL(result.checkout.checkoutUrl)
-        navigate(url.pathname + url.search, { state: { amountDollars: result.checkout.amount } })
+        // Carry the link through checkout so the user still gets the Act III panel
+        // once they return — the paid path is the default for non-premium holders.
+        navigate(url.pathname + url.search, {
+          state: { amountDollars: result.checkout.amount, shareLink: result.shareLink },
+        })
       } else {
         onOpenChange(false)
         onCreated?.(result.shareLink)
@@ -78,10 +82,20 @@ export function CreateShareLinkDialog({
           <DialogDescription>$1.99 per link — free for Premium subscribers.</DialogDescription>
         </DialogHeader>
 
-        {shareable.length === 0 ? (
-          <p className="py-4 text-body text-muted-foreground">
-            You need an issued document before you can share one.
-          </p>
+        {documentsQuery.isLoading ? (
+          <div className="flex items-center gap-2 py-6 text-body text-muted-foreground" aria-busy="true">
+            <Loader2 className="size-4 animate-spin" />
+            Loading your documents…
+          </div>
+        ) : documentsQuery.isError ? (
+          <ErrorState
+            headingLevel={3}
+            title="Couldn't load your documents"
+            error={documentsQuery.error}
+            onRetry={documentsQuery.refetch}
+          />
+        ) : shareable.length === 0 ? (
+          <p className="py-4 text-body text-muted-foreground">You need an issued document before you can share one.</p>
         ) : (
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5">
@@ -107,34 +121,7 @@ export function CreateShareLinkDialog({
                   </FormItem>
                 )}
               />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="expiresInDays"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Expires (days)</FormLabel>
-                      <FormControl>
-                        <Input {...field} inputMode="numeric" placeholder="Never" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="maxViews"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Max views</FormLabel>
-                      <FormControl>
-                        <Input {...field} inputMode="numeric" placeholder="Unlimited" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              <ShareLinkLimitFields control={form.control} />
               <DialogFooter>
                 <Button type="submit" disabled={isLoading}>
                   {isLoading && <Loader2 className="animate-spin" />}

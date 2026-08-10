@@ -11,8 +11,10 @@ interface JobOpeningListProps {
 // the candidate results stay above the fold.
 export function JobOpeningList({ openings, selectedId, onSelect }: JobOpeningListProps) {
   return (
+    // A pressed-button group, not role="tab": the results render in a sibling column
+    // that is no tabpanel, and there is no arrow-key handling to honour the tabs contract.
     <div
-      role="tablist"
+      role="group"
       aria-label="Job openings"
       className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0"
     >
@@ -22,8 +24,7 @@ export function JobOpeningList({ openings, selectedId, onSelect }: JobOpeningLis
           <button
             key={opening.id}
             type="button"
-            role="tab"
-            aria-selected={isActive}
+            aria-pressed={isActive}
             onClick={() => onSelect(opening.id)}
             className={cn(
               'focus-ring w-56 shrink-0 cursor-pointer rounded-lg border p-3 text-left transition-colors lg:w-auto',

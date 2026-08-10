@@ -63,33 +63,36 @@ export class TalentService {
     if (!jobVec) return { jobOpeningId, modelVersion: null, matches: [] };
 
     // Org scoping (R6): SAME_ORG recruiters only see their org's discoverable holders.
-    const orgScope =
-      profile.searchScope === 'SAME_ORG' ? profile.organizationId : null;
-    const rows = await this.prisma.$queryRaw<CandidateRow[]>`
-      SELECT d.holder_id AS "holderId", u.full_name AS "holderName",
-             es.skills_json AS "skills", es.seniority::text AS "seniority",
-             es.years_of_experience AS "years", es.industries_json AS "industries",
-             es.extracted_at AS "extractedAt",
-             1 - (es.embedding <=> ${jobVec}::vector) AS "similarity"
-      FROM extracted_skills es
-      JOIN documents d ON d.id = es.document_id
-      JOIN users u ON u.id = d.holder_id
-      WHERE es.embedding IS NOT NULL
-        AND u.is_discoverable = true
-        AND (${orgScope}::uuid IS NULL OR d.organization_id = ${orgScope}::uuid)
-      ORDER BY es.embedding <=> ${jobVec}::vector
-      LIMIT 30`;
+    const orgScope = this.orgScope(profile);
 
-    // One row per holder (best-matching document), top 10.
-    const seen = new Set<string>();
-    const top: CandidateRow[] = [];
-    for (const row of rows) {
-      if (!seen.has(row.holderId)) {
-        seen.add(row.holderId);
-        top.push(row);
-      }
-    }
-    const candidates = top.slice(0, 10);
+    // The LIMIT must apply to distinct HOLDERS, not documents: a single holder with many
+    // consented documents would otherwise fill the whole window and starve every other
+    // candidate out of the result set. DISTINCT ON keeps each holder's best-matching
+    // document, and only then do we order by distance and take the top N.
+    // Tradeoff: DISTINCT ON sorts by holder_id first, so this shape cannot ride the HNSW
+    // index and scans the filtered set exactly. Correctness over latency at current scale;
+    // revisit with a per-holder materialized profile vector if the table outgrows it.
+    const candidates = await this.prisma.$queryRaw<CandidateRow[]>`
+      SELECT best."holderId", best."holderName", best."skills", best."seniority",
+             best."years", best."industries", best."extractedAt",
+             1 - best.distance AS "similarity"
+      FROM (
+        SELECT DISTINCT ON (d.holder_id)
+               d.holder_id AS "holderId", u.full_name AS "holderName",
+               es.skills_json AS "skills", es.seniority::text AS "seniority",
+               es.years_of_experience AS "years", es.industries_json AS "industries",
+               es.extracted_at AS "extractedAt",
+               es.embedding <=> ${jobVec}::vector AS distance
+        FROM extracted_skills es
+        JOIN documents d ON d.id = es.document_id
+        JOIN users u ON u.id = d.holder_id
+        WHERE es.embedding IS NOT NULL
+          AND u.is_discoverable = true
+          AND (${orgScope}::uuid IS NULL OR d.organization_id = ${orgScope}::uuid)
+        ORDER BY d.holder_id, es.embedding <=> ${jobVec}::vector
+      ) best
+      ORDER BY best.distance
+      LIMIT 10`;
     if (candidates.length === 0)
       return { jobOpeningId, modelVersion: null, matches: [] };
 
@@ -161,6 +164,7 @@ export class TalentService {
 
   async listMatches(user: AuthenticatedUser, jobOpeningId: string) {
     await this.recruiter.getOwnedOpening(user, jobOpeningId);
+    const profile = await this.recruiter.ensureProfile(user);
     const matches = await this.prisma.talentMatch.findMany({
       // Honor consent revocation at read: hide holders who have since opted out.
       where: { jobOpeningId, holder: { isDiscoverable: true } },
@@ -169,6 +173,7 @@ export class TalentService {
     });
     const skillsByHolder = await this.skillsByHolder(
       matches.map((m) => m.holderId),
+      this.orgScope(profile),
     );
     return matches.map((m) => ({
       holderId: m.holderId,
@@ -180,12 +185,30 @@ export class TalentService {
     }));
   }
 
+  // Org scoping (R6): SAME_ORG recruiters are confined to their own organization;
+  // a null scope means the profile is allowed to search across organizations.
+  private orgScope(profile: {
+    searchScope: string;
+    organizationId: string;
+  }): string | null {
+    return profile.searchScope === 'SAME_ORG' ? profile.organizationId : null;
+  }
+
+  // Skills shown on a match MUST be scoped exactly like `search` retrieves them, or a
+  // recruiter reads skills extracted from a competitor's documents for the same holder
+  // (cross-org leak) and the two endpoints disagree about the same candidate.
   private async skillsByHolder(
     holderIds: string[],
+    orgScope: string | null,
   ): Promise<Map<string, string[]>> {
     if (holderIds.length === 0) return new Map();
     const rows = await this.prisma.extractedSkill.findMany({
-      where: { document: { holderId: { in: holderIds } } },
+      where: {
+        document: {
+          holderId: { in: holderIds },
+          ...(orgScope ? { organizationId: orgScope } : {}),
+        },
+      },
       select: { skillsJson: true, document: { select: { holderId: true } } },
     });
     const map = new Map<string, string[]>();

@@ -21,7 +21,9 @@ const AdminAuditLog = () => {
   const filters = useListFilters()
   const page = Math.max(1, Number(filters.param('page', '1')))
   const retentionTier = filters.param('tier')
-  const goToPage = (next: number) => filters.setParam('page', String(next), '1')
+  // Every handler that also changes a filter must reset the page in the SAME update —
+  // two setSearchParams calls in one handler drop each other's changes.
+  const goToPage = (next: number) => filters.update({ page: next > 1 ? String(next) : null })
 
   const query = useListAuditLogsQuery({
     page,
@@ -47,19 +49,13 @@ const AdminAuditLog = () => {
           placeholder="Filter by action…"
           aria-label="Filter by action"
           value={filters.search}
-          onChange={(event) => {
-            filters.setSearch(event.target.value)
-            goToPage(1)
-          }}
+          onChange={(event) => filters.update({ q: event.target.value, page: null })}
           className="w-full sm:w-56"
         />
         <SelectNative
           aria-label="Filter by actor"
           value={filters.status}
-          onChange={(event) => {
-            filters.setStatus(event.target.value)
-            goToPage(1)
-          }}
+          onChange={(event) => filters.update({ status: event.target.value, page: null })}
           className="w-auto min-w-36"
         >
           <option value="">All actors</option>
@@ -70,10 +66,7 @@ const AdminAuditLog = () => {
         <SelectNative
           aria-label="Filter by retention tier"
           value={retentionTier}
-          onChange={(event) => {
-            filters.setParam('tier', event.target.value)
-            goToPage(1)
-          }}
+          onChange={(event) => filters.update({ tier: event.target.value, page: null })}
           className="w-auto min-w-40"
         >
           <option value="">All tiers</option>
@@ -84,11 +77,7 @@ const AdminAuditLog = () => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              filters.clear()
-              filters.setParam('tier', '')
-              goToPage(1)
-            }}
+            onClick={() => filters.clear(['tier', 'page'])}
           >
             Clear filters
           </Button>
@@ -111,7 +100,7 @@ const AdminAuditLog = () => {
             }
             action={
               filters.isFiltered ? (
-                <Button variant="outline" onClick={filters.clear}>
+                <Button variant="outline" onClick={() => filters.clear(['tier', 'page'])}>
                   Clear filters
                 </Button>
               ) : undefined

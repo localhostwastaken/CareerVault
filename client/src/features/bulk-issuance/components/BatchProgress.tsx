@@ -8,8 +8,12 @@ import type { BulkBatch } from '../types'
 // Act III for bulk issuance. Previously a polling table simply stopped updating and
 // the operator was left to infer that hundreds of documents had been issued.
 export function BatchProgress({ batch }: { batch: BulkBatch }) {
-  const pct = batch.totalRows > 0 ? Math.round((batch.processedRows / batch.totalRows) * 100) : 0
-  const issued = batch.processedRows - batch.errorRows
+  // The server increments processedRows only on a successful issueOne, so it is
+  // already the success count — subtracting errorRows from it double-counts failures.
+  // Rows attempted (and therefore progress) is successes + failures.
+  const issued = batch.processedRows
+  const attempted = batch.processedRows + batch.errorRows
+  const pct = batch.totalRows > 0 ? Math.round((attempted / batch.totalRows) * 100) : 0
 
   if (batch.status === 'PROCESSING') {
     return (
@@ -18,7 +22,7 @@ export function BatchProgress({ batch }: { batch: BulkBatch }) {
           <Loader2 className="size-4 animate-spin text-seal" />
           <h3 className="text-h3 text-foreground">Issuing documents…</h3>
           <span className="tnum ml-auto text-label text-muted-foreground">
-            {batch.processedRows} of {batch.totalRows}
+            {attempted} of {batch.totalRows}
           </span>
         </div>
         <div
@@ -49,6 +53,9 @@ export function BatchProgress({ batch }: { batch: BulkBatch }) {
 
   return (
     <SuccessPanel
+      // Sits inside the "Batches" Section (h2), alongside the h3 the PROCESSING
+      // branch above already uses.
+      headingLevel={3}
       title={issued > 0 ? `${issued} document${issued === 1 ? '' : 's'} issued` : 'Batch finished'}
       description={
         batch.errorRows > 0

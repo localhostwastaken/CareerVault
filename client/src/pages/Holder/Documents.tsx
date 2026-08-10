@@ -72,7 +72,7 @@ const HolderDocuments = () => {
               sort={filters.sort}
               onSortChange={filters.setSort}
               isFiltered={filters.isFiltered}
-              onClear={filters.clear}
+              onClear={() => filters.clear()}
               resultCount={filters.isFiltered ? visible.length : undefined}
             />
 
@@ -82,7 +82,7 @@ const HolderDocuments = () => {
                 title="No documents match"
                 description={`None of your ${documents.length} documents match these filters.`}
                 action={
-                  <Button variant="outline" onClick={filters.clear}>
+                  <Button variant="outline" onClick={() => filters.clear()}>
                     Clear filters
                   </Button>
                 }

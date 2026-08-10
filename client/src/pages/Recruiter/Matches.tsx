@@ -77,7 +77,7 @@ const RecruiterMatches = () => {
                 status={filters.status}
                 onStatusChange={filters.setStatus}
                 isFiltered={filters.isFiltered}
-                onClear={filters.clear}
+                onClear={() => filters.clear()}
                 resultCount={filters.isFiltered ? visible.length : undefined}
               />
             )}
@@ -88,7 +88,7 @@ const RecruiterMatches = () => {
                 title="Nothing matches"
                 description={`None of your ${messages.length} messages match these filters.`}
                 action={
-                  <Button variant="outline" onClick={filters.clear}>
+                  <Button variant="outline" onClick={() => filters.clear()}>
                     Clear filters
                   </Button>
                 }

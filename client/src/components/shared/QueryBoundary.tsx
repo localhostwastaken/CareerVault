@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { ErrorState } from '@/components/shared/ErrorState'
+import type { HeadingLevel } from '@/components/shared/Heading'
 
 /** The subset of an RTK Query result this boundary needs. */
 export interface QueryLike<T> {
@@ -19,6 +20,13 @@ interface QueryBoundaryProps<T> {
   /** Defaults to treating an empty array as empty. */
   isEmpty?: (data: T) => boolean
   errorTitle?: string
+  /**
+   * Heading level for the error state this boundary renders. The `empty` node is the
+   * caller's own element and sets its own level; without this the error state was the
+   * one heading on the page no call site could correct. 3 under a Section's h2,
+   * 1 when the boundary is the whole page (no PageHeader above it).
+   */
+  headingLevel?: HeadingLevel
   children: (data: T) => ReactNode
 }
 
@@ -35,6 +43,7 @@ export function QueryBoundary<T>({
   empty,
   isEmpty = defaultIsEmpty,
   errorTitle,
+  headingLevel,
   children,
 }: QueryBoundaryProps<T>) {
   if (query.isLoading) {
@@ -47,7 +56,7 @@ export function QueryBoundary<T>({
   }
 
   if (query.isError || query.data === undefined) {
-    return <ErrorState title={errorTitle} error={query.error} onRetry={query.refetch} />
+    return <ErrorState title={errorTitle} error={query.error} onRetry={query.refetch} headingLevel={headingLevel} />
   }
 
   if (empty && isEmpty(query.data)) return <>{empty}</>

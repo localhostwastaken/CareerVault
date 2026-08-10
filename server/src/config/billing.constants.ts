@@ -35,16 +35,24 @@ export const PLANS: PlanInfo[] = [
   {
     tier: 'VERIFIER_BASIC',
     label: 'Verifier Basic',
+    // Perk copy MUST match the enforced cap in VERIFIER_MONTHLY_REQUEST_CAP.BASIC — the
+    // unit is "verification API requests / month" because ApiKeyGuard meters per request.
     price: 49,
-    perks: ['Bulk verification', 'API access', 'Up to 1,000 checks / month'],
+    perks: [
+      'Bulk verification',
+      'API access',
+      'Up to 1,000 verification API requests / month',
+    ],
     verifierDiscountEligible: true,
   },
   {
     tier: 'VERIFIER_ENTERPRISE',
     label: 'Verifier Enterprise',
+    // Perk copy MUST match VERIFIER_MONTHLY_REQUEST_CAP.ENTERPRISE (no more "unlimited",
+    // which contradicted the enforced quota a technical reviewer would check).
     price: 199,
     perks: [
-      'Unlimited verifications',
+      'Up to 50,000 verification API requests / month',
       'Dedicated support',
       'SLA & audit exports',
     ],

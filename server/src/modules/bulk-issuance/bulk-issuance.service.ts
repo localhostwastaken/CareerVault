@@ -4,9 +4,18 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { KeyManagementService } from '../../services/key-management/key-management.service.js';
-import { generateSalt, hashDocument } from '../../common/utils/crypto.util.js';
+import {
+  generateSalt,
+  hashDocument,
+  signingStatementHash,
+} from '../../common/utils/crypto.util.js';
+import {
+  makeReferenceNumber,
+  validateAndNormalizeSubject,
+} from '../document/content-validation.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { MagicLinkService } from '../auth/magic-link.service.js';
@@ -58,6 +67,13 @@ export class BulkIssuanceService {
     if (!org.isVerified) {
       throw new UnprocessableEntityException(
         'Organization is not verified yet',
+      );
+    }
+    // A single CSV salary figure cannot express a bank-grade CTC breakdown
+    // (basic/HRA/allowances/deductions), so salary certificates are issued individually.
+    if (dto.documentType === 'SALARY_PROOF') {
+      throw new UnprocessableEntityException(
+        'Salary certificates require a full CTC breakdown and must be issued individually, not via bulk CSV.',
       );
     }
 
@@ -169,12 +185,24 @@ export class BulkIssuanceService {
     documentType: 'EXPERIENCE_LETTER' | 'SALARY_PROOF',
   ): Promise<void> {
     const kmsKeyId = await this.documents.ensureOrgKey(org);
+    const hrUser = await this.prisma.user.findUnique({
+      where: { id: hrMember.userId },
+      select: { fullName: true },
+    });
+    const signatoryName = hrUser?.fullName ?? 'Authorised Signatory';
     const errors: Array<{ row: number; email: string; error: string }> = [];
     let processed = 0;
 
     for (const [index, row] of rows.entries()) {
       try {
-        await this.issueOne(row, org, hrMember, documentType, kmsKeyId);
+        await this.issueOne(
+          row,
+          org,
+          hrMember,
+          documentType,
+          kmsKeyId,
+          signatoryName,
+        );
         processed += 1;
       } catch (error) {
         errors.push({
@@ -227,6 +255,7 @@ export class BulkIssuanceService {
     hrMember: HrMember,
     documentType: 'EXPERIENCE_LETTER' | 'SALARY_PROOF',
     kmsKeyId: string,
+    signatoryName: string,
   ): Promise<void> {
     const existing = await this.prisma.user.findUnique({
       where: { email: row.employeeEmail },
@@ -237,23 +266,37 @@ export class BulkIssuanceService {
         data: { email: row.employeeEmail, fullName: row.fullName },
       }));
 
-    const contentJson: Prisma.InputJsonObject = {
-      employeeName: row.fullName,
-      employeeEmail: row.employeeEmail,
-      designation: row.designation,
-      department: row.department,
-      startDate: row.startDate,
-      ...(row.endDate ? { endDate: row.endDate } : {}),
-      ...(documentType === 'SALARY_PROOF' && row.salary
-        ? { salary: row.salary }
-        : {}),
-    };
+    // Same server-authoritative validator as the interactive path, so bulk and
+    // interactive documents share one canonical content shape (and both validate).
+    const now = new Date();
+    const subject = await validateAndNormalizeSubject(
+      documentType,
+      this.buildBulkSubject(row, org.name, signatoryName),
+      {
+        issueDate: now.toISOString().slice(0, 10),
+        referenceNumber: makeReferenceNumber(
+          documentType,
+          org.name,
+          now,
+          randomBytes(3).toString('hex').toUpperCase(),
+        ),
+      },
+    );
+    const contentJson = subject as Prisma.InputJsonObject;
     const salt = generateSalt();
-    const documentHash = hashDocument(contentJson, salt);
-    // Dual-role signing (spec §6.4): HR is both signer and approver in bulk issuance,
-    // so a single KMS signature fills both manager and HR signature fields.
-    const signature = await this.kms.sign(kmsKeyId, documentHash);
-    const expiresAt = new Date(Date.now() + EXPIRY_DAYS * 86_400_000);
+    const documentHash = hashDocument(subject, salt);
+    // HR is both signer and approver in bulk issuance, but each co-signature is still a
+    // DISTINCT role-bound statement (C1) — so managerSignature !== hrSignature and the
+    // record honestly reflects that one HR member performed both acts.
+    const managerSignature = await this.kms.sign(
+      kmsKeyId,
+      signingStatementHash(documentHash, 'MANAGER', hrMember.id),
+    );
+    const hrSignature = await this.kms.sign(
+      kmsKeyId,
+      signingStatementHash(documentHash, 'HR', hrMember.id),
+    );
+    const expiresAt = new Date(now.getTime() + EXPIRY_DAYS * 86_400_000);
 
     const doc = await this.prisma.document.create({
       data: {
@@ -266,9 +309,9 @@ export class BulkIssuanceService {
         contentJson,
         salt,
         documentHash,
-        managerSignature: signature,
-        hrSignature: signature,
-        issuedAt: new Date(),
+        managerSignature,
+        hrSignature,
+        issuedAt: now,
         expiresAt,
       },
     });
@@ -294,5 +337,37 @@ export class BulkIssuanceService {
         { emailTo: holder.email },
       );
     }
+  }
+
+  // Maps a bulk CSV row onto the experience-letter subject; the shared validator then
+  // fills schemaVersion/issueDate/referenceNumber and normalizes the object. (Bulk is
+  // experience-letters only — salary certificates are blocked in upload().)
+  private buildBulkSubject(
+    row: BulkIssuanceRow,
+    orgName: string,
+    signatoryName: string,
+  ): Record<string, unknown> {
+    const localPart = row.employeeEmail.split('@')[0] ?? 'employee';
+    const separated = Boolean(row.endDate);
+    return {
+      letterKind: separated ? 'EXPERIENCE_CUM_RELIEVING' : 'EXPERIENCE',
+      employeeName: row.fullName,
+      employeeCode: `EMP-${localPart.toUpperCase()}`,
+      designation: row.designation,
+      employmentType: 'FULL_TIME',
+      dateOfJoining: row.startDate,
+      ...(separated
+        ? {
+            lastWorkingDay: row.endDate,
+            reasonForLeaving: 'RESIGNATION',
+            noticePeriodServed: 'SERVED_IN_FULL',
+            duesSettled: true,
+          }
+        : {}),
+      ...(row.department ? { department: row.department } : {}),
+      conductSummary: `${row.fullName} was employed with ${orgName} as ${row.designation}${row.department ? ` in the ${row.department} department` : ''}. During the tenure, conduct and performance were found to be satisfactory. This certificate is issued upon request.`,
+      signatoryName,
+      signatoryDesignation: 'Authorised Signatory',
+    };
   }
 }
