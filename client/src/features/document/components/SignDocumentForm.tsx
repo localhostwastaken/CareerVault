@@ -10,6 +10,7 @@ import { SIGN_FIELDS, buildSignSchema, outputKey, rupeesToPaise, signDefaults, t
 import { SignFieldControl } from '@/features/document/components/SignFieldControl'
 import { SalarySummary } from '@/features/document/components/SalarySummary'
 import type { DocumentDetail } from '@/features/document/types'
+import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 import { notify, toastApiError } from '@/lib/notify'
 
@@ -37,9 +38,16 @@ export function SignDocumentForm({ document }: { document: DocumentDetail }) {
   const [showMore, setShowMore] = useState(false)
   const type = document.type
 
+  // Signer identity comes from the session, not the form. The server re-stamps these
+  // on submit, so the locked inputs below show exactly what will be recorded.
+  const { user } = useAuth()
   const form = useForm<SignFormValues>({
     resolver: zodResolver(buildSignSchema(type)),
-    defaultValues: signDefaults(type, document),
+    defaultValues: signDefaults(type, {
+      ...document,
+      signerName: user?.fullName,
+      signerEmail: user?.email,
+    }),
     mode: 'onBlur',
   })
 

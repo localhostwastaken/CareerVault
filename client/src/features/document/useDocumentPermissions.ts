@@ -27,7 +27,12 @@ export function documentPermissions(document: DocumentDetail, actor: Actor): Doc
   // Org-scoped: the active persona must belong to this document's org. Blocks
   // cross-org leakage (e.g. ORG_ADMIN at Org A acting on Org B's document).
   const orgMatch = actor.activeOrgId === document.organizationId
-  const isHr = orgMatch && (actor.activeRole === 'HR' || actor.activeRole === 'ORG_ADMIN')
+  // Strict role separation. ORG_ADMIN is NOT an implicit HR or MANAGER: an admin
+  // administers the org (members, domain, analytics, audit) and may READ its
+  // documents, but signing and approving are separate duties that require the
+  // explicit membership. Granting them implicitly let an org creator single-handedly
+  // approve documents, defeating the dual-signature guarantee the product sells.
+  const isHr = orgMatch && actor.activeRole === 'HR'
   const isManager = orgMatch && actor.activeRole === 'MANAGER'
   const isHolder = actor.activeRole === 'HOLDER' && actor.userId === document.holderId
   const isDraftable = document.status === 'REQUESTED' || document.status === 'DRAFT'

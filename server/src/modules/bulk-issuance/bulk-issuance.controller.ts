@@ -26,6 +26,7 @@ class OrgScopeQuery {
 
 @ApiTags('bulk-issuance')
 @Controller('bulk-issuance')
+// Read routes allow ORG_ADMIN oversight; the upload handler re-checks for HR only.
 @Roles('HR', 'ORG_ADMIN')
 export class BulkIssuanceController {
   constructor(private readonly bulkIssuance: BulkIssuanceService) {}

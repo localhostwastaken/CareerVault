@@ -1,6 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
-import { Anchor, ArrowLeft, Download, FileJson, FileWarning, Share2 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { ArrowLeft, Download, FileWarning, Share2, UserCog } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -8,12 +7,11 @@ import { Notice } from '@/components/shared/Notice'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { DetailSkeleton } from '@/components/shared/Skeletons'
-import { StatusBadge } from '@/components/shared/StatusBadge'
 import { useGetDocumentQuery } from '@/features/document/api'
 import { AuthenticityCard } from '@/features/document/components/AuthenticityCard'
 import { DocumentActions } from '@/features/document/components/DocumentActions'
+import { DocumentProgress } from '@/features/document/components/DocumentProgress'
 import { ResubmitForm } from '@/features/document/components/ResubmitForm'
-import { StatusTimeline } from '@/features/document/components/StatusTimeline'
 import { extractContentFields } from '@/features/document/content'
 import { useDownloadCredential, useDownloadDocument } from '@/features/document/hooks'
 import { DOCUMENT_TYPE_LABEL, type DocumentDetail } from '@/features/document/types'
@@ -34,7 +32,7 @@ function returnNote(document: DocumentDetail): string {
 
 const HolderDocumentDetail = () => {
   const { id = '' } = useParams()
-  const { user } = useAuth()
+  const { user, role, activeOrgId } = useAuth()
   const query = useGetDocumentQuery(id, { skip: !id })
   const downloadDocument = useDownloadDocument()
   const downloadCredential = useDownloadCredential()
@@ -77,6 +75,8 @@ const HolderDocumentDetail = () => {
           const preIssue = PRE_ISSUE.includes(document.status)
           const isHolder = user?.id === document.holderId
           const returned = wasReturned(document)
+          // An org member viewing their own org's document who holds no HR persona.
+          const isOrgViewerWithoutHr = activeOrgId === document.organizationId && role !== 'HR'
 
           return (
             <div className="flex flex-col gap-6">
@@ -92,12 +92,6 @@ const HolderDocumentDetail = () => {
                           <Share2 />
                           Share
                         </Link>
-                      </Button>
-                    )}
-                    {document.documentHash && (
-                      <Button variant="secondary" onClick={() => downloadCredential(document.id)}>
-                        <FileJson />
-                        Proof
                       </Button>
                     )}
                     {document.renderedPdfUrl && (
@@ -124,27 +118,23 @@ const HolderDocumentDetail = () => {
                 </Notice>
               )}
 
+              {/* Strict role separation means an ORG_ADMIN can watch a document but not
+                  move it. Saying nothing leaves them staring at a queue that never
+                  drains — especially in a young org that has not appointed an HR yet. */}
+              {document.status === 'PENDING_HR' && isOrgViewerWithoutHr && (
+                <Notice tone="pending" title="Only an HR member can approve this" icon={UserCog}>
+                  Approving requires the HR role — an admin cannot co-sign, because the second signature has to come
+                  from someone other than the manager who signed. Grant someone (or yourself) the HR role in{' '}
+                  <Link to="/app/members" className="focus-ring rounded font-medium text-seal hover:underline">
+                    Members
+                  </Link>
+                  .
+                </Notice>
+              )}
+
               {isHolder && returned && <ResubmitForm document={document} />}
 
-              <Card className="flex flex-col gap-6 p-6">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge status={document.status} />
-                  {document.merkleStatus === 'ANCHORED' && (
-                    <Badge variant="anchor">
-                      <Anchor />
-                      On-chain
-                    </Badge>
-                  )}
-                  {document.merkleStatus === 'PENDING_BATCH' && (
-                    <Badge variant="pending">
-                      <Anchor />
-                      Awaiting anchor
-                    </Badge>
-                  )}
-                  <span className="tnum ml-auto text-micro text-subtle">Version {document.version}</span>
-                </div>
-                <StatusTimeline status={document.status} />
-              </Card>
+              <DocumentProgress document={document} />
 
               {fields.length > 0 && (
                 <Card className="p-6">
@@ -160,7 +150,9 @@ const HolderDocumentDetail = () => {
                 </Card>
               )}
 
-              {!preIssue && <AuthenticityCard document={document} />}
+              {!preIssue && (
+                <AuthenticityCard document={document} onDownloadCredential={() => downloadCredential(document.id)} />
+              )}
             </div>
           )
         }}

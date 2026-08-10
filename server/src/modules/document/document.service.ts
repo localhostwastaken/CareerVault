@@ -19,6 +19,7 @@ import {
   makeReferenceNumber,
   validateAndNormalizeSubject,
 } from './content-validation.js';
+import { stampSignerIdentity } from './signer-identity.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type {
@@ -43,8 +44,18 @@ type PresentedDocument = Prisma.DocumentGetPayload<{
   include: {
     organization: { select: { name: true } };
     holder: { select: { fullName: true; email: true } };
+    signerMember: { select: { user: { select: { fullName: true } } } };
+    approverMember: { select: { user: { select: { fullName: true } } } };
   };
 }>;
+
+// Every read path must select these or toPublic cannot name the people involved.
+const PRESENT_INCLUDE = {
+  organization: { select: { name: true } },
+  holder: { select: { fullName: true, email: true } },
+  signerMember: { select: { user: { select: { fullName: true } } } },
+  approverMember: { select: { user: { select: { fullName: true } } } },
+} as const;
 
 @Injectable()
 export class DocumentService {
@@ -96,10 +107,10 @@ export class DocumentService {
   async updateDraft(id: string, actor: AuthenticatedUser, dto: UpdateDraftDto) {
     const doc = await this.getOrThrow(id);
     this.assertStatus(doc.status, ['REQUESTED', 'DRAFT']);
-    // The assigned manager or ORG_ADMIN can edit drafts. The holder can also edit
+    // Only a MANAGER of the owning org may edit a draft. The holder can also edit
     // their own REQUESTED document (e.g. after a manager returned it for revision).
     if (doc.holderId !== actor.id) {
-      await this.requireMember(actor.id, doc.organizationId, ['MANAGER', 'ORG_ADMIN']);
+      await this.requireMember(actor.id, doc.organizationId, ['MANAGER']);
     }
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.document.update({
@@ -125,20 +136,19 @@ export class DocumentService {
 
   // Manager signs: compute salt + hash (R4) and sign the hash with the org key (R3).
   // Accepts REQUESTED (first-time: drafting and signing in one step) or DRAFT
-  // (already drafted, just signing). Only the manager assigned at request time may
-  // sign; ORG_ADMIN can override.
+  // (already drafted, just signing). Only the manager ASSIGNED at request time may
+  // sign — there is no admin override, because the signature attests to who vouched
+  // for the holder. Reassignment is an explicit action, not a side effect of signing.
   async sign(id: string, actor: AuthenticatedUser, dto: SignDocumentDto) {
     const doc = await this.getOrThrow(id);
     this.assertStatus(doc.status, ['REQUESTED', 'DRAFT']);
 
     const member = await this.requireMember(actor.id, doc.organizationId, [
       'MANAGER',
-      'ORG_ADMIN',
     ]);
 
-    // Enforce that the signer is the manager assigned at request time. ORG_ADMIN
-    // may override a stale assignment (e.g. original manager left the org).
-    if (member.role !== 'ORG_ADMIN' && doc.signerMemberId !== member.id) {
+    // Enforce that the signer is the manager assigned at request time.
+    if (doc.signerMemberId !== member.id) {
       throw new ForbiddenException(
         'Only the assigned manager can sign this document',
       );
@@ -162,6 +172,12 @@ export class DocumentService {
         randomBytes(3).toString('hex').toUpperCase(),
       ),
     });
+
+    // The signer's own identity is stamped from the authenticated session, never taken
+    // from the request body. A manager signs as THEMSELVES: without this, whoever holds
+    // the assigned-manager membership could type a colleague's name and email into the
+    // recommender/signatory fields and issue a document attributed to that person.
+    stampSignerIdentity(doc.type, subject, actor);
 
     const salt = generateSalt();
     const documentHash = hashDocument(subject, salt);
@@ -229,7 +245,6 @@ export class DocumentService {
     this.assertStatus(doc.status, ['PENDING_HR']);
     const member = await this.requireMember(actor.id, doc.organizationId, [
       'HR',
-      'ORG_ADMIN',
     ]);
 
     // Guard: a document must carry a valid manager signature before HR can approve.
@@ -242,8 +257,8 @@ export class DocumentService {
       throw new ConflictException('Document is not ready for approval');
 
     // Dual-signature: the manager who signed must not also approve (separation of
-    // duties). ORG_ADMIN members who sign can still approve if they also hold an HR
-    // role, but they must use a different membership for each action.
+    // duties). Signing requires MANAGER and approving requires HR, so this only bites
+    // a person who holds both memberships — they may do one step, never both.
     if (doc.signerMemberId) {
       const signerMembership =
         await this.prisma.organizationMember.findUnique({
@@ -342,7 +357,7 @@ export class DocumentService {
   async reject(id: string, actor: AuthenticatedUser, dto: RejectDocumentDto) {
     const doc = await this.getOrThrow(id);
     this.assertStatus(doc.status, ['PENDING_HR']);
-    await this.requireMember(actor.id, doc.organizationId, ['HR', 'ORG_ADMIN']);
+    await this.requireMember(actor.id, doc.organizationId, ['HR']);
     // Returning to DRAFT also clears the signed crypto fields: a draft is unsigned, and
     // this stops a rejected draft's stale hash from resolving on public verification.
     const claimed = await this.prisma.document.updateMany({
@@ -384,7 +399,6 @@ export class DocumentService {
     this.assertStatus(doc.status, ['ISSUED', 'ANCHORED']);
     const member = await this.requireMember(actor.id, doc.organizationId, [
       'HR',
-      'ORG_ADMIN',
     ]);
     await this.prisma.$transaction(async (tx) => {
       const claimed = await tx.document.updateMany({
@@ -493,7 +507,7 @@ export class DocumentService {
     const doc = await this.getOrThrow(id);
     this.assertStatus(doc.status, ['REQUESTED', 'DRAFT']);
     // Must be the assigned signer for this document.
-    await this.requireMember(actor.id, doc.organizationId, ['MANAGER', 'ORG_ADMIN']);
+    await this.requireMember(actor.id, doc.organizationId, ['MANAGER']);
     if (doc.signerMemberId) {
       const assigned = await this.prisma.organizationMember.findUnique({
         where: { id: doc.signerMemberId },
@@ -645,6 +659,9 @@ export class DocumentService {
       // org documents (that leaked every colleague's salary proof). Recruiters read a
       // candidate's documents only via an explicit, consent-gated share link the
       // applicant grants — resolved through the public verify-by-token path, not here.
+      // ORG_ADMIN keeps READ visibility of the org's documents (oversight, and it
+      // already has analytics + the audit log). It has no write powers here: signing
+      // requires MANAGER and approving/revoking requires HR, enforced above.
       if (membership.role === 'HR' || membership.role === 'ORG_ADMIN') return;
       if (membership.role === 'MANAGER' && doc.signerMemberId) {
         const member = await this.prisma.organizationMember.findFirst({
@@ -702,10 +719,7 @@ export class DocumentService {
         orderBy: { createdAt: 'desc' },
         skip: query.skip,
         take: query.limit,
-        include: {
-          organization: { select: { name: true } },
-          holder: { select: { fullName: true, email: true } },
-        },
+        include: PRESENT_INCLUDE,
       }),
       this.prisma.document.count({ where }),
     ]);
@@ -759,10 +773,7 @@ export class DocumentService {
   ): Promise<ReturnType<DocumentService['toPublic']>> {
     const doc = await this.prisma.document.findUnique({
       where: { id },
-      include: {
-        organization: { select: { name: true } },
-        holder: { select: { fullName: true, email: true } },
-      },
+      include: PRESENT_INCLUDE,
     });
     if (!doc) throw new NotFoundException('Document not found');
     return this.toPublic(doc);
@@ -898,6 +909,9 @@ export class DocumentService {
       revocationReasonText: doc.revocationReasonText,
       hasManagerSignature: Boolean(doc.managerSignature),
       hasHrSignature: Boolean(doc.hrSignature),
+      // Who the document is with. Null before assignment / before HR acts.
+      assignedManagerName: doc.signerMember?.user.fullName ?? null,
+      approverName: doc.approverMember?.user.fullName ?? null,
       merkleStatus:
         doc.status === 'ANCHORED'
           ? 'ANCHORED'

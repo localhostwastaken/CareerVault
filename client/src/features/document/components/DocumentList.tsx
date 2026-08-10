@@ -9,6 +9,7 @@ import { useListDocumentsQuery } from '@/features/document/api'
 import { DOCUMENT_SORTS, useDocumentFilters } from '@/features/document/useDocumentFilters'
 import type { AppRole } from '@/features/auth/types'
 import type { DocumentStatus } from '@/features/document/types'
+import { useAuth } from '@/hooks/useAuth'
 import { useListFilters } from '@/hooks/useListFilters'
 
 interface DocumentListProps {
@@ -26,8 +27,17 @@ interface DocumentListProps {
 export function DocumentList({ statuses, emptyTitle, emptyDescription, role, isFilterable = true }: DocumentListProps) {
   const query = useListDocumentsQuery(role ? { role } : undefined)
   const filters = useListFilters()
+  const { activeOrgId } = useAuth()
 
-  const scoped = (query.data ?? []).filter((document) => statuses.includes(document.status))
+  // The server scopes by ROLE across every membership the user holds, which merges
+  // two employers' queues into one list. The active persona is a single org, so the
+  // view must be narrowed to it — otherwise a manager at two companies sees the wrong
+  // inbox. HOLDER is exempt: a holder's documents span all the orgs they requested from.
+  const scoped = (query.data ?? []).filter(
+    (document) =>
+      statuses.includes(document.status) &&
+      (role === 'HOLDER' || !activeOrgId || document.organizationId === activeOrgId),
+  )
   const { visible, statusOptions } = useDocumentFilters({
     documents: scoped,
     search: filters.search,

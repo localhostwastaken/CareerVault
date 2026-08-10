@@ -56,10 +56,12 @@ export class BulkIssuanceService {
     if (!file?.buffer?.length) {
       throw new UnprocessableEntityException('CSV file is required');
     }
+    // Issuing in bulk mints signed documents directly, so it is HR-only — an
+    // ORG_ADMIN without an HR membership must not be able to issue.
     const hrMember = await this.documents.requireMember(
       actor.id,
       dto.organizationId,
-      ['HR', 'ORG_ADMIN'],
+      ['HR'],
     );
     const org = await this.prisma.organization.findUniqueOrThrow({
       where: { id: dto.organizationId },

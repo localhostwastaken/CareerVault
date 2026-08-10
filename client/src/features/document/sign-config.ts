@@ -32,7 +32,12 @@ export interface SignField {
   pattern?: RegExp
   patternMessage?: string
   default?: string
-  prefill?: 'holderName' | 'organizationName'
+  prefill?: 'holderName' | 'organizationName' | 'signerName' | 'signerEmail'
+  /**
+   * The field asserts WHO SIGNED. Rendered read-only and stamped from the session by
+   * the server on submit, so a manager can only ever sign as themselves.
+   */
+  locked?: boolean
 }
 
 export type SignFormValues = Record<string, string | boolean>
@@ -127,7 +132,7 @@ export const SIGN_FIELDS: Record<DocumentType, SignField[]> = {
       max: 2000,
       placeholder: 'Role, responsibilities, and conduct during employment.',
     },
-    { name: 'signatoryName', label: 'Signatory name', control: 'text', min: 2, max: 120, prefill: 'organizationName' },
+    { name: 'signatoryName', label: 'Signatory name', control: 'text', min: 2, max: 120, prefill: 'signerName', locked: true },
     { name: 'signatoryDesignation', label: 'Signatory designation', control: 'text', min: 2, max: 120, default: 'Head — Human Resources' },
 
     // ── Add more detail ──────────────────────────────────────────────────────
@@ -163,7 +168,7 @@ export const SIGN_FIELDS: Record<DocumentType, SignField[]> = {
     { name: 'pfEmployee', label: 'PF (employee)', control: 'money' },
     { name: 'professionalTax', label: 'Professional tax', control: 'money', default: '200' },
     { name: 'incomeTaxTds', label: 'Income tax (TDS)', control: 'money' },
-    { name: 'signatoryName', label: 'Signatory name', control: 'text', min: 2, max: 120, prefill: 'organizationName' },
+    { name: 'signatoryName', label: 'Signatory name', control: 'text', min: 2, max: 120, prefill: 'signerName', locked: true },
     { name: 'signatoryDesignation', label: 'Signatory designation', control: 'text', min: 2, max: 120, default: 'Head of Human Resources' },
 
     // ── Add more detail ──────────────────────────────────────────────────────
@@ -203,9 +208,9 @@ export const SIGN_FIELDS: Record<DocumentType, SignField[]> = {
   ],
   LETTER_OF_RECOMMENDATION: [
     { name: 'candidateName', label: 'Candidate name', control: 'text', min: 2, max: 120, prefill: 'holderName' },
-    { name: 'recommenderName', label: 'Recommender name', control: 'text', min: 2, max: 120, prefill: 'organizationName' },
+    { name: 'recommenderName', label: 'Recommender name', control: 'text', min: 2, max: 120, prefill: 'signerName', locked: true },
     { name: 'recommenderTitle', label: 'Recommender title', control: 'text', min: 2, max: 120 },
-    { name: 'recommenderEmail', label: 'Recommender email', control: 'email' },
+    { name: 'recommenderEmail', label: 'Recommender email', control: 'email', prefill: 'signerEmail', locked: true },
     { name: 'relationshipType', label: 'Relationship', control: 'select', options: LOR_RELATIONSHIP },
     { name: 'organizationContext', label: 'Organization context', control: 'text', min: 2, max: 160, prefill: 'organizationName' },
     { name: 'relationshipStartDate', label: 'Known since', control: 'date' },
@@ -323,6 +328,9 @@ interface SignSource {
   holderName: string
   organizationName: string
   contentJson: Record<string, unknown>
+  /** The signed-in manager. Identity fields are stamped from this, never typed. */
+  signerName?: string
+  signerEmail?: string
 }
 
 // Prefill from the request (holder/org, editable) and re-hydrate a rejected draft's
@@ -347,6 +355,8 @@ export function signDefaults(type: DocumentType, source: SignSource): SignFormVa
     let value = field.default ?? ''
     if (field.prefill === 'holderName' && source.holderName) value = source.holderName
     if (field.prefill === 'organizationName' && source.organizationName) value = source.organizationName
+    if (field.prefill === 'signerName' && source.signerName) value = source.signerName
+    if (field.prefill === 'signerEmail' && source.signerEmail) value = source.signerEmail
     values[field.name] = value
   }
   return values

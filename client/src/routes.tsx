@@ -134,8 +134,16 @@ export const routes: RouteObject[] = [
           { index: true, element: <RoleHomeRedirect /> },
           { path: 'profile', element: suspense(<Profile />) },
           { path: 'request', element: suspense(<HolderRequestDocument />) },
+          // Detail is intentionally open to any signed-in persona — the server decides
+          // who may READ a given document, and holders reach their own this way.
           { path: 'documents/:id', element: suspense(<HolderDocumentDetail />) },
-          { path: 'documents/:id/sign', element: suspense(<ManagerSignDocument />) },
+          // Signing is not: only a MANAGER persona may open the drafting surface. Without
+          // this gate a holder could walk through "signing" their own credential and only
+          // discover it was never allowed when the submit 403'd.
+          {
+            path: 'documents/:id/sign',
+            element: <RoleGate allow="MANAGER">{suspense(<ManagerSignDocument />)}</RoleGate>,
+          },
           ...featureRoutes,
         ],
       },

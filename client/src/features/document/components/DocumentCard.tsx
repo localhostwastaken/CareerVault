@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ChevronRight, FileText } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { StatusBadge } from '@/components/shared/StatusBadge'
+import { documentProgress } from '@/features/document/documentProgress'
 import { DOCUMENT_TYPE_LABEL, type DocumentDetail } from '@/features/document/types'
 import { formatDate } from '@/lib/format'
 
@@ -19,6 +20,7 @@ interface DocumentCardProps {
 export function DocumentCard({ document, showHolder = false }: DocumentCardProps) {
   const returned = isReturned(document)
   const subject = showHolder ? document.holderName : document.organizationName
+  const progress = documentProgress(document)
 
   return (
     <Card className="transition-colors hover:border-rule-strong hover:bg-surface-2/40">
@@ -39,6 +41,8 @@ export function DocumentCard({ document, showHolder = false }: DocumentCardProps
             <span className="text-subtle"> · </span>
             <span className="tnum">{formatDate(document.issuedAt ?? document.createdAt)}</span>
           </p>
+          {/* Who has it right now. Scanning a list should answer that without a click. */}
+          <p className="truncate text-label text-subtle">{progress.short}</p>
         </div>
         <StatusBadge status={returned ? 'DRAFT' : document.status} label={returned ? 'Returned' : undefined} />
         <ChevronRight className="size-4 shrink-0 text-subtle" aria-hidden />

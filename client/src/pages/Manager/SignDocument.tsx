@@ -11,10 +11,12 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { useGetDocumentQuery } from '@/features/document/api'
 import { SignDocumentForm } from '@/features/document/components/SignDocumentForm'
 import { DOCUMENT_TYPE_LABEL } from '@/features/document/types'
+import { useAuth } from '@/hooks/useAuth'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
 const ManagerSignDocument = () => {
   const { id = '' } = useParams()
+  const { activeOrgId } = useAuth()
   const query = useGetDocumentQuery(id, { skip: !id })
   useDocumentTitle(query.data ? `Sign — ${DOCUMENT_TYPE_LABEL[query.data.type]}` : 'Sign document')
 
@@ -50,7 +52,11 @@ const ManagerSignDocument = () => {
         }
       >
         {(document) => {
-          const canSign = document.status === 'REQUESTED' || document.status === 'DRAFT'
+          // RoleGate already proved the persona is a MANAGER, but not a manager OF THIS
+          // ORG — the route param carries no org. Without this a manager at one company
+          // could open another company's drafting surface, note and all.
+          const isOwnOrg = activeOrgId === document.organizationId
+          const canSign = isOwnOrg && (document.status === 'REQUESTED' || document.status === 'DRAFT')
           const note = typeof document.contentJson.note === 'string' ? document.contentJson.note : null
 
           return (
@@ -74,9 +80,13 @@ const ManagerSignDocument = () => {
                   <SignDocumentForm document={document} />
                 </Card>
               ) : (
-                <Notice tone="neutral" title="This document can no longer be signed">
-                  It is {document.status.toLowerCase().replace('_', ' ')}. Signing only applies to requested or draft
-                  documents.
+                <Notice
+                  tone="neutral"
+                  title={isOwnOrg ? 'This document can no longer be signed' : 'This document belongs to another organisation'}
+                >
+                  {isOwnOrg
+                    ? `It is ${document.status.toLowerCase().replace('_', ' ')}. Signing only applies to requested or draft documents.`
+                    : `Only a manager at ${document.organizationName} can sign it. Switch to that organisation if you are a member.`}
                 </Notice>
               )}
             </div>
