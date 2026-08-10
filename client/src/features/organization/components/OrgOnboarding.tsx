@@ -18,6 +18,7 @@ export function OrgOnboarding() {
   const refreshUser = useRefreshAuthUser()
   const form = useForm<CreateOrgValues>({
     resolver: zodResolver(createOrgSchema),
+    mode: 'onBlur',
     defaultValues: { name: '', domain: '' },
   })
 
@@ -32,14 +33,14 @@ export function OrgOnboarding() {
   }
 
   return (
-    <Card className="max-w-xl shadow-raised">
+    <Card className="max-w-xl">
       <CardHeader>
         <CardTitle>Create your organization</CardTitle>
         <CardDescription>Prove domain ownership to start issuing verified career documents.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onCreate)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onCreate)} className="flex flex-col gap-5">
             <FormField
               control={form.control}
               name="name"

@@ -26,15 +26,15 @@ export function ShapExplanation({ contributions, baseValue, matchScore }: ShapEx
   const sorted = [...contributions].sort((a, b) => Math.abs(b.shap_value) - Math.abs(a.shap_value))
 
   return (
-    <div className="space-y-2 rounded-lg bg-surface-2 p-3">
-      <p className="text-xs text-muted-foreground">
+    <div className="inset-well flex flex-col gap-2 p-3">
+      <p className="text-label text-muted-foreground">
         Baseline {pct(baseValue)} → match {pct(matchScore)}. What moved the score:
       </p>
       {sorted.map((c) => {
         const positive = c.shap_value >= 0
         const width = `${Math.round((Math.abs(c.shap_value) / maxAbs) * 100)}%`
         return (
-          <div key={c.feature} className="flex items-center gap-2 text-xs">
+          <div key={c.feature} className="flex items-center gap-2 text-label">
             <span className="w-28 shrink-0 text-muted-foreground">
               {FEATURE_LABEL[c.feature] ?? c.feature}
             </span>

@@ -41,14 +41,14 @@ export function NotificationBell() {
         <DropdownMenuLabel className="flex items-center justify-between">
           <span>Notifications</span>
           {unread > 0 && (
-            <button type="button" onClick={() => void markAll()} className="text-xs font-medium text-primary hover:underline">
+            <button type="button" onClick={() => void markAll()} className="text-label font-medium text-primary hover:underline">
               Mark all read
             </button>
           )}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {!items?.length ? (
-          <p className="px-2 py-6 text-center text-sm text-muted-foreground">You&rsquo;re all caught up.</p>
+          <p className="px-2 py-6 text-center text-body text-muted-foreground">You&rsquo;re all caught up.</p>
         ) : (
           items.slice(0, 8).map((item) => (
             <DropdownMenuItem
@@ -60,11 +60,11 @@ export function NotificationBell() {
             >
               <div className="flex w-full items-center gap-2">
                 {!item.isRead && <span className="size-1.5 shrink-0 rounded-full bg-primary" />}
-                <span className={cn('text-sm', item.isRead ? 'font-normal text-muted-foreground' : 'font-semibold text-foreground')}>
+                <span className={cn('text-body', item.isRead ? 'font-normal text-muted-foreground' : 'font-semibold text-foreground')}>
                   {item.title}
                 </span>
               </div>
-              <span className="line-clamp-2 text-xs text-muted-foreground">{item.body}</span>
+              <span className="line-clamp-2 text-label text-muted-foreground">{item.body}</span>
               <span className="text-[10px] text-subtle">{formatRelativeTime(item.createdAt)}</span>
             </DropdownMenuItem>
           ))

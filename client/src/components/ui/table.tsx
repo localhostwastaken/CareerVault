@@ -3,15 +3,18 @@ import { cn } from '@/lib/utils'
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
-      <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
+    // Narrow viewports scroll the table rather than breaking the page layout.
+    <div className="relative w-full overflow-x-auto">
+      <table ref={ref} className={cn('w-full caption-bottom text-body', className)} {...props} />
     </div>
   ),
 )
 Table.displayName = 'Table'
 
 const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className, ...props }, ref) => <thead ref={ref} className={cn('border-b border-border', className)} {...props} />,
+  ({ className, ...props }, ref) => (
+    <thead ref={ref} className={cn('border-b border-rule-strong bg-surface-2/60', className)} {...props} />
+  ),
 )
 TableHeader.displayName = 'TableHeader'
 
@@ -31,7 +34,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
   ({ className, ...props }, ref) => (
     <th
       ref={ref}
-      className={cn('h-10 px-3 text-left align-middle text-xs font-semibold text-muted-foreground', className)}
+      className={cn('label-micro h-9 px-3 text-left align-middle', className)}
       {...props}
     />
   ),

@@ -29,7 +29,7 @@ export function PersonaSwitcher() {
       <DropdownMenuTrigger asChild>
         <Button variant="outline" className="gap-2">
           <ShieldCheck className="size-4 text-muted-foreground" />
-          <span className="hidden text-sm font-medium sm:inline max-w-[140px] truncate">{activeLabel}</span>
+          <span className="hidden text-body font-medium sm:inline max-w-[140px] truncate">{activeLabel}</span>
           <ChevronsUpDown className="size-3 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
@@ -47,9 +47,9 @@ export function PersonaSwitcher() {
             >
               <Check className={cn('size-4', isActive ? 'opacity-100' : 'opacity-0')} />
               <div className="flex flex-col">
-                <span className="text-sm font-medium">{label}</span>
+                <span className="text-body font-medium">{label}</span>
                 {p.role !== 'HOLDER' && (
-                  <span className="text-xs text-muted-foreground">{p.role === 'ORG_ADMIN' ? 'Full access' : p.role === 'HR' ? 'Approve documents' : p.role === 'MANAGER' ? 'Sign documents' : 'Talent search'}</span>
+                  <span className="text-label text-muted-foreground">{p.role === 'ORG_ADMIN' ? 'Full access' : p.role === 'HR' ? 'Approve documents' : p.role === 'MANAGER' ? 'Sign documents' : 'Talent search'}</span>
                 )}
               </div>
             </DropdownMenuItem>

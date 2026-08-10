@@ -108,7 +108,7 @@ export function PasswordSection() {
       <CardContent>
         {user.hasPassword ? (
           <Form {...changeForm}>
-            <form onSubmit={changeForm.handleSubmit(onChangePassword)} className="space-y-4">
+            <form onSubmit={changeForm.handleSubmit(onChangePassword)} className="flex flex-col gap-5">
               {field(changeForm.control, 'oldPassword', 'Current password', 'current-password')}
               {field(changeForm.control, 'newPassword', 'New password', 'new-password')}
               {field(changeForm.control, 'confirm', 'Confirm new password', 'new-password')}
@@ -120,7 +120,7 @@ export function PasswordSection() {
           </Form>
         ) : (
           <Form {...setForm}>
-            <form onSubmit={setForm.handleSubmit(onSetPassword)} className="space-y-4">
+            <form onSubmit={setForm.handleSubmit(onSetPassword)} className="flex flex-col gap-5">
               {field(setForm.control, 'password', 'New password', 'new-password')}
               {field(setForm.control, 'confirm', 'Confirm password', 'new-password')}
               <Button type="submit" disabled={isSetting}>

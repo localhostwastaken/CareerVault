@@ -70,14 +70,14 @@ export function CreateKeyDialog({ open, onOpenChange }: CreateKeyDialogProps) {
 
         {revealedKey ? (
           <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 p-3">
-            <code className="tnum flex-1 overflow-x-auto text-xs text-foreground">{revealedKey}</code>
+            <code className="tnum flex-1 overflow-x-auto text-label text-foreground">{revealedKey}</code>
             <Button type="button" size="icon" variant="secondary" onClick={copyKey}>
               {copied ? <Check /> : <Copy />}
             </Button>
           </div>
         ) : (
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5">
               <FormField
                 control={form.control}
                 name="name"

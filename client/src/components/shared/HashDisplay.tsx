@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Check, Copy } from 'lucide-react'
+import { CopyButton } from '@/components/shared/CopyButton'
 import { truncateHash } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -7,30 +6,25 @@ interface HashDisplayProps {
   value: string
   lead?: number
   tail?: number
+  /** Screen-reader name for the copy action, e.g. "Copy Merkle root". */
+  label?: string
   className?: string
 }
 
-export function HashDisplay({ value, lead, tail, className }: HashDisplayProps) {
-  const [copied, setCopied] = useState(false)
-
-  const copy = async () => {
-    await navigator.clipboard.writeText(value)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1500)
-  }
-
+// Identifiers render in IBM Plex Mono with tabular numerals so digits align
+// column-to-column — a hash should look like a hash.
+export function HashDisplay({ value, lead, tail, label = 'Copy to clipboard', className }: HashDisplayProps) {
   return (
-    <button
-      type="button"
-      onClick={copy}
-      title="Copy to clipboard"
+    <span
       className={cn(
-        'tnum inline-flex items-center gap-1.5 rounded-lg bg-surface-2 px-2 py-1 font-mono text-xs text-muted-foreground transition-colors hover:text-foreground',
+        'inset-well tnum inline-flex items-center gap-1.5 py-1 pl-2 pr-1 font-mono text-micro normal-case tracking-normal text-muted-foreground',
         className,
       )}
     >
-      <span>{truncateHash(value, lead, tail)}</span>
-      {copied ? <Check className="size-3.5 text-verified" /> : <Copy className="size-3.5" />}
-    </button>
+      <span className="min-w-0 truncate" title={value}>
+        {truncateHash(value, lead, tail)}
+      </span>
+      <CopyButton value={value} label={label} className="size-6" />
+    </span>
   )
 }

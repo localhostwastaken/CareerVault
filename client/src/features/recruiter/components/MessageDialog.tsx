@@ -49,12 +49,12 @@ export function MessageDialog({ open, onOpenChange, holderId, holderName, jobOpe
           <DialogTitle>Message {holderName}</DialogTitle>
           <DialogDescription>They&rsquo;ll be notified and can signal interest.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-2">
+        <form onSubmit={onSubmit} className="flex flex-col gap-5">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="subject">Subject</Label>
             <Input id="subject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Opportunity at our team" />
           </div>
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="body">Message</Label>
             <Textarea id="body" rows={4} value={body} onChange={(e) => setBody(e.target.value)} className="resize-none" placeholder="Why you're reaching out…" />
           </div>

@@ -9,7 +9,10 @@ const Label = React.forwardRef<
   <LabelPrimitive.Root
     ref={ref}
     className={cn(
-      'text-sm font-medium text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
+      // block + leading-none: an inline <label> reports a box that overlaps its own
+      // leading, which silently collapsed the label→control gap to ~2px wherever a
+      // stack utility measured from it. A block box makes the gap mean what it says.
+      'block text-label font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
       className,
     )}
     {...props}

@@ -8,7 +8,9 @@ const ImplementAuth = () => {
   const location = useLocation()
 
   if (!isAuthenticated) {
-    return <Navigate to="/auth/login" replace state={{ from: location.pathname }} />
+    // Carry the search string too — list views encode their filters there, so a
+    // shared "/app/documents?status=progress" link must survive the sign-in detour.
+    return <Navigate to="/auth/login" replace state={{ from: location.pathname + location.search }} />
   }
 
   return <Outlet />

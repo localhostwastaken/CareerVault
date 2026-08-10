@@ -41,7 +41,7 @@ export function SignDocumentForm({ document }: { document: DocumentDetail }) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5">
         {fields.map((field) => (
           <FormField
             key={field.name}
@@ -51,7 +51,7 @@ export function SignDocumentForm({ document }: { document: DocumentDetail }) {
               <FormItem>
                 <FormLabel>
                   {field.label}
-                  {field.optional && <span className="ml-1 text-xs font-normal text-subtle">(optional)</span>}
+                  {field.optional && <span className="ml-1 text-label font-normal text-subtle">(optional)</span>}
                 </FormLabel>
                 <FormControl>
                   {field.control === 'textarea' ? (

@@ -6,6 +6,7 @@ interface EmptyStateProps {
   icon?: LucideIcon
   title: string
   description?: string
+  /** An empty state without a next step is just a dead end — pass one wherever the user can act. */
   action?: ReactNode
   className?: string
 }
@@ -14,18 +15,18 @@ export function EmptyState({ icon: Icon, title, description, action, className }
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center',
+        'flex flex-col items-center justify-center rounded-xl border border-dashed border-rule-strong bg-card px-6 py-14 text-center',
         className,
       )}
     >
       {Icon && (
-        <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-surface-2 text-muted-foreground">
-          <Icon className="size-6" />
+        <div className="mb-4 flex size-11 items-center justify-center rounded-full bg-surface-2 text-muted-foreground">
+          <Icon className="size-5" />
         </div>
       )}
-      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-      {description && <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>}
-      {action && <div className="mt-4">{action}</div>}
+      <h3 className="text-h3 text-foreground">{title}</h3>
+      {description && <p className="mt-1.5 max-w-sm text-body text-muted-foreground">{description}</p>}
+      {action && <div className="mt-5">{action}</div>}
     </div>
   )
 }

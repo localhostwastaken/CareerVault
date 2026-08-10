@@ -5,6 +5,7 @@ import LoadingScreen from '@/components/LoadingScreen'
 import { RoleHomeRedirect } from '@/components/RoleHomeRedirect'
 import { RoleGate } from '@/components/RoleGate'
 import { ComingSoon } from '@/components/shared/ComingSoon'
+import { RouteErrorBoundary } from '@/components/shared/RouteErrorBoundary'
 import { PortalLayout } from '@/layouts/PortalLayout'
 import { PublicLayout } from '@/layouts/PublicLayout'
 import { ROLE_CONFIG } from '@/lib/roles'
@@ -91,9 +92,12 @@ const featureRoutes: RouteObject[] = Array.from(
   }
 })
 
+// Every layout route carries an errorElement so a throw inside one screen degrades
+// to a recoverable page within that shell, instead of blanking the whole app.
 export const routes: RouteObject[] = [
   {
     element: <PublicLayout />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { path: '/', element: suspense(<Hero />) },
       { path: '/verify', element: suspense(<VerifyHome />) },
@@ -104,6 +108,7 @@ export const routes: RouteObject[] = [
   {
     path: '/auth',
     element: <PublicLayout />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, element: <Navigate to="/auth/login" replace /> },
       { path: 'login', element: suspense(<Login />) },
@@ -114,9 +119,11 @@ export const routes: RouteObject[] = [
   {
     path: '/app',
     element: <ImplementAuth />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       {
         element: <PortalLayout />,
+        errorElement: <RouteErrorBoundary />,
         children: [
           { index: true, element: <RoleHomeRedirect /> },
           { path: 'profile', element: suspense(<Profile />) },
@@ -128,6 +135,6 @@ export const routes: RouteObject[] = [
       },
     ],
   },
-  { path: '/payments/mock', element: suspense(<MockCheckout />) },
+  { path: '/payments/mock', element: suspense(<MockCheckout />), errorElement: <RouteErrorBoundary /> },
   { path: '*', element: <Navigate to="/" replace /> },
 ]

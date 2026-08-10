@@ -19,15 +19,23 @@ import { useListDocumentsQuery } from '@/features/document/api'
 import { DOCUMENT_TYPE_LABEL } from '@/features/document/types'
 import { useCreateShareLinkMutation } from '@/features/share-link/api'
 import { createShareLinkSchema, type CreateShareLinkValues } from '@/features/share-link/schema'
-import { notify, toastApiError } from '@/lib/notify'
+import type { ShareLink } from '@/features/share-link/types'
+import { toastApiError } from '@/lib/notify'
 
 interface CreateShareLinkDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   presetDocumentId?: string | null
+  /** Hands the new link to the page so it can show the Act III panel. */
+  onCreated?: (link: ShareLink) => void
 }
 
-export function CreateShareLinkDialog({ open, onOpenChange, presetDocumentId }: CreateShareLinkDialogProps) {
+export function CreateShareLinkDialog({
+  open,
+  onOpenChange,
+  presetDocumentId,
+  onCreated,
+}: CreateShareLinkDialogProps) {
   const navigate = useNavigate()
   const { data: documents } = useListDocumentsQuery()
   const [createShareLink, { isLoading }] = useCreateShareLinkMutation()
@@ -54,8 +62,8 @@ export function CreateShareLinkDialog({ open, onOpenChange, presetDocumentId }: 
         const url = new URL(result.checkout.checkoutUrl)
         navigate(url.pathname + url.search, { state: { amountDollars: result.checkout.amount } })
       } else {
-        notify.success('Share link created.')
         onOpenChange(false)
+        onCreated?.(result.shareLink)
       }
     } catch (error) {
       toastApiError(error, 'Could not create the share link')
@@ -71,12 +79,12 @@ export function CreateShareLinkDialog({ open, onOpenChange, presetDocumentId }: 
         </DialogHeader>
 
         {shareable.length === 0 ? (
-          <p className="py-4 text-sm text-muted-foreground">
+          <p className="py-4 text-body text-muted-foreground">
             You need an issued document before you can share one.
           </p>
         ) : (
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5">
               <FormField
                 control={form.control}
                 name="documentId"

@@ -51,7 +51,9 @@ const FormItem = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
     const id = React.useId()
     return (
       <FormItemContext.Provider value={{ id }}>
-        <div ref={ref} className={cn('space-y-2', className)} {...props} />
+        {/* flex gap, not space-y: gaps measure between border boxes and stay honest
+            regardless of each child's line-height. See the form rhythm in Claude.md. */}
+        <div ref={ref} className={cn('flex flex-col gap-2', className)} {...props} />
       </FormItemContext.Provider>
     )
   },
@@ -87,7 +89,7 @@ FormControl.displayName = 'FormControl'
 const FormDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
   ({ className, ...props }, ref) => {
     const { formDescriptionId } = useFormField()
-    return <p ref={ref} id={formDescriptionId} className={cn('text-xs text-muted-foreground', className)} {...props} />
+    return <p ref={ref} id={formDescriptionId} className={cn('text-label text-muted-foreground', className)} {...props} />
   },
 )
 FormDescription.displayName = 'FormDescription'
@@ -98,7 +100,15 @@ const FormMessage = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<
     const body = error ? String(error.message ?? '') : children
     if (!body) return null
     return (
-      <p ref={ref} id={formMessageId} className={cn('text-xs font-medium text-destructive', className)} {...props}>
+      // role="alert" so screen readers announce validation failures rather than
+      // leaving them as a visual-only red line.
+      <p
+        ref={ref}
+        id={formMessageId}
+        role="alert"
+        className={cn('text-label font-medium text-destructive', className)}
+        {...props}
+      >
         {body}
       </p>
     )

@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 // per-role navigation is fully walkable today.
 export function ComingSoon({ title }: { title: string }) {
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <PageHeader title={title} />
       <EmptyState
         icon={Construction}

@@ -14,18 +14,17 @@ import {
 } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { SelectNative } from '@/components/ui/select-native'
 import { useAddMemberMutation } from '@/features/member/api'
 import { addMemberSchema, type AddMemberValues } from '@/features/member/schema'
 import { notify, toastApiError } from '@/lib/notify'
-
-const SELECT_CLASS =
-  'flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background'
 
 export function AddMemberDialog({ orgId }: { orgId: string }) {
   const [open, setOpen] = useState(false)
   const [addMember, { isLoading }] = useAddMemberMutation()
   const form = useForm<AddMemberValues>({
     resolver: zodResolver(addMemberSchema),
+    mode: 'onBlur',
     defaultValues: { email: '', role: 'MANAGER', fullName: '' },
   })
 
@@ -53,7 +52,7 @@ export function AddMemberDialog({ orgId }: { orgId: string }) {
           <DialogTitle>Add a member</DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5">
             <FormField
               control={form.control}
               name="email"
@@ -87,12 +86,12 @@ export function AddMemberDialog({ orgId }: { orgId: string }) {
                 <FormItem>
                   <FormLabel>Role</FormLabel>
                   <FormControl>
-                    <select className={SELECT_CLASS} {...field}>
+                    <SelectNative {...field}>
                       <option value="MANAGER">Manager</option>
                       <option value="HR">HR</option>
                       <option value="RECRUITER">Recruiter</option>
                       <option value="ORG_ADMIN">Org Admin</option>
-                    </select>
+                    </SelectNative>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
