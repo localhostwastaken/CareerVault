@@ -14,6 +14,18 @@ A **Web 2.5 career-document verification platform** — organizations issue cryp
 
 Per-package engineering rules live in each `Claude.md`. Heavy external integrations (KMS, blockchain, payments, email, storage) sit behind swappable adapters — local/mock by default, so the whole stack runs with no cloud accounts.
 
+## Architecture
+
+### Component-level design
+
+![Component-level architecture diagram](documentation/images/Architecture_Diagram_Component_Level_Design.png)
+
+### Hybrid web design
+
+![Hybrid web architecture diagram](documentation/images/Architecture_Diagram_Hybrid_Web_Design.png)
+
+These diagrams show the system from two angles: the implementation-oriented component view and the higher-level web/data-flow view. See [`documentation/`](documentation/) for detailed system design and UML assets.
+
 ## Prerequisites
 - Node.js 20+
 - Local **PostgreSQL** (14/16/17) with the **pgvector** extension
