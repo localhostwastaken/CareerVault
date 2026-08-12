@@ -1,6 +1,6 @@
 # CareerVault — Feature Audit
 
-> Status as of July 2026. Covers all implemented and working features across backend, frontend, and AI service.
+> Status as of August 2026. Covers all implemented and working features across backend, frontend, and AI service.
 
 ---
 
@@ -260,11 +260,11 @@ All external integrations are behind swappable adapters — local/mock by defaul
 | Key Management | LocalKMS (Node crypto) | AWS KMS | ✗ stub |
 | Blockchain | LocalAnchor (JSON ledger) | Polygon Amoy (ethers v6) | ✗ stub |
 | Payment | MockStripe | Stripe | ✗ stub |
-| Email | ConsoleEmail (stdout) | AWS SES | ✗ stub |
+| Email | ConsoleEmail (stdout) / Gmail SMTP (nodemailer) | AWS SES | Gmail ✓ wired; SES ✗ stub |
 | Storage | LocalDisk (`./storage`) | AWS S3 | ✗ stub |
 | DNS Verification | LocalDns (always passes) | Real TXT lookup | ✓ wired |
 
-> **Wired today:** all Dev implementations plus the real DNS adapter. Selecting any other prod driver throws `<DRIVER>="..." not implemented` — the prod adapters are interface-ready stubs pending cloud accounts.
+> **Wired today:** all Dev implementations, the real DNS adapter, and Gmail SMTP for email. Gmail (`EMAIL_DRIVER=gmail`, via `GMAIL_USER`/`GMAIL_APP_PASSWORD` app password) sends real mail without a domain or cloud account — good for prototypes, capped at Gmail's ~500 recipients/day. Selecting any other prod driver (`aws`, `amoy`, `stripe`, `ses`, `s3`) throws `<DRIVER>="..." not implemented` — those remain interface-ready stubs pending cloud accounts.
 
 ---
 
