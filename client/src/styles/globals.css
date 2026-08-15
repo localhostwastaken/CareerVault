@@ -1,56 +1,90 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* ── CareerVault design tokens (LOCKED) ──────────────────────────────────────
-   Swiss minimalism + subtle 3D depth. Light theme only. Never use raw hex or
-   Tailwind color literals in components — use the semantic utilities generated
-   from @theme below (bg-primary, text-verified, bg-pending-soft, shadow-raised…). */
+/* ── CareerVault design tokens — "Ledger" ─────────────────────────────────────
+   Ink on paper. Hairline rules instead of shadows. Every identifier in a real
+   mono face. The UI itself should read as an authentic document.
+
+   Light theme only, by design: the paper aesthetic inverts poorly, and a single
+   theme keeps every contrast pair verifiable.
+
+   Never use raw hex or Tailwind colour literals in components — use the semantic
+   utilities generated from @theme below (bg-primary, text-verified, bg-pending-soft,
+   border-rule-strong, font-mono…).
+
+   Contrast: every pair below is measured, not assumed. Body text ≥ AAA (7:1), all
+   UI text ≥ AA (4.5:1), control boundaries ≥ 3:1 (WCAG 1.4.11). Decorative rules
+   and background tints are exempt from 1.4.11 — control boundaries use --input. */
 
 :root {
-  --radius: 0.75rem;
-
-  /* surfaces & text */
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
+  /* ── surfaces: paper ─────────────────────────────────────────────────────── */
+  --background: #fdfbf7; /* paper */
+  --card: #ffffff; /* panel */
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --surface-2: #f1f5f9;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --subtle: #94a3b8;
+  --surface-2: #f4f2ec; /* inset wells: hashes, notes, code */
+  --muted: #f4f2ec;
 
-  /* brand */
-  --primary: #1e3a8a; /* trust navy */
-  --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --accent: #eef2ff;
-  --accent-foreground: #1e3a8a;
+  /* ── text: ink ───────────────────────────────────────────────────────────── */
+  --foreground: #1a1a1a; /* 16.84:1 on paper — AAA */
+  --card-foreground: #1a1a1a;
+  --popover-foreground: #1a1a1a;
+  --muted-foreground: #4a4a4a; /*  8.57:1 on paper — AAA */
+  --subtle: #6b6b6b; /*  5.16:1 on paper — AA  */
 
-  /* lines & focus */
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #1e3a8a;
+  /* ── primary action: ink, not a hue ──────────────────────────────────────────
+     Every warm and green hue is spoken for by fixed status semantics, so a
+     coloured primary button would read as "verified". Ink removes the collision. */
+  --primary: #1a1a1a;
+  --primary-foreground: #ffffff; /* 17.40:1 — AAA */
+  --secondary: #f4f2ec;
+  --secondary-foreground: #1a1a1a;
 
-  /* status semantics (FIXED — never remap) */
-  --destructive: #dc2626;
+  /* ── the single accent (Swiss: one accent only) ──────────────────────────────
+     --seal is the ink-navy itself (links, active nav, focus ring, brand mark).
+     --accent / --accent-foreground stay a tint+ink PAIR for filled chips. */
+  --seal: #1b3a5c; /* 11.25:1 on paper — AAA */
+  --accent: #edf1f6;
+  --accent-foreground: #1b3a5c;
+  --ring: #1b3a5c;
+
+  /* ── rules ───────────────────────────────────────────────────────────────────
+     --border  decorative hairlines (1.4.11 exempt)
+     --rule-strong  emphasized dividers, table heads, hover edges
+     --input   control boundaries — must clear 3:1 (3.53:1 on panel) */
+  --border: #e0e0e0;
+  --rule-strong: #c9c6bf;
+  --input: #8c8880;
+
+  /* ── status semantics (FIXED — never remap) ──────────────────────────────────
+     Always rendered as icon + text + colour, never colour alone. */
+  --verified: #15803d;
+  --verified-soft: #edf6ef; /* 4.54:1 */
+  --pending: #a84d07;
+  --pending-soft: #fbf1e3; /* 5.04:1 */
+  --revoked: #b4231f;
+  --revoked-soft: #fbedec; /* 5.76:1 */
+  --expired: #57534e;
+  --expired-soft: #f1efeb; /* 6.64:1 */
+  --anchor: #8a5a16; /* blockchain gold */
+  --anchor-soft: #f7eedd; /* 5.13:1 */
+  --destructive: #b4231f;
   --destructive-foreground: #ffffff;
-  --verified: #059669;
-  --verified-soft: #ecfdf5;
-  --pending: #d97706;
-  --pending-soft: #fffbeb;
-  --revoked: #dc2626;
-  --revoked-soft: #fef2f2;
-  --expired: #6b7280;
-  --expired-soft: #f3f4f6;
-  --anchor: #b45309; /* blockchain gold */
-  --anchor-soft: #fef3c7;
+
+  /* ── layering scale — never use arbitrary z values ───────────────────────────
+     10 sticky headers/filter bars · 20 drawer scrim · 30 drawer
+     40 dropdown/popover · 50 dialog + toast */
+  --z-sticky: 10;
+  --z-scrim: 20;
+  --z-drawer: 30;
+  --z-popover: 40;
+  --z-dialog: 50;
 }
 
 @theme inline {
-  --font-sans: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  /* IBM Plex superfamily: sans for UI, serif for ceremony, mono for identifiers. */
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "IBM Plex Serif", ui-serif, Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -67,10 +101,12 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+  --color-seal: var(--seal);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
 
   --color-border: var(--border);
+  --color-rule-strong: var(--rule-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
 
@@ -87,13 +123,53 @@
   --color-anchor: var(--anchor);
   --color-anchor-soft: var(--anchor-soft);
 
-  --radius-lg: 0.5rem; /* inputs/buttons (8px) */
-  --radius-xl: 0.75rem; /* cards (12px) */
+  /* ── type scale ────────────────────────────────────────────────────────────
+     Replaces the old inverted hierarchy where h1 was 20px and h2 was 14px —
+     section headings rendered smaller than body text. */
+  --text-display: 3.5rem;
+  --text-display--line-height: 1.07;
+  --text-display--letter-spacing: -0.02em;
+  --text-display--font-weight: 700;
 
-  /* elevation — the subtle 3D depth */
-  --shadow-soft: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
-  --shadow-raised: 0 4px 12px -2px rgb(15 23 42 / 0.1), 0 2px 6px -2px rgb(15 23 42 / 0.06);
-  --shadow-overlay: 0 12px 32px -4px rgb(15 23 42 / 0.18), 0 6px 16px -6px rgb(15 23 42 / 0.12);
+  --text-h1: 1.5rem;
+  --text-h1--line-height: 1.33;
+  --text-h1--letter-spacing: -0.015em;
+  --text-h1--font-weight: 700;
+
+  --text-h2: 1.125rem;
+  --text-h2--line-height: 1.55;
+  --text-h2--letter-spacing: -0.01em;
+  --text-h2--font-weight: 700;
+
+  --text-h3: 0.9375rem;
+  --text-h3--line-height: 1.6;
+  --text-h3--font-weight: 700;
+
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.43;
+
+  --text-body-lg: 1rem;
+  --text-body-lg--line-height: 1.5;
+
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.54;
+  --text-label--font-weight: 500;
+
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.45;
+  --text-micro--letter-spacing: 0.06em;
+  --text-micro--font-weight: 600;
+
+  /* ── geometry: near-square, document-like ─────────────────────────────────── */
+  --radius-lg: 0.25rem; /* inputs, buttons */
+  --radius-xl: 0.25rem; /* cards */
+
+  /* ── elevation: reserved for things that float ABOVE the document ────────────
+     Resting surfaces are engraved (1px rule), never floating. */
+  --shadow-soft: none;
+  --shadow-raised: 0 1px 2px 0 rgb(26 26 26 / 0.06);
+  --shadow-overlay:
+    0 8px 24px -6px rgb(26 26 26 / 0.16), 0 2px 8px -2px rgb(26 26 26 / 0.1);
 }
 
 @layer base {
@@ -107,16 +183,64 @@
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
-    line-height: 1.5;
+    font-size: 0.875rem;
+    line-height: 1.43;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
-  /* tabular numerals for hashes, amounts, dates */
+}
+
+/* ── Spacing rhythm ────────────────────────────────────────────────────────────
+   4pt sub-grid on an 8pt base. Prefer flex `gap-*` over `space-y-*`: gaps measure
+   between border boxes, so they cannot be distorted by a child's line-height.
+
+     gap-1.5   6px   icon ↔ text, inline pairs
+     gap-2     8px   label → control, control → help/error
+     gap-3    12px   list rows, inline button groups
+     gap-4    16px   card grids
+     gap-5    20px   field → field inside a form
+     gap-6    24px   block → block inside a card
+     gap-8    32px   section → section on a page
+
+   Padding: p-6 (24) standard card · p-5 (20) compact/stat card · p-4 (16) list row.
+   Page shell: px-4 / lg:px-8, py-6 / lg:py-8.                                     */
+
+@layer utilities {
+  /* Tabular numerals for hashes, amounts, dates, counts. */
   .tnum {
     font-variant-numeric: tabular-nums;
   }
+
+  /* Field labels, table heads, eyebrow text. */
+  .label-micro {
+    font-size: var(--text-micro);
+    line-height: var(--text-micro--line-height);
+    letter-spacing: var(--text-micro--letter-spacing);
+    font-weight: var(--text-micro--font-weight);
+    text-transform: uppercase;
+    color: var(--subtle);
+  }
+
+  /* Recessed panel for hashes, quoted notes, code. */
+  .inset-well {
+    background-color: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  /* The one focus treatment. Every interactive element gets this. */
+  .focus-ring {
+    outline: none;
+  }
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-lg);
+  }
 }
 
+/* Motion: 150–300ms, transform + opacity only. Infinite animation is for loaders
+   only. Honour the OS setting. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -125,5 +249,20 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Verification reports get printed and filed. Paper-on-paper costs nothing. */
+@media print {
+  body {
+    background: #ffffff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.6875rem;
+    color: #4a4a4a;
   }
 }

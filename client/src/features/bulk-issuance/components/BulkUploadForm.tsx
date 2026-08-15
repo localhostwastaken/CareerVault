@@ -67,7 +67,7 @@ export function BulkUploadForm({ organizationId }: { organizationId: string }) {
                     ref={ref}
                     onBlur={onBlur}
                     onChange={(event) => onChange(event.target.files?.[0])}
-                    className="file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-1 file:text-sm file:font-medium file:text-foreground"
+                    className="file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-1 file:text-body file:font-medium file:text-foreground"
                   />
                 </FormControl>
                 <FormMessage />

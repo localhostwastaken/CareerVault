@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2, Send } from 'lucide-react'
@@ -10,26 +9,33 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { useRequestDocumentMutation } from '@/features/document/api'
 import { useHolderDuplicateRequest } from '@/features/document/hooks'
 import { DocumentTypePicker } from '@/features/document/components/DocumentTypePicker'
+import { ManagerSelectField } from '@/features/document/components/ManagerSelectField'
 import { RequestAdvisories } from '@/features/document/components/RequestAdvisories'
 import { RequestReviewDialog } from '@/features/document/components/RequestReviewDialog'
-import { SkillConsentField } from '@/features/document/components/SkillConsentField'
+import { SkillExtractionConsent } from '@/features/document/components/SkillExtractionConsent'
 import { requestDocumentSchema, type RequestDocumentValues } from '@/features/document/schema'
-import { DOCUMENT_TYPE_LABEL } from '@/features/document/types'
+import { DOCUMENT_TYPE_LABEL, type DocumentDetail } from '@/features/document/types'
 import { useListVerifiedOrgsQuery, useListManagersQuery } from '@/features/organization/api'
 import { useAuth } from '@/hooks/useAuth'
-import { notify, toastApiError } from '@/lib/notify'
+import { toastApiError } from '@/lib/notify'
 
 const MAX_NOTES = 1000
 
-export function RequestDocumentForm() {
-  const navigate = useNavigate()
+export function RequestDocumentForm({ onSent }: { onSent: (document: DocumentDetail) => void }) {
   const { user } = useAuth()
   const { data: orgs, isLoading: orgsLoading } = useListVerifiedOrgsQuery()
   const [requestDocument, { isLoading }] = useRequestDocumentMutation()
   const [reviewOpen, setReviewOpen] = useState(false)
   const form = useForm<RequestDocumentValues>({
     resolver: zodResolver(requestDocumentSchema),
-    defaultValues: { organizationId: '', type: 'EXPERIENCE_LETTER', managerUserId: '', notes: '', enableSkillExtraction: false },
+    mode: 'onBlur',
+    defaultValues: {
+      organizationId: '',
+      type: 'EXPERIENCE_LETTER',
+      managerUserId: '',
+      notes: '',
+      enableSkillExtraction: false,
+    },
   })
 
   const orgId = form.watch('organizationId')
@@ -42,13 +48,13 @@ export function RequestDocumentForm() {
   const isMember = Boolean(orgId) && Boolean(user?.memberships.some((m) => m.organizationId === orgId))
   const selectedManager = managers?.find((m) => m.userId === form.watch('managerUserId'))
 
+  // The review dialog is the last gate: sending is irreversible from the holder's side,
+  // so the values are restated once before the mutation runs.
   const submit = async () => {
     try {
       const values = form.getValues()
       // Strip empty managerUserId so the server auto-assigns when none selected.
-      const doc = await requestDocument({ ...values, managerUserId: values.managerUserId || undefined }).unwrap()
-      notify.success('Request sent — the organization will be notified.')
-      navigate(`/app/documents/${doc.id}`)
+      onSent(await requestDocument({ ...values, managerUserId: values.managerUserId || undefined }).unwrap())
     } catch (error) {
       toastApiError(error, 'Could not send your request')
     }
@@ -57,71 +63,97 @@ export function RequestDocumentForm() {
   return (
     <>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(() => setReviewOpen(true))} className="space-y-5">
-          <FormField control={form.control} name="type" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Document type</FormLabel>
-              <FormControl>
-                <DocumentTypePicker value={field.value} onChange={field.onChange} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-
-          <FormField control={form.control} name="organizationId" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Organization <span className="text-revoked">*</span></FormLabel>
-              <FormControl>
-                <SelectNative {...field} disabled={orgsLoading || noOrgs}>
-                  <option value="" disabled>{orgsLoading ? 'Loading organizations…' : 'Select an organization'}</option>
-                  {orgs?.map((org) => (<option key={org.id} value={org.id}>{org.name}</option>))}
-                </SelectNative>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-
-          {orgId && (
-            <FormField control={form.control} name="managerUserId" render={({ field }) => (
+        <form onSubmit={form.handleSubmit(() => setReviewOpen(true))} className="flex flex-col gap-5">
+          <FormField
+            control={form.control}
+            name="type"
+            render={({ field }) => (
               <FormItem>
-                <FormLabel>Manager (optional — auto-assigned if left blank)</FormLabel>
+                <FormLabel>Document type</FormLabel>
                 <FormControl>
-                  <SelectNative {...field} disabled={managersLoading || noManagers}>
-                    <option value="">{managersLoading ? 'Loading managers…' : 'Any available manager'}</option>
-                    {managers?.map((m) => (<option key={m.userId} value={m.userId}>{m.user.fullName}</option>))}
+                  <DocumentTypePicker value={field.value} onChange={field.onChange} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="organizationId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Organisation</FormLabel>
+                <FormControl>
+                  <SelectNative {...field} disabled={orgsLoading || noOrgs}>
+                    <option value="" disabled>
+                      {orgsLoading ? 'Loading organisations…' : 'Select an organisation'}
+                    </option>
+                    {orgs?.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {org.name}
+                      </option>
+                    ))}
                   </SelectNative>
                 </FormControl>
-                <FormDescription>
-                  {isMember
-                    ? "You're a member here — the request may be routed to you to sign."
-                    : 'Your document will be routed to this manager for signing.'}
-                </FormDescription>
+                <FormMessage />
               </FormItem>
-            )} />
+            )}
+          />
+
+          {/* Manager choice only appears once an org is picked — progressive disclosure. */}
+          {orgId && (
+            <ManagerSelectField
+              control={form.control}
+              managers={managers}
+              isLoading={managersLoading}
+              description={isMember ? "You're a member here — the request may be routed to you to sign." : undefined}
+            />
           )}
 
           <RequestAdvisories noOrgs={noOrgs} noManagers={noManagers} duplicate={duplicate} type={type} />
 
-          <FormField control={form.control} name="notes" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Notes (optional)</FormLabel>
-              <FormControl>
-                <Textarea {...field} rows={4} maxLength={MAX_NOTES} placeholder="Anything the issuer should know — role, dates, purpose…" className="resize-none" />
-              </FormControl>
-              <div className="flex items-center justify-between">
-                <FormMessage />
-                <span className="tnum ml-auto text-xs text-subtle">{notes.length}/{MAX_NOTES}</span>
-              </div>
-            </FormItem>
-          )} />
+          <FormField
+            control={form.control}
+            name="notes"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Notes</FormLabel>
+                <FormControl>
+                  <Textarea
+                    {...field}
+                    rows={4}
+                    maxLength={MAX_NOTES}
+                    placeholder="Anything the issuer should know — role, dates, purpose…"
+                    className="resize-none"
+                  />
+                </FormControl>
+                <FormDescription>Optional. Shared with the organisation to help them prepare it.</FormDescription>
+                <div className="flex items-center justify-between">
+                  <FormMessage />
+                  <span className="tnum ml-auto text-micro text-subtle">
+                    {notes.length}/{MAX_NOTES}
+                  </span>
+                </div>
+              </FormItem>
+            )}
+          />
 
-          <FormField control={form.control} name="enableSkillExtraction" render={({ field }) => (
-            <FormItem>
-              <SkillConsentField checked={field.value ?? false} onChange={field.onChange} />
-            </FormItem>
-          )} />
+          <FormField
+            control={form.control}
+            name="enableSkillExtraction"
+            render={({ field }) => (
+              <FormItem>
+                <SkillExtractionConsent checked={field.value ?? false} onChange={field.onChange} />
+              </FormItem>
+            )}
+          />
 
-          <Button type="submit" className="w-full" disabled={isLoading || noManagers || (Boolean(orgId) && managersLoading)}>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={isLoading || noManagers || (Boolean(orgId) && managersLoading)}
+          >
             {isLoading ? <Loader2 className="animate-spin" /> : <Send />}
             Review &amp; send
           </Button>

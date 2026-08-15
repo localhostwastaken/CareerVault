@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import {
   Body,
   Controller,
@@ -6,12 +7,18 @@ import {
   Post,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import type { Request, Response } from 'express';
+import type { CookieOptions, Request, Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
+import { CsrfGuard } from '../../common/guards/csrf.guard.js';
+import {
+  EmailRateLimit,
+  EmailRateLimitGuard,
+} from '../../common/guards/email-rate-limit.guard.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
 import { AuthService } from './auth.service.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
@@ -20,12 +27,28 @@ import {
   MagicLinkRequestDto,
   VerifyMagicLinkDto,
 } from './dto/magic-link.dto.js';
+import {
+  ForgotPasswordDto,
+  ResetPasswordDto,
+} from './dto/password-reset.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { SetPasswordDto } from './dto/set-password.dto.js';
 import { MagicLinkService } from './magic-link.service.js';
 
 const REFRESH_COOKIE = 'cv_refresh';
+const CSRF_COOKIE = 'cv_csrf';
 const COOKIE_PATH = '/api/v1/auth';
+const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+
+// In production the client is cross-site (Vercel frontend, Render API) and sends
+// credentials, so cookies must be SameSite=None; Secure to be transmitted on
+// cross-site XHR. Dev is same-site localhost, where Lax over http is correct.
+function cookieSecurity(): Pick<CookieOptions, 'sameSite' | 'secure'> {
+  return process.env.NODE_ENV === 'production'
+    ? { sameSite: 'none', secure: true }
+    : { sameSite: 'lax', secure: false };
+}
 
 @ApiTags('auth')
 @Controller('auth')
@@ -48,8 +71,12 @@ export class AuthController {
     return { token: result.token, user: result.user };
   }
 
+  // @Throttle is IP-keyed; the per-email budget additionally caps attempts against a
+  // single account when they arrive from many addresses.
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseGuards(EmailRateLimitGuard)
+  @EmailRateLimit(10, 60_000)
   @HttpCode(200)
   @Post('login')
   async login(
@@ -63,6 +90,7 @@ export class AuthController {
   }
 
   @Public()
+  @UseGuards(CsrfGuard)
   @HttpCode(200)
   @Post('refresh')
   async refresh(
@@ -77,11 +105,15 @@ export class AuthController {
     return { token: result.token, user: result.user };
   }
 
+  @UseGuards(CsrfGuard)
   @HttpCode(200)
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout(readRefreshCookie(req));
-    res.clearCookie(REFRESH_COOKIE, { path: COOKIE_PATH });
+    // clearCookie only deletes when sameSite/secure/path match the set cookie.
+    const security = cookieSecurity();
+    res.clearCookie(REFRESH_COOKIE, { path: COOKIE_PATH, ...security });
+    res.clearCookie(CSRF_COOKIE, { path: '/', ...security });
     return { message: 'Signed out' };
   }
 
@@ -112,14 +144,47 @@ export class AuthController {
     return this.auth.changePassword(user.id, dto.oldPassword, dto.newPassword);
   }
 
+  // Per-email cap is deliberately tighter than login's: each accepted call sends mail,
+  // so an uncapped endpoint is an inbox-flooding tool aimed at one address.
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @UseGuards(EmailRateLimitGuard)
+  @EmailRateLimit(5, HOUR_MS)
   @HttpCode(200)
   @Post('magic-link')
   async requestMagicLink(@Body() dto: MagicLinkRequestDto) {
     await this.magicLink.request(dto.email, 'EMAIL_VERIFY');
     return {
       message: 'If the email is registered, a sign-in link has been sent.',
+    };
+  }
+
+  // Password recovery, step 1. Always answers the same way — a differing response would
+  // turn this into an account-enumeration oracle.
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @UseGuards(EmailRateLimitGuard)
+  @EmailRateLimit(5, HOUR_MS)
+  @HttpCode(200)
+  @Post('forgot-password')
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.auth.forgotPassword(dto.email);
+    return {
+      message: 'If the email is registered, a reset link has been sent.',
+    };
+  }
+
+  // Password recovery, step 2. No email in the body (the link carries the identity), so
+  // only the IP throttle applies here. Deliberately does not sign the user in: they
+  // re-authenticate with the new password, which also proves it was stored.
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post('reset-password')
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.auth.resetPassword(dto.token, dto.password);
+    return {
+      message: 'Password updated. Sign in with your new password.',
     };
   }
 
@@ -141,12 +206,20 @@ export class AuthController {
   }
 
   private setRefreshCookie(res: Response, token: string): void {
+    const security = cookieSecurity();
     res.cookie(REFRESH_COOKIE, token, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      ...security,
       path: COOKIE_PATH,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: COOKIE_MAX_AGE,
+    });
+    // Double-submit CSRF token: non-httpOnly so same-origin JS can read it and
+    // echo it back in the x-csrf-token header. Path '/' keeps it readable app-wide.
+    res.cookie(CSRF_COOKIE, randomBytes(24).toString('hex'), {
+      httpOnly: false,
+      ...security,
+      path: '/',
+      maxAge: COOKIE_MAX_AGE,
     });
   }
 }

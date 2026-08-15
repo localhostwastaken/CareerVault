@@ -6,18 +6,19 @@ import { DocumentActionDialogs } from '@/features/document/components/DocumentAc
 import { useDocumentActions } from '@/features/document/useDocumentActions'
 import type { DocumentDetail } from '@/features/document/types'
 
-// Role-aware action bar. Permission gates and mutation logic live in useDocumentActions;
-// this renders the buttons the active persona is allowed to use plus their dialogs.
+// Role-aware action bar, driven by the user's ACTIVE persona. Permission gates and
+// mutation logic live in useDocumentActions; this renders the buttons that persona is
+// allowed to use plus their dialogs.
 export function DocumentActions({ document }: { document: DocumentDetail }) {
-  const a = useDocumentActions(document)
-  const { can } = a
-  if (!can.sign && !can.review && !can.revoke && !can.delete && !can.return) return null
+  const actions = useDocumentActions(document)
+  const { permissions } = actions
+  if (!permissions.hasAny) return null
 
   return (
     <Card className="flex flex-wrap items-center gap-2 p-4">
-      <span className="mr-auto text-sm font-semibold text-foreground">Actions</span>
+      <span className="label-micro mr-auto">Actions</span>
 
-      {can.sign && (
+      {permissions.canSign && (
         <Button asChild>
           <Link to={`/app/documents/${document.id}/sign`}>
             <PenLine />
@@ -25,46 +26,46 @@ export function DocumentActions({ document }: { document: DocumentDetail }) {
           </Link>
         </Button>
       )}
-      {can.review && (
+      {permissions.canReview && (
         <>
-          <Button variant="secondary" onClick={() => a.setDialog('reject')}>
+          <Button variant="secondary" onClick={() => actions.setDialog('reject')}>
             <Undo2 />
             Return
           </Button>
-          <Button onClick={() => a.setDialog('approve')}>
+          <Button onClick={() => actions.setDialog('approve')}>
             <CheckCircle2 />
             Approve &amp; issue
           </Button>
         </>
       )}
-      {can.revoke && (
-        <Button variant="destructive" onClick={() => a.setDialog('revoke')}>
-          <Ban />
-          Revoke
-        </Button>
-      )}
-      {can.return && (
-        <Button variant="secondary" onClick={() => a.setDialog('return')}>
+      {permissions.canReturn && (
+        <Button variant="secondary" onClick={() => actions.setDialog('return')}>
           <Undo2 />
           Return
         </Button>
       )}
-      {can.delete && (
-        <Button variant="destructive" onClick={() => a.setDialog('delete')}>
+      {permissions.canRevoke && (
+        <Button variant="destructive" onClick={() => actions.setDialog('revoke')}>
+          <Ban />
+          Revoke
+        </Button>
+      )}
+      {permissions.canDelete && (
+        <Button variant="destructive" onClick={() => actions.setDialog('delete')}>
           <Trash2 />
           Delete
         </Button>
       )}
 
       <DocumentActionDialogs
-        dialog={a.dialog}
-        onClose={a.close}
-        reason={a.reason}
-        onReasonChange={a.setReason}
-        code={a.code}
-        onCodeChange={a.setCode}
-        handlers={a.handlers}
-        loading={a.loading}
+        dialog={actions.dialog}
+        onClose={actions.close}
+        reason={actions.reason}
+        onReasonChange={actions.setReason}
+        code={actions.code}
+        onCodeChange={actions.setCode}
+        handlers={actions.handlers}
+        loading={actions.loading}
       />
     </Card>
   )

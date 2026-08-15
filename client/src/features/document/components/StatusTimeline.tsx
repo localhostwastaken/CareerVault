@@ -1,12 +1,12 @@
-import { Check } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { CalendarX, ShieldOff } from 'lucide-react'
+import { Stepper, type Step, type TerminalState } from '@/components/shared/Stepper'
 import type { DocumentStatus } from '@/features/document/types'
 
 // REQUESTED and DRAFT are merged into one visible step — the holder has requested
 // and the manager is drafting/signing. The real transition to PENDING_HR happens
 // only when the manager signs.
-const STEPS: Array<{ key: string; label: string }> = [
-  { key: 'REQUESTED', label: 'Manager Pending' },
+const STEPS: Step[] = [
+  { key: 'REQUESTED', label: 'Manager pending' },
   { key: 'PENDING_HR', label: 'Pending HR' },
   { key: 'ISSUED', label: 'Issued' },
   { key: 'ANCHORED', label: 'Anchored' },
@@ -18,49 +18,16 @@ const RANK: Record<DocumentStatus, number> = {
   PENDING_HR: 1,
   ISSUED: 2,
   ANCHORED: 3,
-  REVOKED: 2,
-  EXPIRED: 2,
+  // Both terminal states are reached from ISSUED, so the rail completes through it.
+  REVOKED: 3,
+  EXPIRED: 3,
+}
+
+const TERMINAL: Partial<Record<DocumentStatus, TerminalState>> = {
+  REVOKED: { label: 'Revoked', tone: 'revoked', icon: ShieldOff },
+  EXPIRED: { label: 'Expired', tone: 'expired', icon: CalendarX },
 }
 
 export function StatusTimeline({ status }: { status: DocumentStatus }) {
-  const current = RANK[status]
-  const terminal = status === 'REVOKED' || status === 'EXPIRED'
-
-  return (
-    <ol className="flex items-center">
-      {STEPS.map((step, index) => {
-        const reached = index < current
-        const active = index === current && !terminal
-        return (
-          <li key={step.key} className="flex flex-1 items-center last:flex-none">
-            <div className="flex flex-col items-center gap-1">
-              <span
-                className={cn(
-                  'flex size-7 items-center justify-center rounded-full text-xs font-semibold',
-                  reached
-                    ? 'bg-verified text-primary-foreground'
-                    : active
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-surface-2 text-subtle',
-                )}
-              >
-                {reached ? <Check className="size-4" /> : index + 1}
-              </span>
-              <span
-                className={cn(
-                  'text-xs',
-                  reached || active ? 'font-medium text-foreground' : 'text-muted-foreground',
-                )}
-              >
-                {step.label}
-              </span>
-            </div>
-            {index < STEPS.length - 1 && (
-              <span className={cn('mx-2 h-px flex-1', index < current ? 'bg-verified' : 'bg-border')} />
-            )}
-          </li>
-        )
-      })}
-    </ol>
-  )
+  return <Stepper steps={STEPS} current={RANK[status]} terminal={TERMINAL[status]} />
 }

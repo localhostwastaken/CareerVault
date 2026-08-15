@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ShapExplanation } from '@/features/recruiter/components/ShapExplanation'
 import type { ShapContribution } from '@/features/recruiter/types'
+import { cn } from '@/lib/utils'
 
 export interface CandidateView {
   holderId: string
@@ -15,6 +16,8 @@ export interface CandidateView {
   contributions: ShapContribution[]
 }
 
+const MAX_VISIBLE_SKILLS = 8
+
 export function CandidateCard({
   candidate,
   onMessage,
@@ -22,47 +25,58 @@ export function CandidateCard({
   candidate: CandidateView
   onMessage?: (candidate: CandidateView) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
   const score = Math.max(0, Math.min(100, Math.round(candidate.matchScore * 100)))
+  const overflow = candidate.skills.length - MAX_VISIBLE_SKILLS
   const initials = candidate.holderName
     .split(' ')
-    .map((p) => p[0])
+    .map((part) => part[0])
     .slice(0, 2)
     .join('')
     .toUpperCase()
 
   return (
-    <Card className="space-y-3 p-4">
+    <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-label font-semibold text-accent-foreground">
             {initials}
           </span>
-          <p className="font-semibold text-foreground">{candidate.holderName}</p>
+          <p className="truncate text-label font-semibold text-foreground">{candidate.holderName}</p>
         </div>
-        <div className="text-right">
-          <div className="tnum text-lg font-bold text-primary">{score}%</div>
-          <div className="text-xs text-subtle">match</div>
+        <div className="shrink-0 text-right">
+          <div className="tnum text-h2 text-foreground">{score}%</div>
+          <div className="label-micro">match</div>
         </div>
       </div>
 
-      <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+      {/* The bar restates the score positionally; the number above carries the value,
+          so the bar itself needs no separate label. */}
+      <div
+        className="h-1.5 overflow-hidden rounded-full bg-surface-2"
+        role="meter"
+        aria-valuenow={score}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Match score for ${candidate.holderName}`}
+      >
         <div className="h-full rounded-full bg-primary" style={{ width: `${score}%` }} />
       </div>
 
       {candidate.skills.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {candidate.skills.slice(0, 8).map((skill) => (
+        <div className="flex flex-wrap gap-1.5">
+          {candidate.skills.slice(0, MAX_VISIBLE_SKILLS).map((skill) => (
             <Badge key={skill} variant="neutral">
               {skill}
             </Badge>
           ))}
+          {overflow > 0 && <Badge variant="neutral">+{overflow} more</Badge>}
         </div>
       )}
 
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => setOpen((v) => !v)}>
-          <ChevronDown className={open ? 'rotate-180 transition-transform' : 'transition-transform'} />
+        <Button variant="ghost" size="sm" onClick={() => setIsOpen((open) => !open)} aria-expanded={isOpen}>
+          <ChevronDown className={cn('transition-transform', isOpen && 'rotate-180')} />
           Why this match
         </Button>
         {onMessage && (
@@ -73,7 +87,7 @@ export function CandidateCard({
         )}
       </div>
 
-      {open && (
+      {isOpen && (
         <ShapExplanation
           contributions={candidate.contributions}
           baseValue={candidate.baseValue}

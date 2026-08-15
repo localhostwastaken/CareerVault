@@ -1,6 +1,6 @@
 import type { DocumentStatus, DocumentType } from '@/features/document/types'
 
-export type Verdict = 'VERIFIED' | 'REVOKED' | 'EXPIRED' | 'INVALID' | 'NOT_FOUND'
+export type Verdict = 'VERIFIED' | 'VERIFIED_PENDING_ANCHOR' | 'REVOKED' | 'EXPIRED' | 'INVALID' | 'NOT_FOUND'
 export type CheckStatus = 'pass' | 'fail' | 'pending'
 
 export interface VerificationCheck {

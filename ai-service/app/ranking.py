@@ -1,12 +1,36 @@
 """Explainable talent ranking.
 
-Primary: a LightGBM regressor fit once on synthetic feature/label data, persisted to
-disk, and reloaded as static weights on every subsequent start. Explanations use
-LightGBM's native TreeSHAP (`predict(pred_contrib=True)`) — the same TreeSHAP the `shap`
-package delegates to for tree models, but computed inside LightGBM so there is no second
-native extension to segfault under the server's worker threads. Contributions + base
-reconcile to the score.
-Fallback: a transparent weighted sum (same feature set) if LightGBM is unavailable.
+HONESTY NOTE — THIS MODEL HAS LEARNED NOTHING FROM REAL DATA.
+
+There is no trained model here and no labelled dataset behind it. `_fit_booster` fits
+LightGBM on uniform random noise whose labels are generated from `_WEIGHTS`, the
+hand-tuned coefficients below. The tree ensemble therefore only re-derives, to within
+its fitting error, the weighted sum a human wrote by hand — it adds no real-world
+signal, learns no interaction that was not synthesised into the labels, and its ranking
+carries exactly the authority of those six hand-picked numbers and no more.
+
+Why keep it at all: TreeSHAP over a tree ensemble yields per-feature contributions in
+the response shape the client's explainability panel already consumes, and it keeps the
+serving path identical to the one a genuinely trained booster will use. It is
+scaffolding with a real interface, not a model.
+
+Consequently `model_version` is deliberately self-describing — `heuristic-lgbm-approx-*`,
+never a bare `lightgbm-<version>` string, which would imply a trained model to every API
+consumer that logs or displays it.
+
+NOTE(phase5): the intended label source for real training is `MessageResponse`
+(INTERESTED / NOT_INTERESTED) on recruiter outreach — i.e. recruiter-confirmed positives
+per (job_opening, holder) pair, joined to the feature row computed at match time. Until
+enough of those accumulate to train and validate on held-out data, do NOT retrain and do
+NOT relabel this as a learned model.
+
+Primary path: the LightGBM approximation described above, persisted to disk and reloaded
+as static weights on every subsequent start. Explanations use LightGBM's native TreeSHAP
+(`predict(pred_contrib=True)`) — the same TreeSHAP the `shap` package delegates to for
+tree models, but computed inside LightGBM so there is no second native extension to
+segfault under the server's worker threads. Contributions + base reconcile to the score.
+Fallback: the same hand-tuned weights applied directly as a transparent weighted sum,
+used when LightGBM is unavailable.
 
 `load_model()` is invoked from the FastAPI lifespan (see `app/main.py`), never at import:
 training at module scope makes every uvicorn worker re-fit its own model on startup, which
@@ -35,8 +59,9 @@ FEATURES = [
     "recency",
 ]
 
-# Ground-truth weights used to synthesize training labels; the learned model recovers
-# their relative importance, and these also drive the deterministic fallback.
+# Hand-tuned weights. These are the ONLY real content of the ranker: they synthesise the
+# training labels the booster is fit against, and they drive the fallback directly. They
+# were chosen by judgement, not estimated from outcomes.
 _WEIGHTS = {
     "embedding_similarity": 0.40,
     "skill_overlap": 0.25,
@@ -46,12 +71,23 @@ _WEIGHTS = {
     "recency": 0.03,
 }
 
+# Version strings are contract-visible (the server surfaces them as `modelVersion`), so they
+# must not overstate what produced the score. Neither name may be changed to a bare
+# framework version: "heuristic"/"approx" and "weighted-sum" are the honest signal that no
+# training data was involved. Bump these only when the WEIGHTS or the scoring shape change.
+_APPROX_VERSION = "heuristic-lgbm-approx-0.1.0"
+_FALLBACK_VERSION = "weighted-sum-0.1.0"
+
 _model = None
-_version = "weighted-sum-0.1.0"
+_version = _FALLBACK_VERSION
 
 
 def _fit_booster():
-    """Fit the regressor on deterministic synthetic data and return its native Booster.
+    """Fit the regressor on deterministic synthetic noise and return its native Booster.
+
+    NOT training in any meaningful sense: `x` is uniform random and `y` is `x @ _WEIGHTS`
+    plus small jitter, so the ensemble can only rediscover the hand-tuned weights. This
+    exists to produce a tree structure TreeSHAP can attribute over, not to learn anything.
 
     The booster (not the sklearn wrapper) is what we persist and predict with: TreeSHAP via
     `Booster.predict(pred_contrib=True)` needs no sklearn state, and the text format is stable.
@@ -93,11 +129,19 @@ def load_model() -> None:
             booster.save_model(str(tmp))
             tmp.replace(_MODEL_PATH)
         _model = booster
-        _version = f"lightgbm-{lgb.__version__}+treeshap"
+        # Report the approximation, not `lightgbm-<version>`: the framework version would
+        # read as provenance for a trained model, and there isn't one. The runtime version
+        # is logged instead, where it is useful for debugging without reaching the API.
+        _version = _APPROX_VERSION
+        _logger.info(
+            "Ranking: hand-tuned weight approximation (%s) via lightgbm %s; not trained on real outcomes",
+            _version,
+            lgb.__version__,
+        )
     except Exception as exc:  # noqa: BLE001 - fall back to the transparent weighted sum
         _logger.warning("Ranking model unavailable, using weighted-sum fallback: %s", exc)
         _model = None
-        _version = "weighted-sum-0.1.0"
+        _version = _FALLBACK_VERSION
 
 
 def _skill_overlap(required: set[str], candidate_skills: list[str]) -> float:

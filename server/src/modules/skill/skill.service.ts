@@ -142,8 +142,51 @@ export class SkillService {
   }
 }
 
-// Flatten a document's content into a text blob for extraction/embedding. Recurses so
-// nested credential fields aren't silently dropped.
+// PRIVACY — third-party LLM egress boundary.
+//
+// buildText produces the ONLY payload that leaves CareerVault for Groq's API. The consent
+// the holder grants says "read skills from this document" and nothing more, so this is a
+// default-DENY allowlist: a field is sent because it is named below as skill signal, never
+// because it merely happens to be a scalar. The previous recursive walk shipped every
+// scalar in the signed subject — compensation, statutory IDs and third-party names
+// included — which the consent copy never covered.
+//
+// Fields deliberately withheld (all present in the signed subjects, none skill signal):
+//   compensation  — every *Paise key (basicPaise, annualCtcPaise, lastDrawnCtcPaise, …)
+//   statutory IDs — panMasked, uanNumber, employeeCode
+//   identities    — employeeName, candidateName, recommenderName/Email/Phone,
+//                   signatoryName, signatoryDesignation, reportingManager
+//   provenance    — referenceNumber, salt/hash fields, dates, placeOfIssue
+//
+// Kept flat on purpose: no recursion means a nested object added to a subject later cannot
+// silently start leaking scalars — it is simply not sent until allowlisted here.
+//
+// Residual, accepted: the two prose fields (conductSummary, overallAssessment) are written
+// by humans and typically name the subject inline ("Priya led the payments migration").
+// That prose IS the skill signal, so it cannot be dropped without defeating extraction; it
+// is squarely within what "read skills from this document" covers. Structured identity,
+// compensation and statutory fields are what must never travel, and none of them do.
+const SKILL_TEXT_FIELDS = [
+  'jobTitle',
+  'designation',
+  'candidateTitle',
+  'department',
+  'employmentType',
+  'workLocation',
+  'organizationContext',
+  'conductSummary',
+  'overallAssessment',
+  'keyStrengths',
+] as const;
+
+// Defense in depth: even if one of the keys above is later reused for something sensitive,
+// or an allowlisted name collides with a sensitive field in a future subject type, these
+// patterns drop it. The allowlist is the control; this is the backstop.
+const DENIED_KEY =
+  /(paise$|^pan|uan|employeecode|employeename|candidatename|email|phone|mobile|salt|hash|^signatory|referencenumber|aadhaar|accountnumber)/i;
+
+// Flatten the skill-relevant slice of a document's content into a text blob for
+// extraction/embedding.
 function buildText(contentJson: Prisma.JsonValue): string {
   if (
     !contentJson ||
@@ -158,18 +201,20 @@ function buildText(contentJson: Prisma.JsonValue): string {
     !Array.isArray(root.credentialSubject)
       ? (root.credentialSubject as Record<string, unknown>)
       : root;
-  const parts: string[] = [];
-  collectScalars(subject, parts);
-  return parts.join('. ');
-}
 
-function collectScalars(value: unknown, out: string[]): void {
-  if (value == null) return;
-  if (typeof value === 'string' || typeof value === 'number') {
-    out.push(String(value));
-  } else if (Array.isArray(value)) {
-    for (const item of value) collectScalars(item, out);
-  } else if (typeof value === 'object') {
-    for (const item of Object.values(value)) collectScalars(item, out);
+  const parts: string[] = [];
+  for (const key of SKILL_TEXT_FIELDS) {
+    if (DENIED_KEY.test(key)) continue;
+    // Only strings and string arrays are emitted: no numeric field is skill signal here,
+    // so refusing numbers outright keeps money/identifier values unsendable by construction.
+    const value = subject[key];
+    if (typeof value === 'string') {
+      if (value.trim()) parts.push(value.trim());
+    } else if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === 'string' && item.trim()) parts.push(item.trim());
+      }
+    }
   }
+  return parts.join('. ');
 }

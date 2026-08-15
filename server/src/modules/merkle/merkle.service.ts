@@ -99,8 +99,12 @@ export class MerkleService {
               leafIndex: index,
             },
           });
-          await tx.document.update({
-            where: { id: docs[index].id },
+          // Status-guarded: a document revoked between the selection above and this
+          // transaction must NOT be flipped back to ANCHORED. Its proof row is still
+          // written (the leaf is genuinely in the anchored tree) but the terminal
+          // REVOKED status stands — DB status is authoritative (R7).
+          await tx.document.updateMany({
+            where: { id: docs[index].id, status: 'ISSUED' },
             data: { status: 'ANCHORED' },
           });
         }

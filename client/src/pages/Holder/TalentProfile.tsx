@@ -1,30 +1,33 @@
-import { Eye, EyeOff, Mail, Sparkles } from 'lucide-react'
+import { Eye, EyeOff, Mail, MailOpen, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
-import { DOCUMENT_TYPE_LABEL, type DocumentType } from '@/features/document/types'
+import { QueryBoundary } from '@/components/shared/QueryBoundary'
+import { Section } from '@/components/shared/Section'
+import { ListSkeleton } from '@/components/shared/Skeletons'
+import { SkillEntryCard } from '@/features/skill/components/SkillEntryCard'
 import { useGetMySkillsQuery, useSetDiscoverabilityMutation } from '@/features/skill/api'
 import { useListReceivedMessagesQuery, useRespondMessageMutation } from '@/features/message/api'
-import { cn } from '@/lib/utils'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { formatDate } from '@/lib/format'
 import { notify, toastApiError } from '@/lib/notify'
+import { cn } from '@/lib/utils'
 
 const HolderTalentProfile = () => {
-  const { data: profile, isLoading } = useGetMySkillsQuery()
+  useDocumentTitle('Talent profile')
+  const skillsQuery = useGetMySkillsQuery()
   const [setDiscoverability, { isLoading: isToggling }] = useSetDiscoverabilityMutation()
-  const { data: messages } = useListReceivedMessagesQuery()
+  const messagesQuery = useListReceivedMessagesQuery()
   const [respond, { isLoading: isResponding }] = useRespondMessageMutation()
 
-  const discoverable = profile?.isDiscoverable ?? false
-  const skills = profile?.skills ?? []
-  const received = messages ?? []
+  const discoverable = skillsQuery.data?.isDiscoverable ?? false
 
   const toggle = async () => {
     try {
       await setDiscoverability(!discoverable).unwrap()
-      notify.success(!discoverable ? 'You are now discoverable.' : 'Discovery turned off.')
+      notify.success(discoverable ? 'You are hidden from recruiters again.' : 'Recruiters can now find you.')
     } catch (error) {
       toastApiError(error, 'Could not update discovery')
     }
@@ -39,95 +42,130 @@ const HolderTalentProfile = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Talent Profile" description="Control your discoverability and see what recruiters can match." />
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        eyebrow="Career wallet"
+        title="Talent profile"
+        description="Control whether recruiters can find you, and see what they'd match against."
+      />
 
-      <Card className={cn('flex flex-wrap items-center justify-between gap-4 p-5', discoverable && 'border-verified/30 bg-verified-soft/40')}>
+      {/* Consent is the headline decision on this page, so it leads. */}
+      <Card
+        className={cn(
+          'flex flex-wrap items-center justify-between gap-4 p-5',
+          discoverable && 'border-verified/30 bg-verified-soft',
+        )}
+      >
         <div className="flex items-center gap-3">
-          {discoverable ? <Eye className="size-5 text-verified" /> : <EyeOff className="size-5 text-subtle" />}
+          {discoverable ? (
+            <Eye className="size-5 shrink-0 text-verified" />
+          ) : (
+            <EyeOff className="size-5 shrink-0 text-subtle" />
+          )}
           <div>
-            <p className="font-semibold text-foreground">{discoverable ? 'Discoverable by recruiters' : 'Hidden from recruiters'}</p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-label font-semibold text-foreground">
+              {discoverable ? 'Discoverable by recruiters' : 'Hidden from recruiters'}
+            </p>
+            <p className="mt-0.5 text-label text-muted-foreground">
               {discoverable
-                ? 'Recruiters can match your consented documents to their openings.'
-                : 'Turn on to let recruiters find you via AI talent search.'}
+                ? 'Recruiters can match your consented documents against their openings.'
+                : 'Turn this on to let recruiters find you through AI talent search.'}
             </p>
           </div>
         </div>
         <Button variant={discoverable ? 'secondary' : 'primary'} onClick={toggle} disabled={isToggling}>
-          {discoverable ? 'Turn off' : 'Become discoverable'}
+          {discoverable ? 'Turn off discovery' : 'Become discoverable'}
         </Button>
       </Card>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-foreground">Extracted skills</h2>
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : skills.length === 0 ? (
-          <EmptyState
-            icon={Sparkles}
-            title="No skills extracted yet"
-            description="Enable skill extraction when requesting a document to build your talent profile."
-          />
-        ) : (
-          skills.map((entry) => (
-            <Card key={entry.documentId} className="space-y-3 p-4">
-              <div className="flex items-center justify-between">
-                <p className="font-medium text-foreground">{DOCUMENT_TYPE_LABEL[entry.documentType as DocumentType] ?? entry.documentType}</p>
-                <span className="text-xs text-subtle">{entry.organizationName}</span>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {entry.skills.map((skill) => (
-                  <Badge key={skill} variant="neutral">
-                    {skill}
-                  </Badge>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {[entry.jobTitle, entry.seniority, entry.yearsOfExperience ? `${entry.yearsOfExperience} yrs` : null]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
-            </Card>
-          ))
-        )}
-      </section>
+      <Section title="Extracted skills" description="Pulled from documents where you enabled skill extraction.">
+        <QueryBoundary
+          query={skillsQuery}
+          skeleton={<ListSkeleton rows={2} />}
+          errorTitle="Couldn't load your skills"
+          headingLevel={3}
+          isEmpty={(profile) => (profile.skills ?? []).length === 0}
+          empty={
+            <EmptyState
+              icon={Sparkles}
+              headingLevel={3}
+              title="No skills extracted yet"
+              description="Tick “Enable AI skill extraction” when requesting a document to start building this profile."
+            />
+          }
+        >
+          {(profile) => (
+            <div className="flex flex-col gap-3">
+              {profile.skills.map((entry) => (
+                <SkillEntryCard key={entry.documentId} entry={entry} />
+              ))}
+            </div>
+          )}
+        </QueryBoundary>
+      </Section>
 
-      {received.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-foreground">Recruiter messages</h2>
-          {received.map((message) => (
-            <Card key={message.id} className="space-y-2 p-4">
-              <div className="flex items-center gap-2">
-                <Mail className="size-4 text-primary" />
-                <p className="font-semibold text-foreground">{message.subject}</p>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {message.recruiterName} · {message.organizationName}
-                {message.jobTitle ? ` · ${message.jobTitle}` : ''}
-              </p>
-              <p className="text-sm text-foreground">{message.body}</p>
-              <div className="flex items-center gap-2 pt-1">
-                {message.responseType === 'PENDING' ? (
-                  <>
-                    <Button size="sm" onClick={() => reply(message.id, 'INTERESTED')} disabled={isResponding}>
-                      Interested
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={() => reply(message.id, 'NOT_INTERESTED')} disabled={isResponding}>
-                      Not interested
-                    </Button>
-                  </>
-                ) : (
-                  <Badge variant={message.responseType === 'INTERESTED' ? 'verified' : 'neutral'}>
-                    {message.responseType === 'INTERESTED' ? 'You replied: Interested' : 'You replied: Not interested'}
-                  </Badge>
-                )}
-                <span className="ml-auto text-xs text-subtle">{formatDate(message.sentAt)}</span>
-              </div>
-            </Card>
-          ))}
-        </section>
-      )}
+      <Section title="Recruiter messages" description="Outreach from recruiters who matched your profile.">
+        <QueryBoundary
+          query={messagesQuery}
+          skeleton={<ListSkeleton rows={2} />}
+          errorTitle="Couldn't load your messages"
+          headingLevel={3}
+          empty={
+            <EmptyState
+              icon={MailOpen}
+              headingLevel={3}
+              title="No messages yet"
+              description={
+                discoverable
+                  ? 'Recruiters who match you will reach out here.'
+                  : 'Turn on discovery above so recruiters can reach you.'
+              }
+            />
+          }
+        >
+          {(received) => (
+            <div className="flex flex-col gap-3">
+              {received.map((message) => (
+                <Card key={message.id} className="flex flex-col gap-2 p-4">
+                  <div className="flex items-center gap-2">
+                    <Mail className="size-4 shrink-0 text-seal" />
+                    <p className="text-label font-semibold text-foreground">{message.subject}</p>
+                    <span className="tnum ml-auto text-label text-subtle">{formatDate(message.sentAt)}</span>
+                  </div>
+                  <p className="text-label text-muted-foreground">
+                    {message.recruiterName} · {message.organizationName}
+                    {message.jobTitle ? ` · ${message.jobTitle}` : ''}
+                  </p>
+                  <p className="text-body text-foreground">{message.body}</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    {message.responseType === 'PENDING' ? (
+                      <>
+                        <Button size="sm" onClick={() => reply(message.id, 'INTERESTED')} disabled={isResponding}>
+                          I'm interested
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => reply(message.id, 'NOT_INTERESTED')}
+                          disabled={isResponding}
+                        >
+                          Not interested
+                        </Button>
+                      </>
+                    ) : (
+                      <Badge variant={message.responseType === 'INTERESTED' ? 'verified' : 'neutral'}>
+                        {message.responseType === 'INTERESTED'
+                          ? 'You replied: interested'
+                          : 'You replied: not interested'}
+                      </Badge>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </QueryBoundary>
+      </Section>
     </div>
   )
 }

@@ -1,9 +1,24 @@
+import pytest
+
 from app import ranking
 from app.schemas import Candidate
 
 
-def test_weighted_sum_fallback_reconciles_to_match_score():
-    # load_model() is never called here, so _model stays None (its module default) -  this is the transparent weighted-sum path, independent of whether lightgbm happens to be installed in the current environment.
+@pytest.fixture
+def weighted_sum_path():
+    # ranking keeps the trained model in module-level globals, so any earlier test that
+    # boots the app (test_main.py) calls load_model() and leaves _model populated —
+    # which silently moves this test off the fallback path it is asserting. Force the
+    # globals to their defaults and restore them so the test is order-independent.
+    model, version = ranking._model, ranking._version
+    ranking._model, ranking._version = None, "weighted-sum-0.1.0"
+    yield
+    ranking._model, ranking._version = model, version
+
+
+def test_weighted_sum_fallback_reconciles_to_match_score(weighted_sum_path):
+    # _model is None here, so this exercises the transparent weighted-sum path,
+    # independent of whether lightgbm is installed in the current environment.
     candidate = Candidate(
         holder_id="abc",
         skills=["python", "react"],

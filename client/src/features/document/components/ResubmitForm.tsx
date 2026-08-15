@@ -52,7 +52,7 @@ export function ResubmitForm({ document }: Props) {
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5">
             <FormField
               control={form.control}
               name="type"

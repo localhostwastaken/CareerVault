@@ -46,6 +46,17 @@ export const authApi = APISlice.injectEndpoints({
       query: (body) => ({ url: '/auth/verify-magic-link', method: 'POST', body }),
       invalidatesTags: ['Auth'],
     }),
+    // Ask for a password-reset email. Like the magic link, the server always
+    // returns 200 with an opaque message so the response can't be used to probe
+    // which addresses have accounts.
+    forgotPassword: builder.mutation<{ message: string }, { email: string }>({
+      query: (body) => ({ url: '/auth/forgot-password', method: 'POST', body }),
+    }),
+    // Consume a reset token from the emailed link and set the new password. The
+    // token is single-use and short-lived, so failures are expected and surfaced.
+    resetPassword: builder.mutation<{ message: string }, { token: string; password: string }>({
+      query: (body) => ({ url: '/auth/reset-password', method: 'POST', body }),
+    }),
     // Set an initial password for passwordless users (R9: created via member-add).
     setPassword: builder.mutation<AuthUser, { password: string }>({
       query: (body) => ({ url: '/auth/set-password', method: 'POST', body }),
@@ -73,6 +84,8 @@ export const {
   useDeleteAccountMutation,
   useRequestMagicLinkMutation,
   useVerifyMagicLinkMutation,
+  useForgotPasswordMutation,
+  useResetPasswordMutation,
   useSetPasswordMutation,
   useChangePasswordMutation,
   useRefreshMutation,

@@ -2,18 +2,27 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { OrgOnboarding } from '@/features/organization/components/OrgOnboarding'
 import { OrgSettings } from '@/features/organization/components/OrgSettings'
 import { useAuth } from '@/hooks/useAuth'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
 const AdminOrganization = () => {
-  const { activeOrgId, role: activeRole } = useAuth()
-  const isAdmin = activeRole === 'ORG_ADMIN'
+  useDocumentTitle('Organization')
+  const { activeOrgId, role } = useAuth()
+  // Unaffiliated users reach this route to create their first org; members manage
+  // the existing one. Same route, two entirely different jobs.
+  const hasOrg = role === 'ORG_ADMIN' && Boolean(activeOrgId)
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-8">
       <PageHeader
-        title="Organization"
-        description={isAdmin && activeOrgId ? 'Manage your organization and domain verification.' : 'Set up your organization to start issuing documents.'}
+        eyebrow="Admin console"
+        title={hasOrg ? 'Organization' : 'Set up your organization'}
+        description={
+          hasOrg
+            ? 'Your organisation profile and domain verification.'
+            : 'Create your organisation and prove your domain to start issuing verified documents.'
+        }
       />
-      {isAdmin && activeOrgId ? <OrgSettings orgId={activeOrgId} /> : <OrgOnboarding />}
+      {hasOrg && activeOrgId ? <OrgSettings orgId={activeOrgId} /> : <OrgOnboarding />}
     </div>
   )
 }

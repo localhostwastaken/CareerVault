@@ -3,12 +3,29 @@ import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolk
 import apiConfig from '../config/APIEndpoints'
 import type { RootState } from '../store'
 
+const CSRF_COOKIE = 'cv_csrf'
+
+// Reads the non-httpOnly cv_csrf cookie the API sets alongside the refresh
+// cookie, so we can echo it back for the double-submit CSRF check.
+function readCsrfToken(): string | undefined {
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${CSRF_COOKIE}=([^;]*)`),
+  )
+  return match ? decodeURIComponent(match[1]) : undefined
+}
+
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: apiConfig.getEndpoint(),
   credentials: 'include',
-  prepareHeaders: (headers, { getState }) => {
+  prepareHeaders: (headers, { getState, type }) => {
     const token = (getState() as RootState).auth.token
     if (token) headers.set('Authorization', `Bearer ${token}`)
+    // Attach the CSRF token on mutations (refresh/logout are cookie-authed and
+    // cross-site in prod); the server matches it against the cv_csrf cookie.
+    if (type === 'mutation') {
+      const csrf = readCsrfToken()
+      if (csrf) headers.set('x-csrf-token', csrf)
+    }
     return headers
   },
 })

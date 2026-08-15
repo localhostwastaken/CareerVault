@@ -6,10 +6,20 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { KeyManagementService } from '../../services/key-management/key-management.service.js';
 import { BlockchainService } from '../../services/blockchain/blockchain.service.js';
-import { generateSalt, hashDocument } from '../../common/utils/crypto.util.js';
+import {
+  generateSalt,
+  hashDocument,
+  signingStatementHash,
+} from '../../common/utils/crypto.util.js';
+import {
+  makeReferenceNumber,
+  validateAndNormalizeSubject,
+} from './content-validation.js';
+import { stampSignerIdentity } from './signer-identity.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type {
@@ -30,17 +40,24 @@ import type { RevokeDocumentDto } from './dto/revoke-document.dto.js';
 import type { SignDocumentDto } from './dto/sign-document.dto.js';
 import type { UpdateDraftDto } from './dto/update-draft.dto.js';
 
-// Single source for the relations every presented document needs. Signer/approver
-// names let each portal show "who signed / who approved" without extra round-trips.
-const DOCUMENT_INCLUDE = {
+type PresentedDocument = Prisma.DocumentGetPayload<{
+  include: {
+    organization: { select: { name: true } };
+    holder: { select: { fullName: true; email: true } };
+    signerMember: { select: { user: { select: { fullName: true } } } };
+    approverMember: { select: { user: { select: { fullName: true } } } };
+  };
+}>;
+
+// Single source for the relations every presented document needs: every read path must
+// select these or toPublic cannot name the people involved. Signer/approver names let
+// each portal show "who signed / who approved" without extra round-trips.
+const PRESENT_INCLUDE = {
   organization: { select: { name: true } },
   holder: { select: { fullName: true, email: true } },
-  signerMember: { include: { user: { select: { fullName: true } } } },
-  approverMember: { include: { user: { select: { fullName: true } } } },
-} satisfies Prisma.DocumentInclude;
-type PresentedDocument = Prisma.DocumentGetPayload<{
-  include: typeof DOCUMENT_INCLUDE;
-}>;
+  signerMember: { select: { user: { select: { fullName: true } } } },
+  approverMember: { select: { user: { select: { fullName: true } } } },
+} as const;
 
 @Injectable()
 export class DocumentService {
@@ -92,10 +109,10 @@ export class DocumentService {
   async updateDraft(id: string, actor: AuthenticatedUser, dto: UpdateDraftDto) {
     const doc = await this.getOrThrow(id);
     this.assertStatus(doc.status, ['REQUESTED', 'DRAFT']);
-    // The assigned manager or ORG_ADMIN can edit drafts. The holder can also edit
+    // Only a MANAGER of the owning org may edit a draft. The holder can also edit
     // their own REQUESTED document (e.g. after a manager returned it for revision).
     if (doc.holderId !== actor.id) {
-      await this.requireMember(actor.id, doc.organizationId, ['MANAGER', 'ORG_ADMIN']);
+      await this.requireMember(actor.id, doc.organizationId, ['MANAGER']);
     }
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.document.update({
@@ -121,20 +138,19 @@ export class DocumentService {
 
   // Manager signs: compute salt + hash (R4) and sign the hash with the org key (R3).
   // Accepts REQUESTED (first-time: drafting and signing in one step) or DRAFT
-  // (already drafted, just signing). Only the manager assigned at request time may
-  // sign; ORG_ADMIN can override.
+  // (already drafted, just signing). Only the manager ASSIGNED at request time may
+  // sign — there is no admin override, because the signature attests to who vouched
+  // for the holder. Reassignment is an explicit action, not a side effect of signing.
   async sign(id: string, actor: AuthenticatedUser, dto: SignDocumentDto) {
     const doc = await this.getOrThrow(id);
     this.assertStatus(doc.status, ['REQUESTED', 'DRAFT']);
 
     const member = await this.requireMember(actor.id, doc.organizationId, [
       'MANAGER',
-      'ORG_ADMIN',
     ]);
 
-    // Enforce that the signer is the manager assigned at request time. ORG_ADMIN
-    // may override a stale assignment (e.g. original manager left the org).
-    if (member.role !== 'ORG_ADMIN' && doc.signerMemberId !== member.id) {
+    // Enforce that the signer is the manager assigned at request time.
+    if (doc.signerMemberId !== member.id) {
       throw new ForbiddenException(
         'Only the assigned manager can sign this document',
       );
@@ -145,31 +161,77 @@ export class DocumentService {
     });
     const kmsKeyId = await this.ensureOrgKey(org);
 
+    // Server-authoritative content: validate + normalize the subject per document type
+    // (closes the @IsObject() hole) and store the FLAT subject as contentJson so the
+    // exported credential's credentialSubject is single-level and the hash reconciles.
+    const now = new Date();
+    const subject = await validateAndNormalizeSubject(
+      doc.type,
+      dto.contentJson,
+      {
+        issueDate: now.toISOString().slice(0, 10),
+        referenceNumber: makeReferenceNumber(
+          doc.type,
+          org.name,
+          now,
+          randomBytes(3).toString('hex').toUpperCase(),
+        ),
+      },
+    );
+
+    // The signer's own identity is stamped from the authenticated session, never taken
+    // from the request body. A manager signs as THEMSELVES: without this, whoever holds
+    // the assigned-manager membership could type a colleague's name and email into the
+    // recommender/signatory fields and issue a document attributed to that person.
+    stampSignerIdentity(doc.type, subject, actor);
+
     const salt = generateSalt();
-    const documentHash = hashDocument(dto.contentJson, salt);
-    const managerSignature = await this.kms.sign(kmsKeyId, documentHash);
+    const documentHash = hashDocument(subject, salt);
+    // C1: the manager signs a role- and identity-bound statement over the hash, not the
+    // bare hash — so this signature is cryptographically distinct from HR's co-signature
+    // and binds separation of duties (verified in VerificationService).
+    const managerSignature = await this.kms.sign(
+      kmsKeyId,
+      signingStatementHash(documentHash, 'MANAGER', member.id),
+    );
 
     await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.document.update({
-        where: { id },
+      // Status-guarded write: two concurrent signs would both pass the assertStatus
+      // read above, so the transition itself re-checks the status under the row lock.
+      const claimed = await tx.document.updateMany({
+        where: { id, status: { in: ['REQUESTED', 'DRAFT'] } },
         data: {
-          contentJson: dto.contentJson as Prisma.InputJsonObject,
+          contentJson: subject as Prisma.InputJsonObject,
           salt,
           documentHash,
           managerSignature,
           signerMemberId: member.id,
           status: 'PENDING_HR',
+          version: { increment: 1 },
         },
+      });
+      if (claimed.count === 0) {
+        throw new ConflictException(
+          'This document was modified by someone else — reload and try again',
+        );
+      }
+      const updated = await tx.document.findUniqueOrThrow({
+        where: { id },
+        select: { version: true },
       });
       await tx.documentVersion.create({
         data: {
           documentId: id,
           versionNumber: updated.version,
-          contentJson: dto.contentJson as Prisma.InputJsonObject,
+          contentJson: subject as Prisma.InputJsonObject,
           changedById: actor.id,
           changeSummary: 'Signed by manager',
         },
       });
+    });
+    await this.audit(actor.id, 'DOCUMENT_SIGNED', id, 'COMPLIANCE', {
+      documentHash,
+      signerMemberId: member.id,
     });
     await this.notifyOrgRole(
       doc.organizationId,
@@ -189,7 +251,6 @@ export class DocumentService {
     this.assertStatus(doc.status, ['PENDING_HR']);
     const member = await this.requireMember(actor.id, doc.organizationId, [
       'HR',
-      'ORG_ADMIN',
     ]);
 
     // Guard: a document must carry a valid manager signature before HR can approve.
@@ -202,14 +263,13 @@ export class DocumentService {
       throw new ConflictException('Document is not ready for approval');
 
     // Dual-signature: the manager who signed must not also approve (separation of
-    // duties). ORG_ADMIN members who sign can still approve if they also hold an HR
-    // role, but they must use a different membership for each action.
+    // duties). Signing requires MANAGER and approving requires HR, so this only bites
+    // a person who holds both memberships — they may do one step, never both.
     if (doc.signerMemberId) {
-      const signerMembership =
-        await this.prisma.organizationMember.findUnique({
-          where: { id: doc.signerMemberId },
-          select: { userId: true },
-        });
+      const signerMembership = await this.prisma.organizationMember.findUnique({
+        where: { id: doc.signerMemberId },
+        select: { userId: true },
+      });
       if (signerMembership && signerMembership.userId === actor.id) {
         throw new ConflictException(
           'The manager who signed cannot also approve this document',
@@ -222,14 +282,21 @@ export class DocumentService {
     });
     const kmsKeyId = await this.ensureOrgKey(org);
 
-    const hrSignature = await this.kms.sign(kmsKeyId, doc.documentHash);
+    // C1: HR co-signs a DISTINCT statement bound to the HR role and this approver's
+    // membership, so managerSignature !== hrSignature and the dual-signature is real.
+    const hrSignature = await this.kms.sign(
+      kmsKeyId,
+      signingStatementHash(doc.documentHash, 'HR', member.id),
+    );
     const expiresAt =
       doc.type === 'LETTER_OF_RECOMMENDATION'
         ? null
         : new Date(Date.now() + EXPIRY_DAYS * 86_400_000);
     await this.prisma.$transaction(async (tx) => {
-      await tx.document.update({
-        where: { id },
+      // Status-guarded: without this, two concurrent approvals both pass the read-time
+      // assertStatus and the document is issued twice.
+      const claimed = await tx.document.updateMany({
+        where: { id, status: 'PENDING_HR' },
         data: {
           hrSignature,
           approverMemberId: member.id,
@@ -238,6 +305,11 @@ export class DocumentService {
           expiresAt,
         },
       });
+      if (claimed.count === 0) {
+        throw new ConflictException(
+          'This document is no longer pending approval — reload and try again',
+        );
+      }
       await tx.documentVersion.create({
         data: {
           documentId: id,
@@ -249,6 +321,10 @@ export class DocumentService {
             : 'Approved by HR',
         },
       });
+    });
+    await this.audit(actor.id, 'DOCUMENT_ISSUED', id, 'COMPLIANCE', {
+      approverMemberId: member.id,
+      documentHash: doc.documentHash,
     });
 
     const pdfUrl = await this.pdf.generateAndStore(
@@ -286,17 +362,25 @@ export class DocumentService {
   async reject(id: string, actor: AuthenticatedUser, dto: RejectDocumentDto) {
     const doc = await this.getOrThrow(id);
     this.assertStatus(doc.status, ['PENDING_HR']);
-    await this.requireMember(actor.id, doc.organizationId, ['HR', 'ORG_ADMIN']);
+    await this.requireMember(actor.id, doc.organizationId, ['HR']);
     // Returning to DRAFT also clears the signed crypto fields: a draft is unsigned, and
     // this stops a rejected draft's stale hash from resolving on public verification.
-    await this.prisma.document.update({
-      where: { id },
+    const claimed = await this.prisma.document.updateMany({
+      where: { id, status: 'PENDING_HR' },
       data: {
         status: 'DRAFT',
         documentHash: null,
         salt: null,
         managerSignature: null,
       },
+    });
+    if (claimed.count === 0) {
+      throw new ConflictException(
+        'This document is no longer pending approval — reload and try again',
+      );
+    }
+    await this.audit(actor.id, 'DOCUMENT_REJECTED', id, 'STANDARD', {
+      reason: dto.reason,
     });
     if (doc.signerMemberId) {
       const signer = await this.prisma.organizationMember.findUnique({
@@ -320,17 +404,34 @@ export class DocumentService {
     this.assertStatus(doc.status, ['ISSUED', 'ANCHORED']);
     const member = await this.requireMember(actor.id, doc.organizationId, [
       'HR',
-      'ORG_ADMIN',
     ]);
-    await this.prisma.document.update({
-      where: { id },
-      data: {
-        status: 'REVOKED',
-        revokedAt: new Date(),
-        revokedById: member.id,
-        revocationReasonCode: dto.code,
-        revocationReasonText: dto.reason,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.document.updateMany({
+        where: { id, status: { in: ['ISSUED', 'ANCHORED'] } },
+        data: {
+          status: 'REVOKED',
+          revokedAt: new Date(),
+          revokedById: member.id,
+          revocationReasonCode: dto.code,
+          revocationReasonText: dto.reason,
+        },
+      });
+      if (claimed.count === 0) {
+        throw new ConflictException(
+          'This document is no longer active — reload and try again',
+        );
+      }
+      // Revocation must also kill outstanding access: a revoked document's share links
+      // would otherwise keep resolving for anyone already holding the URL.
+      await tx.sharedLink.updateMany({
+        where: { documentId: id, isActive: true },
+        data: { isActive: false },
+      });
+    });
+    await this.audit(actor.id, 'DOCUMENT_REVOKED', id, 'COMPLIANCE', {
+      code: dto.code,
+      reason: dto.reason,
+      revokedByMemberId: member.id,
     });
     // DB status is authoritative (R7); the on-chain flag is a secondary tamper-evident
     // trail, so a chain failure must not block the revocation.
@@ -351,7 +452,11 @@ export class DocumentService {
   // Holder edits and resubmits a returned/pending request. Re-assigns the signer
   // if a new manager is selected, auto-assigns otherwise, clears the returned flag,
   // and notifies the manager.
-  async resubmitRequest(id: string, actor: AuthenticatedUser, dto: ResubmitRequestDto) {
+  async resubmitRequest(
+    id: string,
+    actor: AuthenticatedUser,
+    dto: ResubmitRequestDto,
+  ) {
     const doc = await this.getOrThrow(id);
     if (doc.holderId !== actor.id) {
       throw new ForbiddenException('Only the holder can resubmit this request');
@@ -360,17 +465,30 @@ export class DocumentService {
     let signerMemberId: string | null = null;
     if (dto.managerUserId) {
       const signer = await this.prisma.organizationMember.findFirst({
-        where: { userId: dto.managerUserId, organizationId: doc.organizationId, role: 'MANAGER', isActive: true },
+        where: {
+          userId: dto.managerUserId,
+          organizationId: doc.organizationId,
+          role: 'MANAGER',
+          isActive: true,
+        },
       });
-      if (!signer) throw new NotFoundException('Selected manager is not available');
+      if (!signer)
+        throw new NotFoundException('Selected manager is not available');
       signerMemberId = signer.id;
     } else {
       // Auto-assign a manager — same logic as the initial request.
       const anyManager = await this.prisma.organizationMember.findFirst({
-        where: { organizationId: doc.organizationId, role: 'MANAGER', isActive: true },
+        where: {
+          organizationId: doc.organizationId,
+          role: 'MANAGER',
+          isActive: true,
+        },
         orderBy: { joinedAt: 'desc' },
       });
-      if (!anyManager) throw new UnprocessableEntityException('No managers available at this organization');
+      if (!anyManager)
+        throw new UnprocessableEntityException(
+          'No managers available at this organization',
+        );
       signerMemberId = anyManager.id;
     }
     await this.prisma.document.update({
@@ -386,8 +504,16 @@ export class DocumentService {
       },
     });
     if (signerMemberId) {
-      const signer = await this.prisma.organizationMember.findUniqueOrThrow({ where: { id: signerMemberId }, select: { userId: true } });
-      await this.notifyUser(signer.userId, 'DOCUMENT_REQUESTED', 'Request resubmitted', `${actor.fullName} resubmitted a ${TYPE_LABEL[doc.type]} request for ${doc.organizationId ? (await this.prisma.organization.findUniqueOrThrow({ where: { id: doc.organizationId }, select: { name: true } })).name : 'your organization'}.`);
+      const signer = await this.prisma.organizationMember.findUniqueOrThrow({
+        where: { id: signerMemberId },
+        select: { userId: true },
+      });
+      await this.notifyUser(
+        signer.userId,
+        'DOCUMENT_REQUESTED',
+        'Request resubmitted',
+        `${actor.fullName} resubmitted a ${TYPE_LABEL[doc.type]} request for ${doc.organizationId ? (await this.prisma.organization.findUniqueOrThrow({ where: { id: doc.organizationId }, select: { name: true } })).name : 'your organization'}.`,
+      );
     }
     return this.present(id);
   }
@@ -407,18 +533,24 @@ export class DocumentService {
   // Manager returns a request to the holder for revision (mirrors HR reject).
   // Transitions REQUESTED/DRAFT back to REQUESTED and notifies the holder with
   // the reason so they can fix and resubmit.
-  async returnByManager(id: string, actor: AuthenticatedUser, dto: RejectDocumentDto) {
+  async returnByManager(
+    id: string,
+    actor: AuthenticatedUser,
+    dto: RejectDocumentDto,
+  ) {
     const doc = await this.getOrThrow(id);
     this.assertStatus(doc.status, ['REQUESTED', 'DRAFT']);
     // Must be the assigned signer for this document.
-    await this.requireMember(actor.id, doc.organizationId, ['MANAGER', 'ORG_ADMIN']);
+    await this.requireMember(actor.id, doc.organizationId, ['MANAGER']);
     if (doc.signerMemberId) {
       const assigned = await this.prisma.organizationMember.findUnique({
         where: { id: doc.signerMemberId },
         select: { userId: true },
       });
       if (assigned && assigned.userId !== actor.id) {
-        throw new ForbiddenException('Only the assigned manager can return this request');
+        throw new ForbiddenException(
+          'Only the assigned manager can return this request',
+        );
       }
     }
     await this.prisma.document.update({
@@ -426,7 +558,10 @@ export class DocumentService {
       data: {
         status: 'REQUESTED',
         signerMemberId: null,
-        contentJson: { note: dto.reason, returnedByManager: true } as Prisma.InputJsonObject,
+        contentJson: {
+          note: dto.reason,
+          returnedByManager: true,
+        } as Prisma.InputJsonObject,
       },
     });
     await this.notifyUser(
@@ -508,13 +643,19 @@ export class DocumentService {
       // The exact value the hash is computed over (see proof.documentHash).
       credentialSubject: doc.contentJson,
       proof: {
-        type: 'CareerVaultIntegrityProof2024',
+        type: 'CareerVaultDualSignature2026',
         hashAlgorithm: 'SHA-256',
         canonicalization: 'JCS (RFC 8785)',
-        // The fix: the salt is embedded so the hash is reproducible without our DB.
+        // The salt is embedded so the hash is reproducible without our DB.
         salt: doc.salt,
         documentHash: doc.documentHash,
         signatureAlgorithm: 'RS256',
+        // C1: each RS256 signature is over sha256(JCS({v:1, documentHash, role, memberId})),
+        // binding the signer's role + membership so the two co-signatures are distinct.
+        statementScheme:
+          'RS256 over sha256(JCS({ v: 1, documentHash, role, memberId }))',
+        signerMemberId: doc.signerMemberId,
+        approverMemberId: doc.approverMemberId,
         managerSignature: doc.managerSignature,
         hrSignature: doc.hrSignature,
       },
@@ -529,10 +670,13 @@ export class DocumentService {
           : null,
       verificationInstructions:
         'Recompute SHA-256( JCS(credentialSubject) + proof.salt ) and confirm it equals ' +
-        'proof.documentHash. Verify proof.managerSignature and proof.hrSignature (RS256) ' +
-        'over proof.documentHash using issuer.publicKeyPem. If anchor is present, confirm ' +
-        'the Merkle proofPath reconciles to anchor.merkleRoot and that the root is recorded ' +
-        'on-chain at anchor.txHash.',
+        'proof.documentHash. For each co-signature, recompute the statement ' +
+        's = SHA-256( JCS({ v:1, documentHash: proof.documentHash, role, memberId }) ) using ' +
+        'role="MANAGER", memberId=proof.signerMemberId for proof.managerSignature, and ' +
+        'role="HR", memberId=proof.approverMemberId for proof.hrSignature; then verify each ' +
+        'RS256 signature over its statement using issuer.publicKeyPem. If anchor is present, ' +
+        'confirm the Merkle proofPath reconciles to anchor.merkleRoot and that the root is ' +
+        'recorded on-chain at anchor.txHash.',
     };
   }
 
@@ -550,12 +694,14 @@ export class DocumentService {
       (m) => m.organizationId === doc.organizationId,
     );
     if (membership) {
-      if (
-        membership.role === 'HR' ||
-        membership.role === 'ORG_ADMIN' ||
-        membership.role === 'RECRUITER'
-      )
-        return;
+      // E1: RECRUITER is intentionally NOT here. A recruiter has ZERO ambient access to
+      // org documents (that leaked every colleague's salary proof). Recruiters read a
+      // candidate's documents only via an explicit, consent-gated share link the
+      // applicant grants — resolved through the public verify-by-token path, not here.
+      // ORG_ADMIN keeps READ visibility of the org's documents (oversight, and it
+      // already has analytics + the audit log). It has no write powers here: signing
+      // requires MANAGER and approving/revoking requires HR, enforced above.
+      if (membership.role === 'HR' || membership.role === 'ORG_ADMIN') return;
       if (membership.role === 'MANAGER' && doc.signerMemberId) {
         const member = await this.prisma.organizationMember.findFirst({
           where: {
@@ -583,13 +729,14 @@ export class DocumentService {
     }
     for (const m of memberships) {
       // ORG_ADMIN and HR share the same org-scoped document view, so passing
-      // either role matches both memberships.
+      // either role matches both memberships. RECRUITER is excluded — see E1 note in
+      // assertCanView: recruiters get no ambient document list.
       if (query.role) {
-        const orgRoles: string[] = ['HR', 'ORG_ADMIN', 'RECRUITER'];
+        const orgRoles: string[] = ['HR', 'ORG_ADMIN'];
         const allowed = orgRoles.includes(query.role) ? orgRoles : [query.role];
         if (!allowed.includes(m.role)) continue;
       }
-      if (m.role === 'HR' || m.role === 'ORG_ADMIN' || m.role === 'RECRUITER') {
+      if (m.role === 'HR' || m.role === 'ORG_ADMIN') {
         or.push({ organizationId: m.organizationId });
       } else if (m.role === 'MANAGER') {
         or.push({ signerMemberId: m.id });
@@ -611,7 +758,7 @@ export class DocumentService {
         orderBy: { createdAt: 'desc' },
         skip: query.skip,
         take: query.limit,
-        include: DOCUMENT_INCLUDE,
+        include: PRESENT_INCLUDE,
       }),
       this.prisma.document.count({ where }),
     ]);
@@ -665,18 +812,14 @@ export class DocumentService {
   ): Promise<ReturnType<DocumentService['toPublic']>> {
     const doc = await this.prisma.document.findUnique({
       where: { id },
-      include: DOCUMENT_INCLUDE,
+      include: PRESENT_INCLUDE,
     });
     if (!doc) throw new NotFoundException('Document not found');
     return this.toPublic(doc);
   }
 
   // Public: reused by BulkIssuanceService to verify the initiating HR member.
-  async requireMember(
-    userId: string,
-    orgId: string,
-    roles: MemberRole[],
-  ) {
+  async requireMember(userId: string, orgId: string, roles: MemberRole[]) {
     const member = await this.prisma.organizationMember.findFirst({
       where: {
         userId,
@@ -707,6 +850,35 @@ export class DocumentService {
       data: { kmsKeyId, publicKeyPem },
     });
     return kmsKeyId;
+  }
+
+  // Lifecycle audit trail. Issuance/revocation are COMPLIANCE-tier (7-year retention);
+  // routine edits are STANDARD (purged at 90 days by the retention cron). Best-effort:
+  // an audit write must never fail the business transaction it records.
+  private async audit(
+    actorId: string,
+    action: string,
+    documentId: string,
+    retentionTier: 'STANDARD' | 'COMPLIANCE',
+    newValue?: Prisma.InputJsonValue,
+  ): Promise<void> {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId,
+          actorType: 'USER',
+          action,
+          entityType: 'DOCUMENT',
+          entityId: documentId,
+          retentionTier,
+          ...(newValue === undefined ? {} : { newValue }),
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Audit write failed for ${action} ${documentId}: ${String(error)}`,
+      );
+    }
   }
 
   private assertStatus(status: DocumentStatus, allowed: DocumentStatus[]) {
@@ -765,7 +937,6 @@ export class DocumentService {
       organizationId: doc.organizationId,
       organizationName: doc.organization.name,
       signerName: doc.signerMember?.user.fullName ?? null,
-      approverName: doc.approverMember?.user.fullName ?? null,
       contentJson: doc.contentJson,
       documentHash: doc.documentHash,
       version: doc.version,
@@ -776,6 +947,9 @@ export class DocumentService {
       revocationReasonText: doc.revocationReasonText,
       hasManagerSignature: Boolean(doc.managerSignature),
       hasHrSignature: Boolean(doc.hrSignature),
+      // Who the document is with. Null before assignment / before HR acts.
+      assignedManagerName: doc.signerMember?.user.fullName ?? null,
+      approverName: doc.approverMember?.user.fullName ?? null,
       merkleStatus:
         doc.status === 'ANCHORED'
           ? 'ANCHORED'
@@ -807,6 +981,9 @@ export interface VerifiableCredential {
     salt: string;
     documentHash: string;
     signatureAlgorithm: string;
+    statementScheme: string;
+    signerMemberId: string | null;
+    approverMemberId: string | null;
     managerSignature: string | null;
     hrSignature: string | null;
   };

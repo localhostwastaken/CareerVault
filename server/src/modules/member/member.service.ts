@@ -65,6 +65,9 @@ export class MemberService {
         },
       }));
 
+    // The (userId, organizationId, role) unique constraint also matches DEACTIVATED
+    // rows, so a plain create would 409 forever once someone is removed. Re-inviting a
+    // former member reactivates their existing row instead of dead-ending.
     const duplicate = await this.prisma.organizationMember.findUnique({
       where: {
         userId_organizationId_role: {
@@ -74,21 +77,31 @@ export class MemberService {
         },
       },
     });
-    if (duplicate)
+    if (duplicate?.isActive)
       throw new ConflictException(
         'User already holds this role in the organization',
       );
 
-    const member = await this.prisma.organizationMember.create({
-      data: {
-        userId: user.id,
-        organizationId: orgId,
-        role: dto.role,
-        corporateEmail: dto.email,
-        invitedAt: new Date(),
-      },
-      include: { user: { select: { email: true, fullName: true } } },
-    });
+    const member = duplicate
+      ? await this.prisma.organizationMember.update({
+          where: { id: duplicate.id },
+          data: {
+            isActive: true,
+            corporateEmail: dto.email,
+            invitedAt: new Date(),
+          },
+          include: { user: { select: { email: true, fullName: true } } },
+        })
+      : await this.prisma.organizationMember.create({
+          data: {
+            userId: user.id,
+            organizationId: orgId,
+            role: dto.role,
+            corporateEmail: dto.email,
+            invitedAt: new Date(),
+          },
+          include: { user: { select: { email: true, fullName: true } } },
+        });
 
     // R9: new users and existing passwordless users need a magic link to sign in.
     // Users who already have a password just get a notification that they were added.
@@ -122,6 +135,19 @@ export class MemberService {
       where: { id: memberId, organizationId: orgId },
     });
     if (!member) throw new NotFoundException('Member not found');
+    // Last-admin guard: there is no platform superadmin, so removing the only active
+    // ORG_ADMIN would orphan the organization permanently (no one could manage members,
+    // verify the domain, or recover it).
+    if (member.role === 'ORG_ADMIN' && member.isActive) {
+      const activeAdmins = await this.prisma.organizationMember.count({
+        where: { organizationId: orgId, role: 'ORG_ADMIN', isActive: true },
+      });
+      if (activeAdmins <= 1) {
+        throw new ConflictException(
+          'This is the last active administrator — promote another member to admin before removing this one',
+        );
+      }
+    }
     await this.prisma.organizationMember.update({
       where: { id: memberId },
       data: { isActive: false },

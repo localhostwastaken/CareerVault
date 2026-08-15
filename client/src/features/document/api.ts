@@ -11,7 +11,11 @@ import type {
 export const documentApi = APISlice.injectEndpoints({
   endpoints: (builder) => ({
     listDocuments: builder.query<DocumentDetail[], { status?: string; type?: string; role?: string } | void>({
-      query: (params) => ({ url: '/documents', params: params ?? undefined }),
+      // The endpoint paginates at limit=20 by default and APISlice drops `meta`, so
+      // without this the UI silently showed at most 20 documents while rendering
+      // totals, status-chip counts and "View all N" as if the list were complete.
+      // 100 is the server's @Max; beyond that these screens need real pagination.
+      query: (params) => ({ url: '/documents', params: { ...(params ?? {}), limit: 100 } }),
       providesTags: ['Document'],
     }),
     getDocument: builder.query<DocumentDetail, string>({

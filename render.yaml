@@ -20,6 +20,18 @@ services:
         value: 7d
       - key: AI_SERVICE_URL
         value: http://localhost:9910   # internal; same container
+      # ── Integration drivers ─────────────────────────────────────────────────
+      # ⚠  MOCKED IN THIS DEPLOY — the trust model (signed, domain-verified docs)
+      #    is only real when these are switched to their "real" values. Every
+      #    driver below is a LOCAL/MOCK impl. Boot logs a loud warning listing
+      #    each mock (see server/src/config/env.validation.ts). Flip the ones you
+      #    need to demo for real and set the matching secrets further down.
+      #      KEY_MANAGEMENT_DRIVER: local (Node RSA)   → aws     (AWS KMS)
+      #      BLOCKCHAIN_DRIVER:     local (in-memory)  → amoy    (Polygon Amoy)
+      #      PAYMENT_DRIVER:        mock  (free)       → stripe  (real billing)
+      #      EMAIL_DRIVER:          console (stdout)   → ses     (real email)
+      #      STORAGE_DRIVER:        local (disk)       → s3
+      #      DNS_DRIVER:            local (BYPASSED)   → real    (TXT-record check)
       - key: KEY_MANAGEMENT_DRIVER
         value: local
       - key: BLOCKCHAIN_DRIVER
@@ -29,6 +41,13 @@ services:
       - key: EMAIL_DRIVER
         value: console
       - key: STORAGE_DRIVER
+        value: local
+      # DNS_DRIVER=local BYPASSES domain verification: EVERY domain "verifies", so
+      # signed documents can be issued as ANY organization. This is the core trust
+      # control. Set to "real" for genuine DNS TXT-record checks — required before
+      # this deploy can be trusted. Left "local" here only because the seeded demo
+      # uses example domains nobody controls; boot logs a warning either way.
+      - key: DNS_DRIVER
         value: local
       - key: STORAGE_LOCAL_DIR
         value: /app/server/storage    # mount a Render disk here for persistence

@@ -1,33 +1,30 @@
 import { Link } from 'react-router-dom'
-import { Clock, FileText, Plus, Search, ShieldCheck } from 'lucide-react'
+import { Anchor, Clock, FileText, Plus, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { PageHeader } from '@/components/shared/PageHeader'
+import { QueryBoundary } from '@/components/shared/QueryBoundary'
+import { Section } from '@/components/shared/Section'
+import { ListSkeleton, StatCardsSkeleton } from '@/components/shared/Skeletons'
 import { StatCard } from '@/components/shared/StatCard'
 import { DocumentCard } from '@/features/document/components/DocumentCard'
+import { WalletOnboarding } from '@/features/document/components/WalletOnboarding'
 import { useListDocumentsQuery } from '@/features/document/api'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
 const IN_PROGRESS = ['REQUESTED', 'DRAFT', 'PENDING_HR']
-
-const STEPS = [
-  { icon: FileText, label: 'Request a document', detail: 'Choose an organization and document type.' },
-  { icon: ShieldCheck, label: 'Manager signs it', detail: 'Your organization verifies and signs the document.' },
-  { icon: Search, label: 'Share with verifiers', detail: 'Anyone can verify your documents via a secure link.' },
-]
+const RECENT_COUNT = 5
 
 const HolderWallet = () => {
-  const { data, isLoading } = useListDocumentsQuery({ role: 'HOLDER' })
-  const documents = data ?? []
-  const issued = documents.filter((d) => d.status === 'ISSUED' || d.status === 'ANCHORED').length
-  const pending = documents.filter((d) => IN_PROGRESS.includes(d.status)).length
-  const isNew = !isLoading && documents.length === 0
+  useDocumentTitle('Career wallet')
+  const query = useListDocumentsQuery({ role: 'HOLDER' })
 
   return (
-    <div className="space-y-8">
+    <div className="flex flex-col gap-8">
       <PageHeader
-        title="Career Wallet"
-        description="Your verified, tamper-evident career documents in one place."
+        eyebrow="Career wallet"
+        title="Your documents at a glance"
+        description="Verified, tamper-evident records of the work you've done."
         actions={
           <Button asChild>
             <Link to="/app/request">
@@ -38,71 +35,68 @@ const HolderWallet = () => {
         }
       />
 
-      {isNew && (
-        <Card className="border-primary/20 bg-primary/5 shadow-soft">
-          <CardContent className="py-6">
-            <h2 className="font-semibold text-foreground">Welcome to CareerVault</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Your career documents are cryptographically signed and verifiable — no more fake experience letters.
-              Here's how to get started:
-            </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              {STEPS.map((step, i) => (
-                <div key={step.label} className="flex gap-3 rounded-lg border bg-surface p-3">
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-                    {i + 1}
-                  </span>
-                  <div>
-                    <p className="text-sm font-medium">{step.label}</p>
-                    <p className="text-xs text-muted-foreground">{step.detail}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Total documents" value={documents.length} icon={FileText} />
-        <StatCard label="Issued" value={issued} icon={ShieldCheck} />
-        <StatCard label="In progress" value={pending} icon={Clock} />
-      </div>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground">Recent documents</h2>
-          {documents.length > 0 && (
-            <Link to="/app/documents" className="text-sm font-medium text-primary hover:underline">
-              View all
-            </Link>
-          )}
-        </div>
-
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : documents.length === 0 ? (
-          <EmptyState
-            icon={FileText}
-            title="No documents yet"
-            description="Request your first verified document from an organization you've worked with."
-            action={
-              <Button asChild>
-                <Link to="/app/request">
-                  <Plus />
-                  Request document
-                </Link>
-              </Button>
-            }
-          />
-        ) : (
-          <div className="space-y-3">
-            {documents.slice(0, 5).map((document) => (
-              <DocumentCard key={document.id} document={document} />
-            ))}
+      <QueryBoundary
+        query={query}
+        skeleton={
+          <div className="flex flex-col gap-8">
+            <StatCardsSkeleton />
+            <ListSkeleton rows={3} />
           </div>
-        )}
-      </section>
+        }
+        errorTitle="Couldn't load your wallet"
+        empty={<WalletOnboarding />}
+      >
+        {(documents) => {
+          const issued = documents.filter((d) => d.status === 'ISSUED' || d.status === 'ANCHORED').length
+          const anchored = documents.filter((d) => d.merkleStatus === 'ANCHORED').length
+          const pending = documents.filter((d) => IN_PROGRESS.includes(d.status)).length
+
+          return (
+            <div className="flex flex-col gap-8">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard label="Total documents" value={documents.length} icon={FileText} />
+                <StatCard label="Issued" value={issued} icon={ShieldCheck} tone="verified" />
+                <StatCard label="Anchored on-chain" value={anchored} icon={Anchor} tone="anchor" />
+                <StatCard
+                  label="In progress"
+                  value={pending}
+                  icon={Clock}
+                  tone={pending > 0 ? 'pending' : 'default'}
+                  hint={pending > 0 ? 'Waiting on your organisation' : 'Nothing pending'}
+                />
+              </div>
+
+              <Section
+                title="Recent documents"
+                actions={
+                  documents.length > RECENT_COUNT && (
+                    <Link
+                      to="/app/documents"
+                      className="focus-ring rounded text-label font-medium text-seal hover:underline"
+                    >
+                      View all {documents.length}
+                    </Link>
+                  )
+                }
+              >
+                <div className="flex flex-col gap-3">
+                  {documents.slice(0, RECENT_COUNT).map((document) => (
+                    <DocumentCard key={document.id} document={document} />
+                  ))}
+                </div>
+              </Section>
+
+              {issued === 0 && (
+                <EmptyState
+                  icon={ShieldCheck}
+                  title="Nothing to share yet"
+                  description="Once a document is issued you can generate a link that anyone can verify."
+                />
+              )}
+            </div>
+          )
+        }}
+      </QueryBoundary>
     </div>
   )
 }

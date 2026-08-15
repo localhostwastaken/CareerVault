@@ -72,10 +72,36 @@ cd contracts && npm install && npm test
 ```
 
 ## Verification & offline proof
-A document's authenticity is proven from its **W3C Verifiable Credential**, a standalone JSON-LD payload fetched from `GET /api/v1/documents/:id/credential`. That file embeds everything a third party needs to verify **offline, without CareerVault online**: the
-canonical `credentialSubject`, the `proof.salt` and `proof. documentHash` (R4: `SHA-256( JCS(content) ++ salt )`), the RS256 manager/HR signatures, the issuer's public key, and the Merkle proof once anchored.
+A document's authenticity is proven from its **Verifiable Credential**, a standalone JSON-LD payload fetched from `GET /api/v1/documents/:id/credential`. That file embeds everything a third party needs to verify **offline, without CareerVault online**: the
+canonical `credentialSubject`, the `proof.salt` and `proof.documentHash` (R4: `SHA-256( JCS(content) ++ salt )`), both RS256 co-signatures, the issuer's public key, and the Merkle proof once anchored.
 
-> The issued **PDF is a human-readable artifact only** — it shows the document hash in its footer but intentionally does **not** carry the JSON-LD or the salt in its metadata. The salt is kept out of the PDF so it stays portable through the credential file; never rely on PDF metadata for verification. (PDF metadata is used solely to stamp the Merkle anchor for archival once a root is on-chain.)
+**Dual signatures are two distinct cryptographic acts.** The manager and HR do *not* sign the bare
+document hash — that would produce two byte-identical RS256 signatures and prove nothing about who
+approved what. Each signs a role- and identity-bound statement:
+
+```
+statement = SHA-256( JCS({ v: 1, documentHash, role, memberId }) )
+```
+
+with `role: "MANAGER"` + `proof.signerMemberId` for `proof.managerSignature`, and `role: "HR"` +
+`proof.approverMemberId` for `proof.hrSignature`. Verification recomputes each statement and checks
+its RS256 signature against `issuer.publicKeyPem`, so separation of duties is cryptographically
+attested rather than merely recorded in a database column. `proof.statementScheme` in every
+credential documents this, and `verificationInstructions` spells out the full offline procedure.
+
+**Document content is server-validated per type** against India-first schemas (experience/relieving
+letter, salary certificate with a reconciling CTC breakdown in integer paise, recommender-bound
+letter of recommendation). The signed `credentialSubject` is a flat object; the server injects
+`schemaVersion`, `issueDate`, and `referenceNumber`, computes salary totals authoritatively, and
+normalizes the subject (dropping empty values) *before* hashing so the signed bytes are deterministic.
+
+**Public verification does not disclose private content.** An anonymous `GET /api/v1/verify/hash/:hash`
+proves a document is genuine, issued, and unrevoked while withholding salary figures, PAN/UAN, and —
+for salary certificates — the holder's name. A holder who deliberately shares a document via a share
+link opts into full disclosure for that link. A freshly issued document verifies as
+`VERIFIED_PENDING_ANCHOR` (valid, awaiting the daily Merkle batch) and becomes `VERIFIED` once anchored.
+
+> The issued **PDF is a human-readable artifact only** — it shows the document hash in its footer but intentionally does **not** carry the JSON-LD or the salt in its metadata. The salt is kept out of the PDF so it stays portable through the credential file; never rely on PDF metadata for verification. (PDF metadata is used solely to stamp the Merkle anchor for archival once a root is on-chain.) **Note:** this supersedes the older design-doc claim that a PDF alone is independently verifiable — the offline proof is the credential file, not the PDF.
 
 ## Demo accounts
 After `npm run db:seed`, sign in with password `Password123@`:

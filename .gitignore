@@ -12,6 +12,9 @@ desktop.ini
 !.vscode/extensions.json
 .idea/
 
+# Agentic Helpers
+graphify-out/
+
 # Dependencies / build output 
 node_modules/
 dist/

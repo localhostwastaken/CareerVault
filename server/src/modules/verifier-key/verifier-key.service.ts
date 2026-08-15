@@ -9,7 +9,12 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { sha256Hex } from '../../common/utils/crypto.util.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
 import type { VerifierKeyTier } from '../../generated/prisma/enums.js';
+import { VERIFIER_MONTHLY_REQUEST_CAP } from '../../config/verifier-rate-limits.constants.js';
 import type { CreateVerifierKeyDto } from './dto/create-verifier-key.dto.js';
+import type {
+  VerifierKeyCreatedResponse,
+  VerifierKeyResponse,
+} from './dto/verifier-key.response.js';
 
 const KEY_PREFIX = 'cv_';
 
@@ -18,7 +23,10 @@ const KEY_PREFIX = 'cv_';
 export class VerifierKeyService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(user: AuthenticatedUser, dto: CreateVerifierKeyDto) {
+  async create(
+    user: AuthenticatedUser,
+    dto: CreateVerifierKeyDto,
+  ): Promise<VerifierKeyCreatedResponse> {
     const subscription = await this.prisma.subscription.findFirst({
       where: {
         userId: user.id,
@@ -64,7 +72,7 @@ export class VerifierKeyService {
     return { ...this.toPublic(key), apiKey: raw };
   }
 
-  async list(user: AuthenticatedUser) {
+  async list(user: AuthenticatedUser): Promise<VerifierKeyResponse[]> {
     const keys = await this.prisma.verifierApiKey.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
@@ -72,7 +80,10 @@ export class VerifierKeyService {
     return keys.map((key) => this.toPublic(key));
   }
 
-  async revoke(user: AuthenticatedUser, id: string) {
+  async revoke(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<VerifierKeyResponse> {
     const key = await this.prisma.verifierApiKey.findUnique({ where: { id } });
     if (!key) throw new NotFoundException('API key not found');
     if (key.userId !== user.id) {
@@ -88,17 +99,23 @@ export class VerifierKeyService {
   private toPublic(key: {
     id: string;
     name: string | null;
-    tier: string;
+    tier: VerifierKeyTier;
     status: string;
+    monthlyUsageCount: number;
+    usageResetAt: Date | null;
     lastUsedAt: Date | null;
     expiresAt: Date | null;
     createdAt: Date;
-  }) {
+  }): VerifierKeyResponse {
     return {
       id: key.id,
       name: key.name,
       tier: key.tier,
       status: key.status,
+      // Lets the client show "X / cap this month" against the enforced R6 quota.
+      monthlyUsageCount: key.monthlyUsageCount,
+      monthlyRequestCap: VERIFIER_MONTHLY_REQUEST_CAP[key.tier],
+      usageResetAt: key.usageResetAt,
       lastUsedAt: key.lastUsedAt,
       expiresAt: key.expiresAt,
       createdAt: key.createdAt,

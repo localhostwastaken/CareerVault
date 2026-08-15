@@ -32,6 +32,10 @@ export interface DocumentDetail {
   revocationReasonText: string | null
   hasManagerSignature: boolean
   hasHrSignature: boolean
+  /** Manager the request is assigned to. Null until one is assigned. */
+  assignedManagerName: string | null
+  /** HR member who approved. Null until approval. */
+  approverName: string | null
   merkleStatus: 'PENDING_BATCH' | 'ANCHORED' | null
   renderedPdfUrl: string | null
   createdAt: string

@@ -1,40 +1,49 @@
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Loader2, WifiOff } from 'lucide-react'
+import { ArrowLeft, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/shared/EmptyState'
+import { ErrorState } from '@/components/shared/ErrorState'
 import { useVerifyByHashQuery, useVerifyByTokenQuery } from '@/features/verification/api'
 import { VerificationReport } from '@/features/verification/components/VerificationReport'
+import { VerifyingProgress } from '@/features/verification/components/VerifyingProgress'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
 const VerifyResult = () => {
   const { hash, token } = useParams()
   const hashQuery = useVerifyByHashQuery(hash ?? '', { skip: !hash })
   const tokenQuery = useVerifyByTokenQuery(token ?? '', { skip: !token })
-  const { data, isLoading, isError } = hash ? hashQuery : tokenQuery
+  const { data, isLoading, isError, error, refetch } = hash ? hashQuery : tokenQuery
+
+  useDocumentTitle(data ? `Verification — ${data.verdict.toLowerCase().replaceAll('_', ' ')}` : 'Verifying document')
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-10">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 mb-4">
-        <Link to="/verify">
-          <ArrowLeft />
-          Verify another
-        </Link>
-      </Button>
+    <div className="mx-auto max-w-2xl px-4 py-10 lg:px-8">
+      <div className="no-print mb-5 flex items-center justify-between gap-2">
+        <Button asChild variant="ghost" size="sm" className="-ml-2">
+          <Link to="/verify">
+            <ArrowLeft />
+            Verify another
+          </Link>
+        </Button>
+        {data && (
+          // Verification reports get filed and forwarded; the print stylesheet in
+          // globals.css strips chrome and expands link targets.
+          <Button variant="outline" size="sm" onClick={() => window.print()}>
+            <Printer />
+            Print
+          </Button>
+        )}
+      </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center gap-2 py-20 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-          Running verification…
-        </div>
+        <VerifyingProgress />
       ) : isError || !data ? (
-        <EmptyState
-          icon={WifiOff}
+        <ErrorState
+          // Replaces the whole report, verdict banner h1 included, so it carries the h1.
+          headingLevel={1}
           title="Verification unavailable"
-          description="We couldn't reach the verification service. Please try again."
-          action={
-            <Button asChild variant="secondary">
-              <Link to="/verify">Try again</Link>
-            </Button>
-          }
+          description="We couldn’t reach the verification service. This says nothing about the document itself — please try again."
+          error={error}
+          onRetry={refetch}
         />
       ) : (
         <VerificationReport result={data} />

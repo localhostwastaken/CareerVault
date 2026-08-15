@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
-import { FileText } from 'lucide-react'
+import { ChevronRight, FileText } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { StatusBadge } from '@/components/shared/StatusBadge'
+import { documentProgress } from '@/features/document/documentProgress'
 import { DOCUMENT_TYPE_LABEL, type DocumentDetail } from '@/features/document/types'
-import type { AppRole } from '@/features/auth/types'
 import { formatDate } from '@/lib/format'
 
 function isReturned(doc: DocumentDetail): boolean {
@@ -11,29 +11,43 @@ function isReturned(doc: DocumentDetail): boolean {
   return content?.returnedByManager === true
 }
 
-// `role` frames the card for the viewing persona: org actors (manager/HR/admin/recruiter)
-// need to see WHO each document is for; the holder sees which org it's from.
-export function DocumentCard({ document, role }: { document: DocumentDetail; role?: AppRole }) {
+interface DocumentCardProps {
+  document: DocumentDetail
+  /** Issuer queues care who the document is FOR; a holder's own wallet does not. */
+  showHolder?: boolean
+}
+
+export function DocumentCard({ document, showHolder = false }: DocumentCardProps) {
   const returned = isReturned(document)
-  const forOrgActor = role !== undefined && role !== 'HOLDER'
-  const date = formatDate(document.issuedAt ?? document.createdAt)
+  // Issuer queues read as a worklist ("For Jane Doe"); a wallet reads as provenance.
+  const subject = showHolder ? `For ${document.holderName}` : document.organizationName
+  const progress = documentProgress(document)
 
   return (
-    <Link to={`/app/documents/${document.id}`} className="block">
-      <Card className="flex items-center justify-between gap-4 p-4 transition-shadow hover:shadow-raised">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-            <FileText className="size-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate font-semibold text-foreground">{DOCUMENT_TYPE_LABEL[document.type]}</p>
-            <p className="truncate text-sm text-muted-foreground">
-              {forOrgActor ? `For ${document.holderName}` : document.organizationName} · {date}
-            </p>
-          </div>
+    <Card className="transition-colors hover:border-rule-strong hover:bg-surface-2/40">
+      {/* The whole row is the link, and it carries a focus ring — previously the
+          card was wrapped in a bare <Link> with no visible focus state at all. */}
+      <Link
+        to={`/app/documents/${document.id}`}
+        className="focus-ring flex items-center gap-4 p-4"
+        aria-label={`${DOCUMENT_TYPE_LABEL[document.type]} — ${subject}`}
+      >
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted-foreground">
+          <FileText className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-label font-semibold text-foreground">{DOCUMENT_TYPE_LABEL[document.type]}</p>
+          <p className="truncate text-label text-muted-foreground">
+            {subject}
+            <span className="text-subtle"> · </span>
+            <span className="tnum">{formatDate(document.issuedAt ?? document.createdAt)}</span>
+          </p>
+          {/* Who has it right now. Scanning a list should answer that without a click. */}
+          <p className="truncate text-label text-subtle">{progress.short}</p>
         </div>
         <StatusBadge status={returned ? 'DRAFT' : document.status} label={returned ? 'Returned' : undefined} />
-      </Card>
-    </Link>
+        <ChevronRight className="size-4 shrink-0 text-subtle" aria-hidden />
+      </Link>
+    </Card>
   )
 }

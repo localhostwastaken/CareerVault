@@ -10,7 +10,7 @@ const REVOCATION_LABEL: Record<RevocationCode, string> = {
   ISSUED_IN_ERROR: 'Issued in error',
 }
 
-type ActionKey = 'approve' | 'reject' | 'revoke' | 'delete' | 'return'
+type ActionKey = Exclude<ActionDialog, null>
 
 interface DocumentActionDialogsProps {
   dialog: ActionDialog
@@ -18,11 +18,13 @@ interface DocumentActionDialogsProps {
   reason: string
   onReasonChange: (value: string) => void
   code: RevocationCode
-  onCodeChange: (code: RevocationCode) => void
+  onCodeChange: (value: RevocationCode) => void
   handlers: Record<ActionKey, () => void>
   loading: Record<ActionKey, boolean>
 }
 
+// Presentational half of the action bar. Split out so DocumentActions stays under
+// the component cap and the confirmation copy is reviewable in one place.
 export function DocumentActionDialogs({
   dialog,
   onClose,
@@ -33,35 +35,103 @@ export function DocumentActionDialogs({
   handlers,
   loading,
 }: DocumentActionDialogsProps) {
-  const onOpenChange = (open: boolean) => {
+  const handleOpenChange = (open: boolean) => {
     if (!open) onClose()
   }
+
   return (
     <>
-      <ConfirmDialog open={dialog === 'return'} onOpenChange={onOpenChange} title="Return to holder" description="The holder will be notified and can edit the request before resubmitting." confirmLabel="Return" isLoading={loading.return} onConfirm={handlers.return}>
-        <Textarea value={reason} onChange={(e) => onReasonChange(e.target.value)} rows={3} placeholder="Why are you returning this request?" className="resize-none" />
+      <ConfirmDialog
+        open={dialog === 'return'}
+        onOpenChange={handleOpenChange}
+        title="Return to holder"
+        description="The holder is notified and can edit the request before resubmitting."
+        confirmLabel="Return request"
+        isLoading={loading.return}
+        onConfirm={handlers.return}
+      >
+        <Textarea
+          value={reason}
+          onChange={(event) => onReasonChange(event.target.value)}
+          rows={3}
+          placeholder="Why are you returning this request?"
+          className="resize-none"
+          aria-label="Reason for returning"
+        />
       </ConfirmDialog>
 
-      <ConfirmDialog open={dialog === 'delete'} onOpenChange={onOpenChange} title="Delete document" description="This permanently removes the document. It cannot be recovered." confirmLabel="Delete" isDestructive isLoading={loading.delete} onConfirm={handlers.delete} />
-
-      <ConfirmDialog open={dialog === 'approve'} onOpenChange={onOpenChange} title="Approve & issue" description="You'll co-sign this document and issue it to the holder. This generates the final PDF." confirmLabel="Approve & issue" isLoading={loading.approve} onConfirm={handlers.approve} />
-
-      <ConfirmDialog open={dialog === 'reject'} onOpenChange={onOpenChange} title="Return for revision" description="The signing manager is notified with your reason." confirmLabel="Return to signer" isLoading={loading.reject} onConfirm={handlers.reject}>
-        <Textarea value={reason} onChange={(e) => onReasonChange(e.target.value)} rows={3} placeholder="What needs changing?" className="resize-none" />
+      <ConfirmDialog
+        open={dialog === 'reject'}
+        onOpenChange={handleOpenChange}
+        title="Return for revision"
+        description="The signing manager is notified with your reason."
+        confirmLabel="Return to signer"
+        isLoading={loading.reject}
+        onConfirm={handlers.reject}
+      >
+        <Textarea
+          value={reason}
+          onChange={(event) => onReasonChange(event.target.value)}
+          rows={3}
+          placeholder="What needs changing?"
+          className="resize-none"
+          aria-label="What needs changing"
+        />
       </ConfirmDialog>
 
-      <ConfirmDialog open={dialog === 'revoke'} onOpenChange={onOpenChange} title="Revoke document" description="Verification will immediately show this document as revoked. This cannot be undone." confirmLabel="Revoke" isDestructive isLoading={loading.revoke} onConfirm={handlers.revoke}>
-        <div className="space-y-3">
-          <SelectNative value={code} onChange={(e) => onCodeChange(e.target.value as RevocationCode)}>
+      <ConfirmDialog
+        open={dialog === 'approve'}
+        onOpenChange={handleOpenChange}
+        title="Approve and issue"
+        description="You co-sign this document and issue it to the holder. This generates the final PDF and cannot be undone."
+        confirmLabel="Approve & issue"
+        isLoading={loading.approve}
+        onConfirm={handlers.approve}
+      />
+
+      <ConfirmDialog
+        open={dialog === 'revoke'}
+        onOpenChange={handleOpenChange}
+        title="Revoke this document"
+        description="Verification will immediately report this document as revoked. This cannot be undone."
+        confirmLabel="Revoke"
+        isDestructive
+        isLoading={loading.revoke}
+        onConfirm={handlers.revoke}
+      >
+        <div className="flex flex-col gap-3">
+          <SelectNative
+            value={code}
+            onChange={(event) => onCodeChange(event.target.value as RevocationCode)}
+            aria-label="Revocation reason"
+          >
             {Object.entries(REVOCATION_LABEL).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
             ))}
           </SelectNative>
-          <Textarea value={reason} onChange={(e) => onReasonChange(e.target.value)} rows={3} placeholder="Optional note for the holder" className="resize-none" />
+          <Textarea
+            value={reason}
+            onChange={(event) => onReasonChange(event.target.value)}
+            rows={3}
+            placeholder="Optional note for the holder"
+            className="resize-none"
+            aria-label="Note for the holder"
+          />
         </div>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={dialog === 'delete'}
+        onOpenChange={handleOpenChange}
+        title="Delete this document"
+        description="This permanently removes the document. It cannot be recovered."
+        confirmLabel="Delete"
+        isDestructive
+        isLoading={loading.delete}
+        onConfirm={handlers.delete}
+      />
     </>
   )
 }

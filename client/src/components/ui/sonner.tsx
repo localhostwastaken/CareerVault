@@ -10,9 +10,9 @@ const Toaster = (props: ToasterProps) => (
     position="top-right"
     toastOptions={{
       classNames: {
-        toast: 'group rounded-xl border border-border bg-card text-foreground shadow-overlay',
-        title: 'text-sm font-semibold',
-        description: 'text-sm text-muted-foreground',
+        toast: 'group rounded-xl border border-rule-strong bg-card text-foreground shadow-overlay',
+        title: 'text-label font-semibold',
+        description: 'text-body text-muted-foreground',
         actionButton: 'rounded-lg bg-primary text-primary-foreground',
         cancelButton: 'rounded-lg bg-surface-2 text-foreground',
         error: 'text-revoked',

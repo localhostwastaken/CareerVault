@@ -5,6 +5,7 @@ import LoadingScreen from '@/components/LoadingScreen'
 import { RoleHomeRedirect } from '@/components/RoleHomeRedirect'
 import { RoleGate } from '@/components/RoleGate'
 import { ComingSoon } from '@/components/shared/ComingSoon'
+import { RouteErrorBoundary } from '@/components/shared/RouteErrorBoundary'
 import { PortalLayout } from '@/layouts/PortalLayout'
 import { PublicLayout } from '@/layouts/PublicLayout'
 import { ROLE_CONFIG } from '@/lib/roles'
@@ -16,6 +17,8 @@ const VerifyResult = lazy(() => import('@/pages/Verify/VerifyResult'))
 const MockCheckout = lazy(() => import('@/pages/Payments/MockCheckout'))
 const Login = lazy(() => import('@/pages/Login/Login'))
 const MagicLink = lazy(() => import('@/pages/MagicLink/MagicLink'))
+const ForgotPassword = lazy(() => import('@/pages/ForgotPassword/ForgotPassword'))
+const ResetPassword = lazy(() => import('@/pages/ResetPassword/ResetPassword'))
 const Register = lazy(() => import('@/pages/Register/Register'))
 const Profile = lazy(() => import('@/pages/Profile/Profile'))
 const AdminOrganization = lazy(() => import('@/pages/Admin/Organization'))
@@ -91,9 +94,12 @@ const featureRoutes: RouteObject[] = Array.from(
   }
 })
 
+// Every layout route carries an errorElement so a throw inside one screen degrades
+// to a recoverable page within that shell, instead of blanking the whole app.
 export const routes: RouteObject[] = [
   {
     element: <PublicLayout />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { path: '/', element: suspense(<Hero />) },
       { path: '/verify', element: suspense(<VerifyHome />) },
@@ -104,30 +110,45 @@ export const routes: RouteObject[] = [
   {
     path: '/auth',
     element: <PublicLayout />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, element: <Navigate to="/auth/login" replace /> },
       { path: 'login', element: suspense(<Login />) },
       { path: 'magic', element: suspense(<MagicLink />) },
+      { path: 'forgot-password', element: suspense(<ForgotPassword />) },
+      // Target of the emailed reset link (…/auth/reset-password?token=…) — the path
+      // is fixed by the server's email template, so don't rename it.
+      { path: 'reset-password', element: suspense(<ResetPassword />) },
       { path: 'register', element: suspense(<Register />) },
     ],
   },
   {
     path: '/app',
     element: <ImplementAuth />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       {
         element: <PortalLayout />,
+        errorElement: <RouteErrorBoundary />,
         children: [
           { index: true, element: <RoleHomeRedirect /> },
           { path: 'profile', element: suspense(<Profile />) },
           { path: 'request', element: suspense(<HolderRequestDocument />) },
+          // Detail is intentionally open to any signed-in persona — the server decides
+          // who may READ a given document, and holders reach their own this way.
           { path: 'documents/:id', element: suspense(<DocumentDetail />) },
-          { path: 'documents/:id/sign', element: suspense(<ManagerSignDocument />) },
+          // Signing is not: only a MANAGER persona may open the drafting surface. Without
+          // this gate a holder could walk through "signing" their own credential and only
+          // discover it was never allowed when the submit 403'd.
+          {
+            path: 'documents/:id/sign',
+            element: <RoleGate allow="MANAGER">{suspense(<ManagerSignDocument />)}</RoleGate>,
+          },
           ...featureRoutes,
         ],
       },
     ],
   },
-  { path: '/payments/mock', element: suspense(<MockCheckout />) },
+  { path: '/payments/mock', element: suspense(<MockCheckout />), errorElement: <RouteErrorBoundary /> },
   { path: '*', element: <Navigate to="/" replace /> },
 ]

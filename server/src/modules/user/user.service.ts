@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
@@ -32,7 +32,36 @@ export class UserService {
   // AI/discovery/messaging footprint + sessions. Issued documents are retained as the
   // issuer's record (R7) but their salt is removed (dead-hash → no longer verifiable);
   // non-issued drafts have their content scrubbed.
+  //
+  // Three further erasures, all in the same transaction so erasure is all-or-nothing:
+  //  - documentVersion.contentJson: sign/updateDraft/approve each snapshot the full
+  //    content into a version row, so scrubbing only document.contentJson would leave a
+  //    complete copy of the holder's personal data behind — an Art.17 failure. Versions
+  //    of ALL the holder's documents are scrubbed, including issued ones: the retained
+  //    issuer record is document.contentJson, the history is not part of that record.
+  //  - verifierApiKey: a key is a live credential bound to the erased identity. Revoking
+  //    here mirrors the cancel-revokes-keys rule (R6) so no credential outlives its owner.
+  //  - sharedLink: public links resolve by urlToken with no session, so they would keep
+  //    serving the holder's documents to anyone holding the URL after erasure.
   async deleteAccount(userId: string) {
+    // Same last-admin protection as MemberService.deactivate: erasure deactivates every
+    // membership, so the sole ORG_ADMIN erasing themselves would orphan the organization
+    // with no recovery path (there is no platform superadmin role).
+    const adminRoles = await this.prisma.organizationMember.findMany({
+      where: { userId, role: 'ORG_ADMIN', isActive: true },
+      select: { organizationId: true },
+    });
+    for (const { organizationId } of adminRoles) {
+      const activeAdmins = await this.prisma.organizationMember.count({
+        where: { organizationId, role: 'ORG_ADMIN', isActive: true },
+      });
+      if (activeAdmins <= 1) {
+        throw new ConflictException(
+          'You are the last administrator of an organization. Promote another admin before deleting your account.',
+        );
+      }
+    }
+
     const anonymizedEmail = `deleted+${userId}@careervault.invalid`;
     await this.prisma.$transaction([
       this.prisma.extractedSkill.deleteMany({
@@ -56,6 +85,18 @@ export class UserService {
           status: { in: ['REQUESTED', 'DRAFT', 'PENDING_HR'] },
         },
         data: { contentJson: {} as Prisma.InputJsonValue },
+      }),
+      this.prisma.documentVersion.updateMany({
+        where: { document: { holderId: userId } },
+        data: { contentJson: {} as Prisma.InputJsonValue },
+      }),
+      this.prisma.verifierApiKey.updateMany({
+        where: { userId, status: 'ACTIVE' },
+        data: { status: 'REVOKED', revokedAt: new Date() },
+      }),
+      this.prisma.sharedLink.updateMany({
+        where: { document: { holderId: userId }, isActive: true },
+        data: { isActive: false },
       }),
       this.prisma.user.update({
         where: { id: userId },

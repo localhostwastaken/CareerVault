@@ -71,7 +71,7 @@ export class DocumentController {
 
   @Post(':id/sign')
   @HttpCode(200)
-  @Roles('MANAGER', 'ORG_ADMIN')
+  @Roles('MANAGER')
   sign(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -82,7 +82,7 @@ export class DocumentController {
 
   @Post(':id/approve')
   @HttpCode(200)
-  @Roles('HR', 'ORG_ADMIN')
+  @Roles('HR')
   approve(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -93,7 +93,7 @@ export class DocumentController {
 
   @Post(':id/reject')
   @HttpCode(200)
-  @Roles('HR', 'ORG_ADMIN')
+  @Roles('HR')
   reject(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -104,7 +104,7 @@ export class DocumentController {
 
   @Post(':id/return')
   @HttpCode(200)
-  @Roles('MANAGER', 'ORG_ADMIN')
+  @Roles('MANAGER')
   returnToHolder(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -125,7 +125,7 @@ export class DocumentController {
 
   @Post(':id/revoke')
   @HttpCode(200)
-  @Roles('HR', 'ORG_ADMIN')
+  @Roles('HR')
   revoke(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
