@@ -51,7 +51,8 @@ function flatten(messages: string[], errs: unknown): void {
     children?: unknown;
   }>) {
     if (e.constraints) messages.push(...Object.values(e.constraints));
-    if (Array.isArray(e.children) && e.children.length) flatten(messages, e.children);
+    if (Array.isArray(e.children) && e.children.length)
+      flatten(messages, e.children);
   }
 }
 
@@ -65,7 +66,7 @@ export async function validateAndNormalizeSubject(
   const dto = plainToInstance(Cls, subject, {
     enableImplicitConversion: false,
   });
-  const errors = await validate(dto as object, {
+  const errors = await validate(dto, {
     whitelist: true,
     forbidNonWhitelisted: true,
     forbidUnknownValues: true,
@@ -117,7 +118,7 @@ export async function validateAndNormalizeSubject(
 // The server is the SOLE author of the reconciling totals — client-supplied sums are
 // never trusted. gross = Σ earnings; net = gross − Σ deductions; net must be ≥ 0.
 function reconcileSalary(s: Record<string, unknown>): void {
-  const n = (k: string): number => (typeof s[k] === 'number' ? (s[k] as number) : 0);
+  const n = (k: string): number => (typeof s[k] === 'number' ? s[k] : 0);
   const gross =
     n('basicPaise') +
     n('hraPaise') +
@@ -145,7 +146,11 @@ function reconcileSalary(s: Record<string, unknown>): void {
   s.netPayPaise = net;
 }
 
-function assertDateOrder(start: string, end: string | undefined, message: string): void {
+function assertDateOrder(
+  start: string,
+  end: string | undefined,
+  message: string,
+): void {
   if (!end) return;
   if (new Date(end).getTime() < new Date(start).getTime()) {
     throw new UnprocessableEntityException(message);
@@ -160,10 +165,11 @@ export function makeReferenceNumber(
   now: Date,
   randomTail: string,
 ): string {
-  const prefix = orgName
-    .replace(/[^A-Za-z0-9]/g, '')
-    .slice(0, 6)
-    .toUpperCase() || 'ORG';
+  const prefix =
+    orgName
+      .replace(/[^A-Za-z0-9]/g, '')
+      .slice(0, 6)
+      .toUpperCase() || 'ORG';
   const kind =
     documentType === 'EXPERIENCE_LETTER'
       ? 'EXP'

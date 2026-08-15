@@ -12,10 +12,12 @@ interface ManagerSelectFieldProps {
   control: Control<RequestDocumentValues>
   managers: ManagerOption[] | undefined
   isLoading: boolean
+  /** Overrides the default hint — e.g. to warn a member the request may route to them. */
+  description?: string
 }
 
 // Only meaningful once an organisation is chosen, so the caller mounts it lazily.
-export function ManagerSelectField({ control, managers, isLoading }: ManagerSelectFieldProps) {
+export function ManagerSelectField({ control, managers, isLoading, description }: ManagerSelectFieldProps) {
   return (
     <FormField
       control={control}
@@ -33,7 +35,7 @@ export function ManagerSelectField({ control, managers, isLoading }: ManagerSele
               ))}
             </SelectNative>
           </FormControl>
-          <FormDescription>Optional — left blank, the organisation assigns one.</FormDescription>
+          <FormDescription>{description ?? 'Optional — left blank, the organisation assigns one.'}</FormDescription>
           <FormMessage />
         </FormItem>
       )}

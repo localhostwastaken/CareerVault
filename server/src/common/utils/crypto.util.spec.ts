@@ -64,7 +64,9 @@ describe('signingStatementHash (C1 dual-signature)', () => {
     expect(signingStatementHash(hash, 'MANAGER', 'm')).toBe(
       signingStatementHash(hash, 'MANAGER', 'm'),
     );
-    expect(signingStatementHash(hash, 'MANAGER', 'm')).toMatch(/^[0-9a-f]{64}$/);
+    expect(signingStatementHash(hash, 'MANAGER', 'm')).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
   });
 });
 

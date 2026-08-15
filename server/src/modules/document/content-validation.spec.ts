@@ -4,7 +4,10 @@ import {
   makeReferenceNumber,
 } from './content-validation.js';
 
-const CTX = { issueDate: '2026-08-10', referenceNumber: 'ACME/EXP/2026/ABC123' };
+const CTX = {
+  issueDate: '2026-08-10',
+  referenceNumber: 'ACME/EXP/2026/ABC123',
+};
 
 const experience = () => ({
   letterKind: 'EXPERIENCE_CUM_RELIEVING',
@@ -98,7 +101,11 @@ describe('validateAndNormalizeSubject', () => {
   });
 
   it('requires the separation block only when the letter certifies a separation', async () => {
-    const { lastWorkingDay: _lwd, reasonForLeaving: _rfl, ...rest } = experience();
+    const {
+      lastWorkingDay: _lwd,
+      reasonForLeaving: _rfl,
+      ...rest
+    } = experience();
     // RELIEVING without a last working day / reason must fail...
     await expect(
       validateAndNormalizeSubject(
@@ -127,7 +134,11 @@ describe('validateAndNormalizeSubject', () => {
   });
 
   it('computes salary gross/deductions/net authoritatively in paise', async () => {
-    const out = await validateAndNormalizeSubject('SALARY_PROOF', salary(), CTX);
+    const out = await validateAndNormalizeSubject(
+      'SALARY_PROOF',
+      salary(),
+      CTX,
+    );
     expect(out.grossEarningsPaise).toBe(11_000_000);
     expect(out.totalDeductionsPaise).toBe(2_120_000);
     expect(out.netPayPaise).toBe(8_880_000);
@@ -202,7 +213,12 @@ describe('makeReferenceNumber', () => {
 
   it('falls back to ORG when the name has no alphanumerics', () => {
     expect(
-      makeReferenceNumber('SALARY_PROOF', '—', new Date('2026-01-01T00:00:00Z'), 'X'),
+      makeReferenceNumber(
+        'SALARY_PROOF',
+        '—',
+        new Date('2026-01-01T00:00:00Z'),
+        'X',
+      ),
     ).toBe('ORG/SAL/2026/X');
   });
 });

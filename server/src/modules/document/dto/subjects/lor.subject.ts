@@ -124,6 +124,8 @@ export class LetterOfRecommendationSubjectDto {
   notableProjects?: NotableProjectDto[];
 
   @IsOptional()
-  @Matches(/^\+?[0-9][0-9\s-]{7,14}$/, { message: 'recommenderPhone is invalid' })
+  @Matches(/^\+?[0-9][0-9\s-]{7,14}$/, {
+    message: 'recommenderPhone is invalid',
+  })
   recommenderPhone?: string;
 }

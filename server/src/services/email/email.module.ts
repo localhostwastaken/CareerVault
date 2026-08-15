@@ -18,9 +18,7 @@ import { GmailEmailService } from './gmail-email.service.js';
         const driver = config.get<string>('EMAIL_DRIVER');
         if (driver === 'console') return console;
         if (driver === 'gmail') return gmail;
-        throw new Error(
-          `EMAIL_DRIVER="${driver}" not implemented`,
-        );
+        throw new Error(`EMAIL_DRIVER="${driver}" not implemented`);
       },
       inject: [ConfigService, ConsoleEmailService, GmailEmailService],
     },

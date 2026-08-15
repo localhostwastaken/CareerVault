@@ -128,7 +128,7 @@ export class LocalKmsService extends KeyManagementService {
       if (key.length !== 32)
         throw new Error(
           `KMS_MASTER_KEY must decode to exactly 32 bytes (256 bits); got ${key.length}. ` +
-          `Generate with: openssl rand -base64 32`,
+            `Generate with: openssl rand -base64 32`,
         );
       return key;
     }

@@ -8,6 +8,7 @@ import {
   useRevokeDocumentMutation,
 } from '@/features/document/api'
 import type { DocumentDetail, RevocationCode } from '@/features/document/types'
+import { documentPermissions } from '@/features/document/useDocumentPermissions'
 import { useAuth } from '@/hooks/useAuth'
 import { notify, toastApiError } from '@/lib/notify'
 
@@ -34,18 +35,10 @@ export function useDocumentActions(document: DocumentDetail) {
     setCode('ADMINISTRATIVE_ERROR')
   }
 
-  const orgMatch = activeOrgId === document.organizationId
-  const isHr = orgMatch && (role === 'HR' || role === 'ORG_ADMIN')
-  const isManager = orgMatch && role === 'MANAGER'
-  const isHolder = role === 'HOLDER' && user?.id === document.holderId
-  const s = document.status
-  const can = {
-    sign: isManager && (s === 'REQUESTED' || s === 'DRAFT'),
-    review: isHr && s === 'PENDING_HR',
-    revoke: isHr && (s === 'ISSUED' || s === 'ANCHORED'),
-    delete: isHolder && (s === 'REQUESTED' || s === 'DRAFT' || s === 'REVOKED'),
-    return: isManager && (s === 'REQUESTED' || s === 'DRAFT'),
-  }
+  // Single source of truth for the gates, mirroring the server's @Roles decorators —
+  // notably ORG_ADMIN is NOT an implicit HR/MANAGER (see document-rbac.spec.ts), so an
+  // admin must never be offered sign/approve buttons the API will 403.
+  const permissions = documentPermissions(document, { activeRole: role, activeOrgId, userId: user?.id })
 
   const run = async (op: Promise<unknown>, ok: string, fail: string, after?: () => void) => {
     try {
@@ -74,5 +67,5 @@ export function useDocumentActions(document: DocumentDetail) {
     return: returnState.isLoading,
   }
 
-  return { can, dialog, setDialog, close, reason, setReason, code, setCode, handlers, loading }
+  return { permissions, dialog, setDialog, close, reason, setReason, code, setCode, handlers, loading }
 }

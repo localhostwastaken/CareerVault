@@ -157,7 +157,9 @@ export class SalaryProofSubjectDto {
   // ── statutory identifiers (PRIVATE — never on the public hash view) ────────
   // PAN stored MASKED only (e.g. XXXXX4821K) — a certificate never needs the full PAN.
   @IsOptional()
-  @Matches(/^X{5}\d{4}[A-Z]$/, { message: 'panMasked must look like XXXXX4821K' })
+  @Matches(/^X{5}\d{4}[A-Z]$/, {
+    message: 'panMasked must look like XXXXX4821K',
+  })
   panMasked?: string;
 
   @IsOptional()

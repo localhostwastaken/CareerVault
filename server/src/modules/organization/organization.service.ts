@@ -126,7 +126,10 @@ export class OrganizationService {
     await this.getOrThrow(orgId);
     return this.prisma.organizationMember.findMany({
       where: { organizationId: orgId, role: 'MANAGER', isActive: true },
-      select: { userId: true, user: { select: { fullName: true, email: true } } },
+      select: {
+        userId: true,
+        user: { select: { fullName: true, email: true } },
+      },
       orderBy: { user: { fullName: 'asc' } },
     });
   }

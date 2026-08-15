@@ -37,6 +37,8 @@ export class GmailEmailService extends EmailService {
       subject: message.subject,
       html: message.html,
     });
-    this.logger.log(`[email] sent to=${message.to} subject="${message.subject}"`);
+    this.logger.log(
+      `[email] sent to=${message.to} subject="${message.subject}"`,
+    );
   }
 }

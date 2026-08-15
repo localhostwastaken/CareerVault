@@ -111,13 +111,26 @@ export class PdfGenerationService {
     y -= 15;
     draw(page, org.domain, LEFT, y, 10, faces.regular, muted);
     y -= 40;
-    draw(page, TITLES[doc.type] ?? 'Career Document', LEFT, y, 22, faces.bold, ink);
+    draw(
+      page,
+      TITLES[doc.type] ?? 'Career Document',
+      LEFT,
+      y,
+      22,
+      faces.bold,
+      ink,
+    );
     y -= 34;
 
     for (const [label, value] of extractFields(doc.contentJson)) {
       if (y < BOTTOM_GUARD) break;
       draw(page, `${label}:`, LEFT, y, VALUE_SIZE, faces.bold, ink);
-      const lines = wrapLines(value, faces.regular, VALUE_SIZE, RIGHT - VALUE_X);
+      const lines = wrapLines(
+        value,
+        faces.regular,
+        VALUE_SIZE,
+        RIGHT - VALUE_X,
+      );
       for (const line of lines.length ? lines : ['']) {
         draw(page, line, VALUE_X, y, VALUE_SIZE, faces.regular, ink);
         y -= LINE_H;
@@ -133,7 +146,15 @@ export class PdfGenerationService {
     });
     draw(page, 'Document hash (SHA-256):', LEFT, 84, 8, faces.bold, muted);
     draw(page, doc.documentHash ?? '—', LEFT, 72, 8, faces.regular, muted);
-    draw(page, 'Verify authenticity at careervault.io', LEFT, 56, 8, faces.regular, muted);
+    draw(
+      page,
+      'Verify authenticity at careervault.io',
+      LEFT,
+      56,
+      8,
+      faces.regular,
+      muted,
+    );
 
     const bytes = await pdf.save();
     const key = `documents/${doc.id}.pdf`;
@@ -169,7 +190,10 @@ async function embedFaces(pdf: PDFDocument): Promise<FacesByWeight> {
     pdf.embedFont(a.devaReg.bytes, { subset: true }),
     pdf.embedFont(a.devaBold.bytes, { subset: true }),
   ]);
-  return { regular: { latin, deva }, bold: { latin: latinBold, deva: devaBold } };
+  return {
+    regular: { latin, deva },
+    bold: { latin: latinBold, deva: devaBold },
+  };
 }
 
 // Splits text into single-face runs so mixed Latin/Devanagari renders correctly and

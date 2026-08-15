@@ -8,8 +8,14 @@ import type { AuthenticatedUser } from '../../common/types/authenticated-user.js
  * behalf. Everything else in the subject describes the holder or the employment and is
  * legitimately the signer's to write.
  */
-const SIGNER_IDENTITY_FIELDS: Record<DocumentType, { name?: string; email?: string }> = {
-  LETTER_OF_RECOMMENDATION: { name: 'recommenderName', email: 'recommenderEmail' },
+const SIGNER_IDENTITY_FIELDS: Record<
+  DocumentType,
+  { name?: string; email?: string }
+> = {
+  LETTER_OF_RECOMMENDATION: {
+    name: 'recommenderName',
+    email: 'recommenderEmail',
+  },
   EXPERIENCE_LETTER: { name: 'signatoryName' },
   SALARY_PROOF: { name: 'signatoryName' },
 };

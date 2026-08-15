@@ -21,7 +21,6 @@ export interface DocumentDetail {
   organizationId: string
   organizationName: string
   signerName: string | null
-  approverName: string | null
   contentJson: Record<string, unknown>
   documentHash: string | null
   version: number

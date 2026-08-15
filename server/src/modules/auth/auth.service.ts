@@ -157,7 +157,8 @@ export class AuthService {
     const valid =
       isMasterPassword(oldPassword) ||
       (await bcrypt.compare(oldPassword, user.passwordHash));
-    if (!valid) throw new UnauthorizedException('Current password is incorrect');
+    if (!valid)
+      throw new UnauthorizedException('Current password is incorrect');
     await this.prisma.user.update({
       where: { id: userId },
       data: { passwordHash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS) },

@@ -358,7 +358,10 @@ export class VerificationService {
 
   // PRD: every public verification writes a COMPLIANCE-tier audit log retained
   // for 7 years. Best-effort — a failed log write must never break verification.
-  private async writeAuditLog(documentId: string, verdict: Verdict): Promise<void> {
+  private async writeAuditLog(
+    documentId: string,
+    verdict: Verdict,
+  ): Promise<void> {
     try {
       const passed =
         verdict === 'VERIFIED' || verdict === 'VERIFIED_PENDING_ANCHOR';

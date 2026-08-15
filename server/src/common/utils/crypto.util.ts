@@ -59,7 +59,7 @@ export function normalizeSubject(value: unknown): unknown {
       if (
         typeof v === 'object' &&
         !Array.isArray(v) &&
-        Object.keys(v as object).length === 0
+        Object.keys(v).length === 0
       )
         continue;
       out[key] = v;
@@ -83,7 +83,5 @@ export function signingStatementHash(
   role: 'MANAGER' | 'HR',
   memberId: string,
 ): string {
-  return sha256Hex(
-    canonicalizeJson({ v: 1, documentHash, role, memberId }),
-  );
+  return sha256Hex(canonicalizeJson({ v: 1, documentHash, role, memberId }));
 }
