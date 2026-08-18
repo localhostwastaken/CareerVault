@@ -3,11 +3,12 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { envValidationSchema } from './config/env.validation.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js';
+import { TestEnvThrottlerGuard } from './common/guards/test-env-throttler.guard.js';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
 import { RolesGuard } from './common/guards/roles.guard.js';
 import { HealthModule } from './health/health.module.js';
@@ -77,7 +78,8 @@ import { AuditModule } from './modules/audit/audit.module.js';
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
     // ThrottlerGuard first so even @Public routes (verify, auth) are rate-limited.
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // TestEnvThrottlerGuard IS ThrottlerGuard everywhere except NODE_ENV=test.
+    { provide: APP_GUARD, useClass: TestEnvThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

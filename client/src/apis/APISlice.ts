@@ -1,7 +1,8 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
-import type { BaseQueryApi, BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query/react'
+import type { Dispatch } from '@reduxjs/toolkit'
+import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query/react'
 import apiConfig from '../config/APIEndpoints'
-import { logout, setCredentials } from '../features/auth/authSlice'
+import { logout, sessionRestoreFailed, setCredentials } from '../features/auth/authSlice'
 import type { AuthResponse } from '../features/auth/types'
 import type { RootState } from '../store'
 
@@ -58,32 +59,54 @@ const baseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> =
   return result
 }
 
-// The 15-minute access token expires while a tab stays open. Share one in-flight refresh across every concurrent 401 instead of letting each caller race its own refresh request.
+// ── Session restore ─────────────────────────────────────────────────────────────
+// THE single implementation of "exchange the httpOnly refresh cookie for a new access
+// token". Both callers go through it: the startup bootstrap (see bootstrapSession) and
+// the 401 retry in baseQueryWithReauth. A plain fetch is the right tool — the call is
+// cookie-authed, so it needs neither the bearer header nor the envelope-unwrap layer,
+// and going through RTK Query would mean a second, divergent copy of this logic.
+//
+// The in-flight promise is shared so that N concurrent 401s (e.g. a page that fires
+// several queries at once) produce ONE refresh, not N racing rotations of a single-use
+// refresh token.
 let refreshPromise: Promise<boolean> | null = null
 
-async function reauthenticate(api: BaseQueryApi, extraOptions: object): Promise<boolean> {
+export function refreshSession(dispatch: Dispatch): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      // prepareHeaders only attaches the CSRF header when api.type === 'mutation', but that type is fixed to whichever endpoint originally triggered this call chain — for a 401 coming from a query (e.g. the notification poll) it's still 'query', so the CSRF-gated refresh got silently rejected with 403 and forced a real logout instead of a silent reauth. Attach it directly here instead.
-      const csrf = readCsrfToken()
-      const result = await rawBaseQuery(
-        {
-          url: '/auth/refresh',
+      try {
+        // The CSRF header must be attached explicitly. prepareHeaders only adds it when
+        // api.type === 'mutation', and that type is fixed to whichever endpoint triggered
+        // the call chain — for a 401 from a query (e.g. the notification poll) it is still
+        // 'query', which got the CSRF-gated refresh rejected with 403 and forced a real
+        // logout instead of a silent reauth.
+        const csrf = readCsrfToken()
+        const response = await fetch(`${apiConfig.getEndpoint()}/auth/refresh`, {
           method: 'POST',
+          credentials: 'include',
           headers: csrf ? { 'x-csrf-token': csrf } : undefined,
-        },
-        api,
-        extraOptions,
-      )
-      const envelope = result.data as { success: boolean; data?: AuthResponse } | undefined
-      if (!envelope?.success || !envelope.data) return false
-      api.dispatch(setCredentials(envelope.data))
-      return true
+        })
+        if (!response.ok) return false
+        const envelope = (await response.json()) as { success?: boolean; data?: AuthResponse }
+        if (!envelope?.success || !envelope.data) return false
+        dispatch(setCredentials(envelope.data))
+        return true
+      } catch {
+        // Network failure — indistinguishable from "no session" to the caller.
+        return false
+      }
     })().finally(() => {
       refreshPromise = null
     })
   }
   return refreshPromise
+}
+
+// Called once at startup, before React renders. Resolving this is what flips auth status
+// out of 'restoring', which is what the route guards wait on.
+export async function bootstrapSession(dispatch: Dispatch): Promise<void> {
+  const restored = await refreshSession(dispatch)
+  if (!restored) dispatch(sessionRestoreFailed())
 }
 
 const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = async (
@@ -95,14 +118,14 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
   const url = typeof args === 'string' ? args : args.url
 
   if (result.error?.status === 401 && !PUBLIC_AUTH_URLS.has(url)) {
-    const refreshed = await reauthenticate(api, extraOptions)
+    const refreshed = await refreshSession(api.dispatch)
     if (refreshed) {
       result = await baseQuery(args, api, extraOptions)
     } else {
+      // Redux-only: RequireAuth sees status 'anonymous' and navigates to /auth/login,
+      // preserving the intended destination. A hard window.location redirect here would
+      // discard the router state and re-run the whole startup restore.
       api.dispatch(logout())
-      if (!window.location.pathname.startsWith('/auth/')) {
-        window.location.assign('/auth/login')
-      }
     }
   }
 

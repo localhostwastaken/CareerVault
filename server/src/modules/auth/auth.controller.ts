@@ -41,7 +41,10 @@ const COOKIE_PATH = '/api/v1/auth';
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
-function cookieSecurity(): Pick<CookieOptions, 'sameSite' | 'secure' | 'partitioned'> {
+function cookieSecurity(): Pick<
+  CookieOptions,
+  'sameSite' | 'secure' | 'partitioned'
+> {
   return process.env.NODE_ENV === 'production'
     ? { sameSite: 'none', secure: true, partitioned: true }
     : { sameSite: 'lax', secure: false };
@@ -105,6 +108,12 @@ export class AuthController {
       requestContext(req),
     );
     this.setRefreshCookie(res, result.refreshToken);
+    // Re-stamp the CSRF cookie's expiry alongside the refresh cookie it guards, reusing the
+    // SAME value. cv_refresh is renewed on every rotation while cv_csrf used to be set only
+    // at sign-in, so a session kept alive past COOKIE_MAX_AGE silently lost it — and
+    // CsrfGuard skips enforcement when the cookie is absent, quietly switching the
+    // protection off on the two routes that need it most.
+    this.setCsrfCookie(res, readCsrfCookie(req));
     return { token: result.token, user: result.user };
   }
 
@@ -219,10 +228,10 @@ export class AuthController {
     });
   }
 
-  // Double-submit CSRF token: non-httpOnly so same-origin JS can read it and echo it back in the x-csrf-token header. Path '/' keeps it readable app-wide. Only minted on register/login/verify-magic-link — a fresh value per session, not per request — so it stays stable across the silent refreshes a long-lived tab performs. See the comment on `refresh()` for why that stability matters.
-  private setCsrfCookie(res: Response): void {
+  // Double-submit CSRF token: non-httpOnly so same-origin JS can read it and echo it back in the x-csrf-token header. Path '/' keeps it readable app-wide. A fresh value is minted only on register/login/verify-magic-link — not per request — so it stays stable across the silent refreshes a long-lived tab performs; see the comment on `refresh()` for why that stability matters. `refresh()` passes the EXISTING value back in so the cookie's expiry tracks the refresh cookie it guards without the value ever changing.
+  private setCsrfCookie(res: Response, value?: string): void {
     const security = cookieSecurity();
-    res.cookie(CSRF_COOKIE, randomBytes(24).toString('hex'), {
+    res.cookie(CSRF_COOKIE, value ?? randomBytes(24).toString('hex'), {
       httpOnly: false,
       ...security,
       path: '/',
@@ -233,6 +242,10 @@ export class AuthController {
 
 function readRefreshCookie(req: Request): string | undefined {
   return (req.cookies as Record<string, string> | undefined)?.[REFRESH_COOKIE];
+}
+
+function readCsrfCookie(req: Request): string | undefined {
+  return (req.cookies as Record<string, string> | undefined)?.[CSRF_COOKIE];
 }
 
 function requestContext(req: Request): { ip?: string; userAgent?: string } {

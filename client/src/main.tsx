@@ -7,9 +7,16 @@ import '@fontsource/ibm-plex-serif/600.css'
 import '@fontsource/ibm-plex-serif/700.css'
 import '@fontsource/ibm-plex-mono/400.css'
 import '@fontsource/ibm-plex-mono/500.css'
+import { bootstrapSession } from './apis/APISlice.ts'
 import { store } from './store.ts'
 import './styles/globals.css'
 import App from './App.tsx'
+
+// Fire the session restore before React mounts, not from an effect inside it. The access
+// token is memory-only, so until this resolves the app genuinely does not know whether
+// anyone is signed in — starting it here means the request is already in flight during the
+// first render, and it cannot be double-invoked by StrictMode.
+void bootstrapSession(store.dispatch)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

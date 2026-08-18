@@ -34,7 +34,9 @@ export class NotificationService {
           html: `<p>${escapeHtml(body)}</p>`,
         })
         .catch((error) =>
-          this.logger.warn(`Email notification failed for ${options.emailTo}: ${error}`),
+          this.logger.warn(
+            `Email notification failed for ${options.emailTo}: ${error}`,
+          ),
         );
     }
   }

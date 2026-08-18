@@ -12,7 +12,7 @@ export interface TokenContext {
   userAgent?: string;
 }
 
-// Access tokens are stateless RS256 JWTs (15-min). Refresh tokens are opaque random strings; only their SHA-256 hash is stored, and they rotate on every use.
+// Access tokens are stateless RS256 JWTs (JWT_ACCESS_TTL, 1d by default). Refresh tokens are opaque random strings; only their SHA-256 hash is stored, and they rotate on every use.
 @Injectable()
 export class TokensService {
   private readonly logger = new Logger(TokensService.name);

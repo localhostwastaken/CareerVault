@@ -187,6 +187,14 @@ export class BulkIssuanceService {
     documentType: 'EXPERIENCE_LETTER' | 'SALARY_PROOF',
   ): Promise<void> {
     const kmsKeyId = await this.documents.ensureOrgKey(org);
+    // Read back rather than using org.publicKeyPem: ensureOrgKey may have just replaced the
+    // key, which would make the snapshot on `org` stale — and pinning the WRONG key to a
+    // signature is worse than pinning none.
+    const { publicKeyPem: signingPublicKeyPem } =
+      await this.prisma.organization.findUniqueOrThrow({
+        where: { id: org.id },
+        select: { publicKeyPem: true },
+      });
     const hrUser = await this.prisma.user.findUnique({
       where: { id: hrMember.userId },
       select: { fullName: true },
@@ -203,6 +211,7 @@ export class BulkIssuanceService {
           hrMember,
           documentType,
           kmsKeyId,
+          signingPublicKeyPem,
           signatoryName,
         );
         processed += 1;
@@ -257,6 +266,7 @@ export class BulkIssuanceService {
     hrMember: HrMember,
     documentType: 'EXPERIENCE_LETTER' | 'SALARY_PROOF',
     kmsKeyId: string,
+    signingPublicKeyPem: string | null,
     signatoryName: string,
   ): Promise<void> {
     const existing = await this.prisma.user.findUnique({
@@ -313,6 +323,9 @@ export class BulkIssuanceService {
         documentHash,
         managerSignature,
         hrSignature,
+        // Same reason as the interactive path: verification must resolve the key from the
+        // document, not from whatever the org holds later.
+        signingPublicKeyPem,
         issuedAt: now,
         expiresAt,
       },

@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
   createCipheriv,
@@ -14,7 +14,11 @@ import {
 } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { KeyManagementService, OrgKeyPair } from './key-management.service.js';
+import {
+  KeyManagementService,
+  OrgKeyPair,
+  SigningKeyUnavailableError,
+} from './key-management.service.js';
 
 // Real RSA-2048 / RS256 signing with per-org key pairs persisted to disk. Private
 // keys are wrapped with AES-256-GCM under a master key (envelope encryption), so
@@ -53,6 +57,15 @@ export class LocalKmsService extends KeyManagementService {
     const kmsKeyId = `local-kms:${orgId}:${fingerprint}`;
     await this.persistPrivateKey(kmsKeyId, privPem);
     return { kmsKeyId, publicKeyPem };
+  }
+
+  async hasKey(kmsKeyId: string): Promise<boolean> {
+    try {
+      await access(this.fileFor(kmsKeyId));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async sign(kmsKeyId: string, documentHashHex: string): Promise<string> {
@@ -97,19 +110,39 @@ export class LocalKmsService extends KeyManagementService {
     });
   }
 
+  // Both failure modes here mean the same operational thing — the key store did not
+  // survive — and both used to escape as a raw Node error that the global exception filter
+  // flattened into "Internal server error", leaving no trace of the actual cause for the
+  // person who just failed to sign a document.
   private async loadPrivateKey(kmsKeyId: string): Promise<string> {
-    const blob = Buffer.from(
-      await readFile(this.fileFor(kmsKeyId), 'utf8'),
-      'base64',
-    );
+    const file = this.fileFor(kmsKeyId);
+    let raw: string;
+    try {
+      raw = await readFile(file, 'utf8');
+    } catch (error) {
+      throw new SigningKeyUnavailableError(
+        kmsKeyId,
+        `key file is missing at ${file} — the key store was not persisted across a restart`,
+        error,
+      );
+    }
+    const blob = Buffer.from(raw, 'base64');
     const iv = blob.subarray(0, 12);
     const tag = blob.subarray(12, 28);
     const enc = blob.subarray(28);
-    const decipher = createDecipheriv('aes-256-gcm', this.masterKey, iv);
-    decipher.setAuthTag(tag);
-    return Buffer.concat([decipher.update(enc), decipher.final()]).toString(
-      'utf8',
-    );
+    try {
+      const decipher = createDecipheriv('aes-256-gcm', this.masterKey, iv);
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(enc), decipher.final()]).toString(
+        'utf8',
+      );
+    } catch (error) {
+      throw new SigningKeyUnavailableError(
+        kmsKeyId,
+        `key file at ${file} could not be decrypted — KMS_MASTER_KEY does not match the one that wrapped it`,
+        error,
+      );
+    }
   }
 
   private fileFor(kmsKeyId: string): string {
@@ -160,7 +193,9 @@ export class LocalKmsService extends KeyManagementService {
       mode: 0o600,
     });
     this.logger.warn(
-      `KMS_MASTER_KEY not set — generated a dev master key at ${file}`,
+      `KMS_MASTER_KEY not set — generated a dev master key at ${file}. ` +
+        `Every org key wrapped with it is unreadable if this file is lost, so on ephemeral ` +
+        `storage (containers without a mounted disk) signing breaks after the next restart.`,
     );
     return key;
   }

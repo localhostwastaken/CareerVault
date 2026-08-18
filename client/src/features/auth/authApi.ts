@@ -67,19 +67,12 @@ export const authApi = APISlice.injectEndpoints({
       query: (body) => ({ url: '/auth/change-password', method: 'POST', body }),
       invalidatesTags: ['Auth'],
     }),
-    // Restore a session from the httpOnly refresh cookie. Called on app startup
-    // so page reloads don't log the user out. Returns new tokens + user.
-    refresh: builder.mutation<AuthResponse, void>({
-      query: () => ({ url: '/auth/refresh', method: 'POST' }),
-      invalidatesTags: ['Auth'],
-    }),
   }),
 })
 
 export const {
   useLoginMutation,
   useRegisterMutation,
-  useMeQuery,
   useLogoutMutation,
   useDeleteAccountMutation,
   useRequestMagicLinkMutation,
@@ -88,5 +81,4 @@ export const {
   useResetPasswordMutation,
   useSetPasswordMutation,
   useChangePasswordMutation,
-  useRefreshMutation,
 } = authApi

@@ -1,0 +1,21 @@
+{
+  "name": "careervault-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "End-to-end browser tests. Boots its own API and client against a dedicated database.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^22.10.7",
+    "dotenv": "^17.3.1",
+    "pg": "^8.21.0",
+    "typescript": "^5.7.3"
+  }
+}

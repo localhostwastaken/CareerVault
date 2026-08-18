@@ -11,6 +11,7 @@ A **Web 2.5 career-document verification platform** — organizations issue cryp
 | [`server/`](server/) | NestJS 11 · Prisma 7 · PostgreSQL + pgvector | API, document lifecycle, crypto, jobs |
 | [`ai-service/`](ai-service/) | Python · FastAPI | Skill extraction, embeddings, explainable (SHAP) talent ranking |
 | [`contracts/`](contracts/) | Hardhat · Solidity | `AnchorRegistry` — Merkle-root anchoring on Polygon |
+| [`e2e/`](e2e/README.md) | Playwright | Browser tests for the whole org → request → sign → issue → verify chain |
 
 Per-package engineering rules live in each `Claude.md`. Heavy external integrations (KMS, blockchain, payments, email, storage) sit behind swappable adapters — local/mock by default, so the whole stack runs with no cloud accounts.
 
@@ -70,6 +71,16 @@ uvicorn app.main:app --reload --port 9910
 ```bash
 cd contracts && npm install && npm test
 ```
+
+## Tests
+```bash
+cd server && npm test && npm run test:e2e   # unit + Supertest (needs Postgres)
+cd client && npm run lint && npm run build
+cd e2e && npm install && npm run install:browsers && npm test
+```
+The browser suite starts its own API and client on 9901/5273 against a separate
+`careervault_e2e` database, so it can run while the dev stack is up and never touches your
+data — see [`e2e/README.md`](e2e/README.md).
 
 ## Verification & offline proof
 A document's authenticity is proven from its **Verifiable Credential**, a standalone JSON-LD payload fetched from `GET /api/v1/documents/:id/credential`. That file embeds everything a third party needs to verify **offline, without CareerVault online**: the

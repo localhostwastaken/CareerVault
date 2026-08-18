@@ -136,7 +136,7 @@ src/
   features/<feature>/        # api.ts (injectEndpoints), hooks.ts, schema.ts (zod), types.ts, components/
   pages/<Page>/<Page>.tsx    # compose features + layout (thin)
   layouts/                   # per-role portal shells + public layout
-  routes.tsx · App.tsx · components/ImplementAuth.tsx (real auth from store)
+  routes.tsx · App.tsx · components/RequireAuth.tsx + GuestOnly.tsx (route guards)
 ```
 
 ## Reusable module catalog (build once, reuse everywhere — search before writing new)
@@ -160,7 +160,16 @@ React Hook Form + `zodResolver`. One Zod schema per form in the feature's `schem
 `APISlice` (base, `credentials:"include"`, auth header from store, baseUrl from `APIEndpoints`). Each feature injects endpoints in `features/<feature>/api.ts` with `tagTypes` for cache invalidation. Types come from generated `lib/api-types.ts` — don't hand-duplicate server types.
 
 ## Routing & RBAC
-`ImplementAuth` reads real auth/role state from the store (no hardcoded `true`). Role-based guards route each user to their portal (Admin/Manager/HR/Holder/Recruiter); Verifier pages are public. Lazy-load pages.
+Auth state is a **tri-state**: `auth.status` is `'restoring' | 'authenticated' | 'anonymous'`.
+The access token is memory-only, so a cold load must call `/auth/refresh` before it knows anything —
+`bootstrapSession` (`apis/APISlice.ts`) fires that once from `main.tsx`, *before* React mounts.
+**Never treat "no token" as "signed out"**: that is what flashed the sign-in screen on every reload.
+`RequireAuth` renders `LoadingScreen` while `restoring` and is the ONLY component that sends a
+visitor to `/auth/login`; `GuestOnly` wraps `/auth/login` + `/auth/register` and is the ONLY owner of
+the post-authentication redirect (the pages themselves must not navigate). `refreshSession` in
+`APISlice.ts` is the single, in-flight-shared implementation of the refresh call — do not add a
+second one. Role-based guards (`RoleGate`, `RoleHomeRedirect`) run inside `RequireAuth`, so they
+never see a half-restored persona. Verifier pages are public. Lazy-load pages.
 
 ## Coding discipline (hard caps)
 - Components ≤ 150 lines · Pages ≤ 200 · Hooks ≤ 80. Over cap → split.

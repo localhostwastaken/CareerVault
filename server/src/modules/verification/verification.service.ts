@@ -338,16 +338,17 @@ export class VerificationService {
     role: 'MANAGER' | 'HR',
     memberId: string | null,
   ): Promise<boolean> {
-    if (
-      !signature ||
-      !doc.documentHash ||
-      !doc.organization.publicKeyPem ||
-      !memberId
-    )
+    // Verify against the key recorded WITH the signature, not the org's current one. They
+    // are the same key until an org is ever re-keyed; after that, falling back to the
+    // current key would report every previously issued document as forged. The fallback
+    // covers rows signed before that column existed and never backfilled.
+    const publicKeyPem =
+      doc.signingPublicKeyPem ?? doc.organization.publicKeyPem;
+    if (!signature || !doc.documentHash || !publicKeyPem || !memberId)
       return false;
     try {
       return await this.kms.verify(
-        doc.organization.publicKeyPem,
+        publicKeyPem,
         signingStatementHash(doc.documentHash, role, memberId),
         signature,
       );

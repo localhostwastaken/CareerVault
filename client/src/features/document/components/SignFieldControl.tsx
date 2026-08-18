@@ -14,14 +14,36 @@ type Rhf = ControllerRenderProps<SignFormValues, string>
 // in the tab order. It reads as a recorded fact, not a field awaiting input.
 const LOCKED_INPUT = 'cursor-default bg-surface-2 text-muted-foreground focus-visible:border-input'
 
-function Control({ field, rhf }: { field: SignField; rhf: Rhf }) {
+/**
+ * What `FormControl` injects. It is a Radix `Slot`, so it clones its immediate child and
+ * passes these down — but its immediate child here is this component, not the element. They
+ * have to be forwarded by hand, and dropping them is silent: the field still looks right
+ * while `FormLabel`'s htmlFor points at an id that exists nowhere, so the label is not
+ * associated, clicking it focuses nothing, and the error text is never announced.
+ */
+interface SlotProps {
+  id?: string
+  'aria-describedby'?: string
+  'aria-invalid'?: boolean
+}
+
+function Control({ field, rhf, ...slot }: { field: SignField; rhf: Rhf } & SlotProps) {
   const value = typeof rhf.value === 'string' ? rhf.value : ''
   switch (field.control) {
     case 'textarea':
-      return <Textarea {...rhf} value={value} rows={4} placeholder={field.placeholder} className="resize-none" />
+      return (
+        <Textarea
+          {...rhf}
+          {...slot}
+          value={value}
+          rows={4}
+          placeholder={field.placeholder}
+          className="resize-none"
+        />
+      )
     case 'select':
       return (
-        <SelectNative {...rhf} value={value}>
+        <SelectNative {...rhf} {...slot} value={value}>
           {!field.default && <option value="">Choose…</option>}
           {field.options?.map((o) => (
             <option key={o.value} value={o.value}>
@@ -36,6 +58,7 @@ function Control({ field, rhf }: { field: SignField; rhf: Rhf }) {
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-subtle">₹</span>
           <Input
             {...rhf}
+            {...slot}
             value={value}
             type="number"
             inputMode="decimal"
@@ -47,11 +70,12 @@ function Control({ field, rhf }: { field: SignField; rhf: Rhf }) {
         </div>
       )
     case 'date':
-      return <Input {...rhf} value={value} type="date" />
+      return <Input {...rhf} {...slot} value={value} type="date" />
     case 'email':
       return (
         <Input
           {...rhf}
+          {...slot}
           value={value}
           type="email"
           placeholder={field.placeholder}
@@ -64,6 +88,7 @@ function Control({ field, rhf }: { field: SignField; rhf: Rhf }) {
       return (
         <Input
           {...rhf}
+          {...slot}
           value={value}
           placeholder={field.placeholder}
           readOnly={field.locked}

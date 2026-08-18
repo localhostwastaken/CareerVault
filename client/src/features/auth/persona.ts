@@ -1,7 +1,7 @@
 import type { AppRole, AuthUser } from './types'
 
 // The active persona (role + org) lives in Redux memory, which a hard refresh wipes.
-// On reload AuthRefresh restores the session from the httpOnly cookie, so without this
+// On reload bootstrapSession restores the session from the httpOnly cookie, so without this
 // the user is snapped back to their default role even if they were working as, say, HR.
 // We mirror the persona into sessionStorage so the restore can put them back where they were.
 const STORAGE_KEY = 'cv.activePersona'

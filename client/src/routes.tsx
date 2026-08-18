@@ -1,7 +1,8 @@
 import { Suspense, lazy, type ReactNode } from 'react'
 import { Navigate, type RouteObject } from 'react-router-dom'
-import ImplementAuth from '@/components/ImplementAuth'
+import { GuestOnly } from '@/components/GuestOnly'
 import LoadingScreen from '@/components/LoadingScreen'
+import { RequireAuth } from '@/components/RequireAuth'
 import { RoleHomeRedirect } from '@/components/RoleHomeRedirect'
 import { RoleGate } from '@/components/RoleGate'
 import { ComingSoon } from '@/components/shared/ComingSoon'
@@ -113,18 +114,25 @@ export const routes: RouteObject[] = [
     errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, element: <Navigate to="/auth/login" replace /> },
-      { path: 'login', element: suspense(<Login />) },
       { path: 'magic', element: suspense(<MagicLink />) },
       { path: 'forgot-password', element: suspense(<ForgotPassword />) },
       // Target of the emailed reset link (…/auth/reset-password?token=…) — the path
       // is fixed by the server's email template, so don't rename it.
       { path: 'reset-password', element: suspense(<ResetPassword />) },
-      { path: 'register', element: suspense(<Register />) },
+      // Sign-in and sign-up are the only auth routes a signed-in user should be moved
+      // off — and the only ones that must not paint before the session is resolved.
+      {
+        element: <GuestOnly />,
+        children: [
+          { path: 'login', element: suspense(<Login />) },
+          { path: 'register', element: suspense(<Register />) },
+        ],
+      },
     ],
   },
   {
     path: '/app',
-    element: <ImplementAuth />,
+    element: <RequireAuth />,
     errorElement: <RouteErrorBoundary />,
     children: [
       {
@@ -149,6 +157,12 @@ export const routes: RouteObject[] = [
       },
     ],
   },
-  { path: '/payments/mock', element: suspense(<MockCheckout />), errorElement: <RouteErrorBoundary /> },
+  // Checkout needs a session but not the portal shell, so it reuses the same guard as
+  // /app rather than re-implementing one inline.
+  {
+    element: <RequireAuth />,
+    errorElement: <RouteErrorBoundary />,
+    children: [{ path: '/payments/mock', element: suspense(<MockCheckout />) }],
+  },
   { path: '*', element: <Navigate to="/" replace /> },
 ]

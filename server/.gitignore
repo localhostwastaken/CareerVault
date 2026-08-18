@@ -61,3 +61,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Local adapter artifacts (LocalStorage PDFs, dev signing keys)
 /storage
 /keys
+
+# Key store + PDFs for the e2e suite, kept apart from /storage so a test run can wipe
+# signing keys without touching the ones dev sessions depend on.
+/storage-e2e

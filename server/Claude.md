@@ -60,6 +60,7 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
 - **Org-scoping at the service layer:** every service method takes/derives `orgId`; every Prisma query filters by it. `OrgScopingInterceptor` populates request context; never trust a client-supplied orgId. Cross-org access must 404/403.
 - `@Roles(...)` + `RolesGuard` on every protected route. Magic links: single-use, 15-min, store only the SHA-256 hash; consume on use, and **always verify against the expected `purpose`** (`verifyAndConsume(token, purpose)`) — never accept a cross-purpose link. Rate-limit auth endpoints (per-email + per-IP). Never log secrets/PII.
 - Files holding key material (dev `./keys`, `storage/kms`) are written owner-only (`0600`, dir `0700`).
+- **Org signing keys must live on durable storage.** With `KEY_MANAGEMENT_DRIVER=local` the private keys are files under `STORAGE_LOCAL_DIR` while only a POINTER (`organizations.kms_key_id`) is in Postgres. On an ephemeral container the files vanish on every deploy and the pointer does not, which took every signature down with a bare 500. Two things prevent it now and both must stay: a mounted disk in `render.yaml`, and `KMS_MASTER_KEY` being **required in production** (unset, each process mints a throwaway master key). `ensureOrgKey` verifies the material exists and re-keys if it does not — safe only because `documents.signing_public_key_pem` records the key each signature was made under, so re-keying never invalidates history. Do not remove that column's use in `VerificationService`.
 
 ## Reuse catalog (search before writing new)
 `PrismaService`, `ConfigService`, Pino `Logger`, `crypto.ts`, `merkle.ts`, `pagination.ts`, response/error envelope, `AuditService` + `@Audit`, `EventEmitter2` bus, the six adapters. Three similar handlers beat one over-abstracted base.
@@ -74,7 +75,9 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
 `@nestjs/schedule` jobs (midnight Merkle batch, daily expiry, daily audit purge `STANDARD>90d`, magic-link cleanup) live in `cron/`, gated by `WORKER=true`. Idempotent; logged with context.
 
 ## Testing
-Jest unit per service (mock Prisma + adapters), Supertest e2e per module. Required tests: org-scoping 403, auth 429, hash/sign/verify roundtrip, merkle proof verifies to anchored root, lifecycle transitions. `prisma/seed.ts` provides demo fixtures (one user per role + docs in every status + AI data).
+Jest unit per service (mock Prisma + adapters), Supertest e2e per module (`npm run test:e2e`). Required tests: org-scoping 403, auth 429, hash/sign/verify roundtrip, merkle proof verifies to anchored root, lifecycle transitions, **signing-key loss recovery** (`test/signing-key.e2e-spec.ts`). `prisma/seed.ts` provides demo fixtures (one user per role + docs in every status + AI data).
+
+Browser coverage of the full org → request → sign → approve → issue → verify chain lives in [`../e2e/`](../e2e/README.md) (Playwright, boots its own API + client against `careervault_e2e`). Anything that changes the document lifecycle, the role gates or the auth/session flow must be run against it. `NODE_ENV=test` disables rate limiting via `TestEnvThrottlerGuard` — that is the ONLY behaviour keyed off `test`, and it must stay that way.
 
 ## Don't
 Put logic in controllers · bypass services to hit Prisma from elsewhere · call cloud SDKs outside adapters · invent a new document status or role · hardcode secrets · skip org-scoping "just this once".

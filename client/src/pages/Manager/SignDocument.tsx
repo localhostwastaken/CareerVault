@@ -8,15 +8,17 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { DetailSkeleton } from '@/components/shared/Skeletons'
 import { StatusBadge } from '@/components/shared/StatusBadge'
+import { setActivePersona } from '@/features/auth/authSlice'
 import { useGetDocumentQuery } from '@/features/document/api'
 import { SignDocumentForm } from '@/features/document/components/SignDocumentForm'
 import { DOCUMENT_TYPE_LABEL } from '@/features/document/types'
-import { useAuth } from '@/hooks/useAuth'
+import { useAppDispatch, useAuth } from '@/hooks/useAuth'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
 const ManagerSignDocument = () => {
   const { id = '' } = useParams()
-  const { activeOrgId } = useAuth()
+  const { activeOrgId, user } = useAuth()
+  const dispatch = useAppDispatch()
   const query = useGetDocumentQuery(id, { skip: !id })
   useDocumentTitle(query.data ? `Sign — ${DOCUMENT_TYPE_LABEL[query.data.type]}` : 'Sign document')
 
@@ -58,6 +60,12 @@ const ManagerSignDocument = () => {
           const isOwnOrg = activeOrgId === document.organizationId
           const canSign = isOwnOrg && (document.status === 'REQUESTED' || document.status === 'DRAFT')
           const note = typeof document.contentJson.note === 'string' ? document.contentJson.note : null
+          // A manager at two employers lands here with the wrong persona active surprisingly
+          // often — the org comes from the persona, not from the URL. Telling them to "switch"
+          // without offering the switch left the work looking simply unavailable.
+          const managerHere = user?.memberships.find(
+            (m) => m.role === 'MANAGER' && m.organizationId === document.organizationId,
+          )
 
           return (
             <div className="flex flex-col gap-6">
@@ -92,10 +100,29 @@ const ManagerSignDocument = () => {
                 <Notice
                   tone="neutral"
                   title={isOwnOrg ? 'This document can no longer be signed' : 'This document belongs to another organisation'}
+                  actions={
+                    !isOwnOrg && managerHere ? (
+                      // Deliberately not useSwitchPersona: that redirects to the role's home
+                      // screen, which would bounce the manager off the very document they
+                      // opened. Switching in place re-renders this page with the form.
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          dispatch(
+                            setActivePersona({ role: 'MANAGER', organizationId: managerHere.organizationId }),
+                          )
+                        }
+                      >
+                        Switch to {document.organizationName}
+                      </Button>
+                    ) : undefined
+                  }
                 >
                   {isOwnOrg
                     ? `It is ${document.status.toLowerCase().replace('_', ' ')}. Signing only applies to requested or draft documents.`
-                    : `Only a manager at ${document.organizationName} can sign it. Switch to that organisation if you are a member.`}
+                    : managerHere
+                      ? `You are signed in as another organisation's persona. Switch to ${document.organizationName} to sign it.`
+                      : `Only a manager at ${document.organizationName} can sign it.`}
                 </Notice>
               )}
             </div>

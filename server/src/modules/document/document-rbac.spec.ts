@@ -75,15 +75,16 @@ const prisma = {
   },
 };
 
+// Only `prisma` is exercised by requireMember; the rest of the constructor is stubbed.
+// Keep the arity in step with DocumentService — it drifted to eight once, which compiled
+// under `nest build` (specs are excluded) but broke `tsc --noEmit` over the whole project.
 const service = new DocumentService(
-  prisma as never,
-  {} as never,
-  {} as never,
-  {} as never,
-  {} as never,
-  {} as never,
-  {} as never,
-  {} as never,
+  prisma as never, // prisma
+  {} as never, // kms
+  {} as never, // pdf
+  {} as never, // notifications
+  {} as never, // blockchain
+  {} as never, // skills
 );
 
 describe('requireMember role separation', () => {

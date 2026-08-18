@@ -6,6 +6,15 @@ services:
     plan: starter          # upgrade to standard for more RAM 
     healthCheckPath: /api/v1/health
 
+    # NOT optional with KEY_MANAGEMENT_DRIVER=local. Org signing keys are files under
+    # STORAGE_LOCAL_DIR while the database only stores a POINTER to them, so without a
+    # mounted disk every deploy wipes the keys, leaves the pointers behind, and every
+    # attempt to sign a document fails. Issued PDFs live here too.
+    disk:
+      name: careervault-storage
+      mountPath: /app/server/storage
+      sizeGB: 1
+
     envVars:
       # ── Static config ───────────────────────────────────────────────────────
       - key: NODE_ENV
@@ -50,7 +59,7 @@ services:
       - key: DNS_DRIVER
         value: local
       - key: STORAGE_LOCAL_DIR
-        value: /app/server/storage    # mount a Render disk here for persistence
+        value: /app/server/storage    # backed by the `disk:` above — must stay in sync
 
       # ── Secrets — set these in the Render dashboard, never commit values ────
       - key: DATABASE_URL            # Supabase transaction pooler (port 6543)
@@ -63,7 +72,11 @@ services:
         sync: false
       - key: JWT_PUBLIC_KEY          # contents of server/keys/jwt_public.pem with \n escaped as \\n
         sync: false
-      - key: KMS_MASTER_KEY          # 32-byte hex string (openssl rand -hex 32)
+      # REQUIRED in production (the app refuses to boot without it). Base64, decoding to
+      # exactly 32 bytes: openssl rand -base64 32
+      # A hex value will NOT work — it decodes to 48 bytes and fails validation.
+      # Rotating this makes every existing org signing key unreadable; treat it as permanent.
+      - key: KMS_MASTER_KEY
         sync: false
       - key: GROQ_API_KEY            # enables LLM skill extraction
         sync: false

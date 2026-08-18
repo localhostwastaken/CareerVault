@@ -101,11 +101,11 @@ describe('validateAndNormalizeSubject', () => {
   });
 
   it('requires the separation block only when the letter certifies a separation', async () => {
-    const {
-      lastWorkingDay: _lwd,
-      reasonForLeaving: _rfl,
-      ...rest
-    } = experience();
+    // Rebuilt without the separation block rather than destructured away — the discarded
+    // bindings tripped no-unused-vars, and the intent reads the same.
+    const rest: Record<string, unknown> = { ...experience() };
+    delete rest.lastWorkingDay;
+    delete rest.reasonForLeaving;
     // RELIEVING without a last working day / reason must fail...
     await expect(
       validateAndNormalizeSubject(

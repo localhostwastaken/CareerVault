@@ -30,6 +30,18 @@ function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
       'EMAIL_DRIVER=console — magic-link tokens are printed to stdout instead ' +
         'of emailed (anyone reading logs can log in). Set EMAIL_DRIVER=ses.',
     );
+  // Not a mock, but the same class of silent trap: with the local driver the org signing
+  // keys are FILES. If STORAGE_LOCAL_DIR is not a mounted volume they vanish on every
+  // deploy while the database keeps pointing at them, and signing breaks org-wide.
+  if (
+    ((env.KEY_MANAGEMENT_DRIVER as string | undefined) ?? 'local') === 'local'
+  )
+    mocked.push(
+      'KEY_MANAGEMENT_DRIVER=local — org signing keys are files under ' +
+        `STORAGE_LOCAL_DIR (${(env.STORAGE_LOCAL_DIR as string | undefined) ?? './storage'}). ` +
+        'That path MUST be durable storage; on an ephemeral container every key is lost on ' +
+        'redeploy and no document can be signed.',
+    );
   if (mocked.length === 0) return;
 
   const banner = '='.repeat(74);
@@ -57,10 +69,13 @@ export const envValidationSchema = Joi.object({
   JWT_ACCESS_TTL: Joi.string().default('1d'),
   JWT_REFRESH_TTL: Joi.string().default('7d'),
 
+  // Required in production, optional elsewhere. LocalKmsService wraps every org signing key
+  // with this; when it is unset it mints a random one per process, so on a container without
+  // durable storage each deploy silently orphans every key it wrote — which is precisely how
+  // manager signing started failing with an unexplained 500. Failing to boot is the honest
+  // outcome: an unsigned deploy is worse than no deploy.
   KMS_MASTER_KEY: Joi.string()
-    .allow('')
-    .optional()
-    .custom((value) => {
+    .custom((value: string) => {
       if (value && value.trim()) {
         const buf = Buffer.from(value.trim(), 'base64');
         if (buf.length !== 32)
@@ -70,6 +85,19 @@ export const envValidationSchema = Joi.object({
           );
       }
       return value;
+    })
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string()
+        .required()
+        .messages({
+          'any.required':
+            'KMS_MASTER_KEY is required in production — without it every org signing key ' +
+            'becomes unreadable after a restart. Generate with: openssl rand -base64 32',
+          'string.empty':
+            'KMS_MASTER_KEY must not be empty in production. Generate with: openssl rand -base64 32',
+        }),
+      otherwise: Joi.string().allow('').optional(),
     }),
 
   KEY_MANAGEMENT_DRIVER: Joi.string().valid('local', 'aws').default('local'),

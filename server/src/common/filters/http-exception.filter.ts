@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { SigningKeyUnavailableError } from '../../services/key-management/key-management.service.js';
 
 // Standard error envelope: { success:false, error:{ code, message, statusCode } }.
 // class-validator produces a string[] message — we join it. 5xx are logged with stack.
@@ -25,7 +26,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // must never leak their raw message to the client.
     let message = 'Internal server error';
 
-    if (exception instanceof HttpException) {
+    // The one non-HttpException we translate deliberately. It is an operational fault, not
+    // a caller mistake, and the generic 500 above told a manager whose signature just failed
+    // exactly nothing — the real cause (the key store did not survive a restart) was only
+    // ever visible in the server log.
+    if (exception instanceof SigningKeyUnavailableError) {
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      code = 'SIGNING_KEY_UNAVAILABLE';
+      message =
+        "This organisation's signing key is not available, so the document cannot be signed right now. An administrator needs to restore the key store.";
+    } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       code = codeFromStatus(status);
       const body = exception.getResponse();

@@ -248,6 +248,10 @@ model Document {
   documentHash          String?         @map("document_hash") // R4: SHA-256(JCS(content_json)+salt)
   managerSignature      String?         @map("manager_signature")
   hrSignature           String?         @map("hr_signature")
+  // Snapshot of the org public key both signatures were made under, taken at signing time.
+  // Without it verification can only ever check against the org's CURRENT key, so replacing
+  // a lost or compromised org key would silently invalidate every document already issued.
+  signingPublicKeyPem   String?         @map("signing_public_key_pem")
   version               Int             @default(1)
   enableSkillExtraction Boolean         @default(false) @map("enable_skill_extraction")
   expiresAt             DateTime?       @map("expires_at")

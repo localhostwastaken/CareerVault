@@ -160,6 +160,7 @@ export class DocumentService {
       where: { id: doc.organizationId },
     });
     const kmsKeyId = await this.ensureOrgKey(org);
+    const signingPublicKeyPem = await this.orgPublicKey(org.id);
 
     // Server-authoritative content: validate + normalize the subject per document type
     // (closes the @IsObject() hole) and store the FLAT subject as contentJson so the
@@ -205,6 +206,10 @@ export class DocumentService {
           salt,
           documentHash,
           managerSignature,
+          // Pin the verification key to this signature rather than to whatever the org's
+          // current key happens to be later. Without it, ever replacing an org key would
+          // retroactively invalidate this document.
+          signingPublicKeyPem,
           signerMemberId: member.id,
           status: 'PENDING_HR',
           version: { increment: 1 },
@@ -281,6 +286,19 @@ export class DocumentService {
       where: { id: doc.organizationId },
     });
     const kmsKeyId = await this.ensureOrgKey(org);
+
+    // The dual signature only means anything if both halves verify under ONE key. If the
+    // org has been re-keyed since the manager signed (its key store was lost), co-signing
+    // now would produce a document that can never verify as a pair — so send it back for a
+    // fresh manager signature instead of silently issuing something broken.
+    if (
+      doc.signingPublicKeyPem &&
+      doc.signingPublicKeyPem !== (await this.orgPublicKey(org.id))
+    ) {
+      throw new ConflictException(
+        "This organisation's signing key changed after the manager signed. Return the document so it can be signed again before approving.",
+      );
+    }
 
     // C1: HR co-signs a DISTINCT statement bound to the HR role and this approver's
     // membership, so managerSignature !== hrSignature and the dual-signature is real.
@@ -483,7 +501,7 @@ export class DocumentService {
           role: 'MANAGER',
           isActive: true,
         },
-        orderBy: { joinedAt: 'desc' },
+        orderBy: DocumentService.SIGNER_ORDER,
       });
       if (!anyManager)
         throw new UnprocessableEntityException(
@@ -770,6 +788,14 @@ export class DocumentService {
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
+  // Auto-assignment order for "any available manager". `joinedAt` is null for members who
+  // were invited but never went through an explicit join step, and a sort over an all-null
+  // column returns rows in whatever order the planner likes — so the request landed on an
+  // arbitrary manager, and since only the ASSIGNED manager may sign, nobody else could
+  // rescue it. `id` breaks the tie deterministically.
+  private static readonly SIGNER_ORDER: Prisma.OrganizationMemberOrderByWithRelationInput[] =
+    [{ joinedAt: 'desc' }, { id: 'asc' }];
+
   private async resolveSigner(dto: RequestDocumentDto) {
     if (dto.managerUserId) {
       const member = await this.prisma.organizationMember.findFirst({
@@ -792,7 +818,7 @@ export class DocumentService {
         role: 'MANAGER',
         isActive: true,
       },
-      orderBy: { joinedAt: 'desc' },
+      orderBy: DocumentService.SIGNER_ORDER,
     });
     if (!member)
       throw new UnprocessableEntityException(
@@ -835,13 +861,47 @@ export class DocumentService {
     return member;
   }
 
-  // Mint the org signing key on first use (covers seeded/legacy orgs verified without one).
-  // Public: reused by BulkIssuanceService, which signs directly without going through the normal sign/approve pipeline.
+  // Read back the org's public key AFTER ensureOrgKey may have replaced it — `org` is a
+  // snapshot taken before that call, so its publicKeyPem can already be stale.
+  private async orgPublicKey(orgId: string): Promise<string | null> {
+    const org = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: orgId },
+      select: { publicKeyPem: true },
+    });
+    return org.publicKeyPem;
+  }
+
+  // Resolve the org's signing key, minting one when needed (covers seeded/legacy orgs
+  // verified without one) and REPLACING one whose material has gone missing.
+  //
+  // The reference lives in Postgres and the material lives in the key store, so the two
+  // drift whenever the store is not durable — a container without a mounted disk loses
+  // every key on deploy while the pointer survives. Trusting the pointer alone is what
+  // turned every signature attempt into an unexplained 500. Replacement is only safe
+  // because each document records the key it was signed under (signingPublicKeyPem), so
+  // re-keying an org cannot invalidate what it already issued.
+  //
+  // Public: reused by BulkIssuanceService, which signs directly without going through the
+  // normal sign/approve pipeline.
   async ensureOrgKey(org: {
     id: string;
     kmsKeyId: string | null;
   }): Promise<string> {
-    if (org.kmsKeyId) return org.kmsKeyId;
+    if (org.kmsKeyId && (await this.kms.hasKey(org.kmsKeyId))) {
+      return org.kmsKeyId;
+    }
+    if (org.kmsKeyId) {
+      this.logger.error(
+        `Signing key "${org.kmsKeyId}" for org ${org.id} is registered but its material is ` +
+          `missing from the key store — minting a replacement. Documents already issued keep ` +
+          `verifying against their recorded key. This means the key store did not survive a ` +
+          `restart: mount durable storage at STORAGE_LOCAL_DIR and set KMS_MASTER_KEY.`,
+      );
+      await this.auditSystem('ORG_SIGNING_KEY_REPLACED', org.id, {
+        previousKmsKeyId: org.kmsKeyId,
+        reason: 'key material unavailable',
+      });
+    }
     const { kmsKeyId, publicKeyPem } = await this.kms.generateOrgKeyPair(
       org.id,
     );
@@ -862,21 +922,57 @@ export class DocumentService {
     retentionTier: 'STANDARD' | 'COMPLIANCE',
     newValue?: Prisma.InputJsonValue,
   ): Promise<void> {
+    return this.writeAudit(
+      { actorId, actorType: 'USER', entityType: 'DOCUMENT' },
+      action,
+      documentId,
+      retentionTier,
+      newValue,
+    );
+  }
+
+  // Infrastructure events (e.g. an org key replaced because its material vanished) have no
+  // human actor, and they are about the ORG, not a document.
+  private async auditSystem(
+    action: string,
+    organizationId: string,
+    newValue?: Prisma.InputJsonValue,
+  ): Promise<void> {
+    return this.writeAudit(
+      { actorId: null, actorType: 'SYSTEM', entityType: 'ORGANIZATION' },
+      action,
+      organizationId,
+      'COMPLIANCE',
+      newValue,
+    );
+  }
+
+  private async writeAudit(
+    actor: {
+      actorId: string | null;
+      actorType: 'USER' | 'SYSTEM';
+      entityType: string;
+    },
+    action: string,
+    entityId: string,
+    retentionTier: 'STANDARD' | 'COMPLIANCE',
+    newValue?: Prisma.InputJsonValue,
+  ): Promise<void> {
     try {
       await this.prisma.auditLog.create({
         data: {
-          actorId,
-          actorType: 'USER',
+          actorId: actor.actorId,
+          actorType: actor.actorType,
           action,
-          entityType: 'DOCUMENT',
-          entityId: documentId,
+          entityType: actor.entityType,
+          entityId,
           retentionTier,
           ...(newValue === undefined ? {} : { newValue }),
         },
       });
     } catch (error) {
       this.logger.warn(
-        `Audit write failed for ${action} ${documentId}: ${String(error)}`,
+        `Audit write failed for ${action} ${entityId}: ${String(error)}`,
       );
     }
   }

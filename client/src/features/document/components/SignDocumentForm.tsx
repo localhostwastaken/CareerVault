@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
+import { useForm, type FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ChevronDown, Loader2, PenLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -67,9 +67,19 @@ export function SignDocumentForm({ document }: { document: DocumentDetail }) {
     }
   }
 
+  // A field inside the collapsed section can be required — `reasonForLeaving` becomes
+  // mandatory the moment the letter certifies a separation. React Hook Form validates it
+  // either way, but its error renders nowhere while the section is shut, so the submit
+  // button did nothing at all: no request, no message, no explanation. Open the section so
+  // the blocking error is on screen.
+  const onInvalid = (errors: FieldErrors<SignFormValues>) => {
+    const hidden = SIGN_FIELDS[type].some((field) => field.section === 'more' && errors[field.name])
+    if (hidden) setShowMore(true)
+  }
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5">
+      <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="flex flex-col gap-5">
         {defaultFields.map((field) =>
           field.separationOnly && stillEmployed ? (
             <p key={field.name} className="inset-well p-4 text-body text-muted-foreground">

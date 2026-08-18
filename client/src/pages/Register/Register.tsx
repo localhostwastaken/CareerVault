@@ -1,5 +1,4 @@
-import { useEffect, useRef } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2 } from 'lucide-react'
@@ -11,42 +10,30 @@ import { AuthShell } from '@/features/auth/components/AuthShell'
 import { useRegisterMutation } from '@/features/auth/authApi'
 import { setActivePersona, setCredentials } from '@/features/auth/authSlice'
 import { registerSchema, type RegisterValues } from '@/features/auth/schema'
-import { useAppDispatch, useAuth } from '@/hooks/useAuth'
-import { ROLE_CONFIG } from '@/lib/roles'
+import { useAppDispatch } from '@/hooks/useAuth'
 import { apiErrorMessage, notify } from '@/lib/notify'
 
 const Register = () => {
-  const navigate = useNavigate()
   const dispatch = useAppDispatch()
-  const { isAuthenticated } = useAuth()
   const [registerUser, { isLoading }] = useRegisterMutation()
   const form = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
     mode: 'onBlur',
     defaultValues: { fullName: '', email: '', password: '', accountType: 'HOLDER' },
   })
-  // Prevent the auth-guard effect from overriding the explicit navigation after a
-  // successful registration. The effect only bounces users who landed here already
-  // authenticated (e.g. manually typed /auth/register while signed in).
-  const didSubmit = useRef(false)
 
-  useEffect(() => {
-    if (isAuthenticated && !didSubmit.current) navigate('/app', { replace: true })
-  }, [isAuthenticated, navigate])
-
+  // Like Login, this never navigates: GuestOnly forwards to /app once credentials land and
+  // RoleHomeRedirect resolves the destination from the persona set below. Both dispatches
+  // are batched, so the redirect always observes the final persona.
   const onSubmit = async (values: RegisterValues) => {
     try {
-      didSubmit.current = true
-      const result = await registerUser(values).unwrap()
-      dispatch(setCredentials(result))
-      // Override the default HOLDER persona for ORG_ADMIN registrants so the
-      // sidebar shows admin nav before the org is created.
+      dispatch(setCredentials(await registerUser(values).unwrap()))
+      // Override the default HOLDER persona for ORG_ADMIN registrants so the sidebar shows
+      // admin nav — and /app lands on /app/org — before the org exists.
       if (values.accountType === 'ORG_ADMIN') {
         dispatch(setActivePersona({ role: 'ORG_ADMIN', organizationId: null }))
       }
-      navigate(values.accountType === 'ORG_ADMIN' ? '/app/org' : ROLE_CONFIG['HOLDER'].home, { replace: true })
     } catch (error) {
-      didSubmit.current = false
       const message = apiErrorMessage(error, 'Registration failed')
       notify.error(
         message.toLowerCase().includes('already registered')

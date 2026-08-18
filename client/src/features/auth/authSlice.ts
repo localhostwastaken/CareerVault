@@ -3,7 +3,14 @@ import type { AppRole, AuthResponse, AuthUser } from './types'
 import { primaryRole } from '@/lib/roles'
 import { clearPersona, isPersonaValid, loadPersona, savePersona } from './persona'
 
+// Whether the session has been resolved yet. The access token is deliberately memory-only
+// (never localStorage), so on a cold load it can only be recovered by a round-trip to
+// /auth/refresh. Without this third state a guard cannot tell "signed out" from "not known
+// yet" and flashes the sign-in screen on every reload before bouncing back.
+export type AuthStatus = 'restoring' | 'authenticated' | 'anonymous'
+
 interface AuthState {
+  status: AuthStatus
   token: string | null
   user: AuthUser | null
   // The persona the user is currently operating as. Determines the sidebar nav,
@@ -16,6 +23,7 @@ interface AuthState {
 
 const persisted = loadPersona()
 const initialState: AuthState = {
+  status: 'restoring',
   token: null,
   user: null,
   activeRole: persisted?.role ?? 'HOLDER',
@@ -28,6 +36,7 @@ const authSlice = createSlice({
   reducers: {
     setCredentials(state, action: PayloadAction<AuthResponse>) {
       const user = action.payload.user
+      state.status = 'authenticated'
       state.token = action.payload.token
       state.user = user
       // Restore the persona the user last worked in (across a hard refresh) when it is
@@ -66,7 +75,14 @@ const authSlice = createSlice({
       state.activeOrgId = action.payload.organizationId
       savePersona({ role: action.payload.role, organizationId: action.payload.organizationId })
     },
+    // Startup restore found no usable session. Unlike logout this is not a user action, so
+    // it must NOT clear the stored persona — the user may sign back in on this same tab and
+    // should land where they left off.
+    sessionRestoreFailed(state) {
+      if (state.status === 'restoring') state.status = 'anonymous'
+    },
     logout(state) {
+      state.status = 'anonymous'
       state.token = null
       state.user = null
       state.activeRole = 'HOLDER'
@@ -76,5 +92,5 @@ const authSlice = createSlice({
   },
 })
 
-export const { setCredentials, setUser, setActivePersona, logout } = authSlice.actions
+export const { setCredentials, setUser, setActivePersona, sessionRestoreFailed, logout } = authSlice.actions
 export default authSlice.reducer

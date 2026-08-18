@@ -82,13 +82,19 @@ export class MemberService {
         'User already holds this role in the organization',
       );
 
+    // joinedAt is stamped here, not on some later "accept" step: the membership is active
+    // and usable the moment it is written, and there is no acceptance flow. Leaving it null
+    // made it useless as a sort key — which is what made auto-assigning a manager to a
+    // document request non-deterministic (see DocumentService.SIGNER_ORDER).
+    const now = new Date();
     const member = duplicate
       ? await this.prisma.organizationMember.update({
           where: { id: duplicate.id },
           data: {
             isActive: true,
             corporateEmail: dto.email,
-            invitedAt: new Date(),
+            invitedAt: now,
+            joinedAt: now,
           },
           include: { user: { select: { email: true, fullName: true } } },
         })
@@ -98,7 +104,8 @@ export class MemberService {
             organizationId: orgId,
             role: dto.role,
             corporateEmail: dto.email,
-            invitedAt: new Date(),
+            invitedAt: now,
+            joinedAt: now,
           },
           include: { user: { select: { email: true, fullName: true } } },
         });

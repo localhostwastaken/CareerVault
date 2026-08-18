@@ -3,7 +3,6 @@ import { Loader2, Lock, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useMockCompletePaymentMutation } from '@/features/payment/api'
-import { useAuth } from '@/hooks/useAuth'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { formatCurrency } from '@/lib/format'
 import { notify, toastApiError } from '@/lib/notify'
@@ -15,13 +14,12 @@ const MockCheckout = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const [params] = useSearchParams()
-  const { isAuthenticated } = useAuth()
   const session = params.get('session') ?? ''
   const plan = params.get('plan')
   const [complete, { isLoading }] = useMockCompletePaymentMutation()
 
-  // Pay requires a session token; completing it requires auth. Bounce both edge cases.
-  if (!isAuthenticated) return <Navigate to="/auth/login" replace />
+  // Auth is handled by the RequireAuth route this page sits under; a missing session
+  // token is the only edge case left to bounce.
   if (!session) return <Navigate to="/" replace />
 
   // Authoritative amount (dollars) is passed via router state; the URL carries cents.
