@@ -41,12 +41,9 @@ const COOKIE_PATH = '/api/v1/auth';
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
-// In production the client is cross-site (Vercel frontend, Render API) and sends
-// credentials, so cookies must be SameSite=None; Secure to be transmitted on
-// cross-site XHR. Dev is same-site localhost, where Lax over http is correct.
-function cookieSecurity(): Pick<CookieOptions, 'sameSite' | 'secure'> {
+function cookieSecurity(): Pick<CookieOptions, 'sameSite' | 'secure' | 'partitioned'> {
   return process.env.NODE_ENV === 'production'
-    ? { sameSite: 'none', secure: true }
+    ? { sameSite: 'none', secure: true, partitioned: true }
     : { sameSite: 'lax', secure: false };
 }
 
