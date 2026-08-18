@@ -64,7 +64,17 @@ let refreshPromise: Promise<boolean> | null = null
 async function reauthenticate(api: BaseQueryApi, extraOptions: object): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const result = await rawBaseQuery({ url: '/auth/refresh', method: 'POST' }, api, extraOptions)
+      // prepareHeaders only attaches the CSRF header when api.type === 'mutation', but that type is fixed to whichever endpoint originally triggered this call chain — for a 401 coming from a query (e.g. the notification poll) it's still 'query', so the CSRF-gated refresh got silently rejected with 403 and forced a real logout instead of a silent reauth. Attach it directly here instead.
+      const csrf = readCsrfToken()
+      const result = await rawBaseQuery(
+        {
+          url: '/auth/refresh',
+          method: 'POST',
+          headers: csrf ? { 'x-csrf-token': csrf } : undefined,
+        },
+        api,
+        extraOptions,
+      )
       const envelope = result.data as { success: boolean; data?: AuthResponse } | undefined
       if (!envelope?.success || !envelope.data) return false
       api.dispatch(setCredentials(envelope.data))
