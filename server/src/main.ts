@@ -1,3 +1,4 @@
+import { setDefaultResultOrder } from 'node:dns';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
@@ -7,6 +8,9 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
+
+// Node 18+ can resolve a dual-stack host's AAAA (IPv6) record first, but Render's containers have no outbound IPv6 route — that mismatch surfaced as a ~120s ENETUNREACH hang connecting to Gmail SMTP that a request-path email send then turned into a 500 (see GmailEmailService). Preferring IPv4 avoids it for every outbound connection, not just SMTP.
+setDefaultResultOrder('ipv4first');
 
 async function bootstrap(): Promise<void> {
   // rawBody lets the payments webhook verify provider signatures on the unparsed body.

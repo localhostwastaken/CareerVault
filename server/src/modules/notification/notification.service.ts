@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { EmailService } from '../../services/email/email.service.js';
 import { escapeHtml } from '../../common/utils/html.js';
@@ -7,13 +7,14 @@ import type { NotificationType } from '../../generated/prisma/enums.js';
 
 @Injectable()
 export class NotificationService {
+  private readonly logger = new Logger(NotificationService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
   ) {}
 
-  // Creates the in-app record and (optionally) sends the email — the single entry
-  // point for user-facing notifications across the platform.
+  // Creates the in-app record and (optionally) sends the email — the single entry point for user-facing notifications across the platform, called from document, payment, merkle, bulk-issuance and messaging flows.
   async notify(
     userId: string,
     type: NotificationType,
@@ -25,12 +26,16 @@ export class NotificationService {
       data: { userId, type, title, body },
     });
     if (options?.emailTo) {
-      // body is plain text (the client renders it as text); escape before HTML email.
-      await this.email.send({
-        to: options.emailTo,
-        subject: title,
-        html: `<p>${escapeHtml(body)}</p>`,
-      });
+      // Best-effort, fire-and-forget: the in-app notification above is the source of truth, and email delivery (SMTP latency/outages) must never block or fail the caller's request (document request, payment, revoke, ...). body is plain text (the client renders it as text); escape before HTML email.
+      this.email
+        .send({
+          to: options.emailTo,
+          subject: title,
+          html: `<p>${escapeHtml(body)}</p>`,
+        })
+        .catch((error) =>
+          this.logger.warn(`Email notification failed for ${options.emailTo}: ${error}`),
+        );
     }
   }
 

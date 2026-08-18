@@ -56,7 +56,7 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
 - Pagination via shared `PaginationDto`. Propagate `X-Request-ID`. Document endpoints with `@nestjs/swagger` (feeds the client's generated types).
 
 ## Security (non-negotiable)
-- JWT access 15m + refresh 7d (HTTP-only secure cookie, **rotated** on use). RS256 keys from config.
+- JWT access 1d + refresh 7d (HTTP-only secure cookie, **rotated** on use). RS256 keys from config. (Widened from the original 15m — the client's `APISlice` baseQuery now transparently refreshes on 401 and redirects to login on refresh failure, so the shorter TTL was no longer buying revocation safety the frontend could act on; 1d trades some of that blast-radius reduction for far fewer refresh round-trips.)
 - **Org-scoping at the service layer:** every service method takes/derives `orgId`; every Prisma query filters by it. `OrgScopingInterceptor` populates request context; never trust a client-supplied orgId. Cross-org access must 404/403.
 - `@Roles(...)` + `RolesGuard` on every protected route. Magic links: single-use, 15-min, store only the SHA-256 hash; consume on use, and **always verify against the expected `purpose`** (`verifyAndConsume(token, purpose)`) — never accept a cross-purpose link. Rate-limit auth endpoints (per-email + per-IP). Never log secrets/PII.
 - Files holding key material (dev `./keys`, `storage/kms`) are written owner-only (`0600`, dir `0700`).

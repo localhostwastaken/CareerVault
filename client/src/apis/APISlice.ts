@@ -1,12 +1,24 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react'
-import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query/react'
+import type { BaseQueryApi, BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query/react'
 import apiConfig from '../config/APIEndpoints'
+import { logout, setCredentials } from '../features/auth/authSlice'
+import type { AuthResponse } from '../features/auth/types'
 import type { RootState } from '../store'
 
 const CSRF_COOKIE = 'cv_csrf'
 
-// Reads the non-httpOnly cv_csrf cookie the API sets alongside the refresh
-// cookie, so we can echo it back for the double-submit CSRF check.
+// Auth endpoints that either don't carry a bearer token or are themselves the refresh call — a 401 from these is a real credential/refresh failure, not an expired access token, so they must never trigger the reauth-and-retry flow below (the refresh call itself would recurse forever otherwise).
+const PUBLIC_AUTH_URLS = new Set([
+  '/auth/refresh',
+  '/auth/login',
+  '/auth/register',
+  '/auth/magic-link',
+  '/auth/verify-magic-link',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+])
+
+// Reads the non-httpOnly cv_csrf cookie the API sets alongside the refresh cookie, so we can echo it back for the double-submit CSRF check.
 function readCsrfToken(): string | undefined {
   const match = document.cookie.match(
     new RegExp(`(?:^|; )${CSRF_COOKIE}=([^;]*)`),
@@ -46,9 +58,50 @@ const baseQuery: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> =
   return result
 }
 
+// The 15-minute access token expires while a tab stays open. Share one in-flight refresh across every concurrent 401 instead of letting each caller race its own refresh request.
+let refreshPromise: Promise<boolean> | null = null
+
+async function reauthenticate(api: BaseQueryApi, extraOptions: object): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const result = await rawBaseQuery({ url: '/auth/refresh', method: 'POST' }, api, extraOptions)
+      const envelope = result.data as { success: boolean; data?: AuthResponse } | undefined
+      if (!envelope?.success || !envelope.data) return false
+      api.dispatch(setCredentials(envelope.data))
+      return true
+    })().finally(() => {
+      refreshPromise = null
+    })
+  }
+  return refreshPromise
+}
+
+const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = async (
+  args,
+  api,
+  extraOptions,
+) => {
+  let result = await baseQuery(args, api, extraOptions)
+  const url = typeof args === 'string' ? args : args.url
+
+  if (result.error?.status === 401 && !PUBLIC_AUTH_URLS.has(url)) {
+    const refreshed = await reauthenticate(api, extraOptions)
+    if (refreshed) {
+      result = await baseQuery(args, api, extraOptions)
+    } else {
+      api.dispatch(logout())
+      if (!window.location.pathname.startsWith('/auth/')) {
+        window.location.assign('/auth/login')
+      }
+    }
+  }
+
+  return result
+}
+
 export const APISlice = createApi({
   reducerPath: 'api',
-  baseQuery,
+  baseQuery: baseQueryWithReauth,
   tagTypes: [
     'Auth',
     'User',

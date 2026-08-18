@@ -54,7 +54,7 @@ export const envValidationSchema = Joi.object({
 
   JWT_PRIVATE_KEY: Joi.string().allow('').optional(),
   JWT_PUBLIC_KEY: Joi.string().allow('').optional(),
-  JWT_ACCESS_TTL: Joi.string().default('15m'),
+  JWT_ACCESS_TTL: Joi.string().default('1d'),
   JWT_REFRESH_TTL: Joi.string().default('7d'),
 
   KMS_MASTER_KEY: Joi.string()

@@ -18,7 +18,7 @@ import { resolveJwtKeys } from './jwt-keys.js';
         const keys = resolveJwtKeys(config);
         // expiresIn's type is ms's StringValue; the env value is a valid ms duration at runtime.
         const accessTtl = (config.get<string>('JWT_ACCESS_TTL') ??
-          '15m') as `${number}${'m' | 'h' | 'd'}`;
+          '1d') as `${number}${'m' | 'h' | 'd'}`;
         return {
           privateKey: keys.privateKey,
           publicKey: keys.publicKey,
