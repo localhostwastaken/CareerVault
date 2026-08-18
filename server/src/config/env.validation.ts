@@ -28,7 +28,8 @@ function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
   if (email === 'console')
     mocked.push(
       'EMAIL_DRIVER=console — magic-link tokens are printed to stdout instead ' +
-        'of emailed (anyone reading logs can log in). Set EMAIL_DRIVER=ses.',
+        'of emailed (anyone reading logs can log in). Set EMAIL_DRIVER=gmail — ' +
+        'the "ses" value is accepted by this schema but its adapter is not written yet.',
     );
   // Not a mock, but the same class of silent trap: with the local driver the org signing
   // keys are FILES. If STORAGE_LOCAL_DIR is not a mounted volume they vanish on every
