@@ -30,7 +30,13 @@ export function AddMemberDialog({ orgId }: { orgId: string }) {
 
   const onSubmit = async (values: AddMemberValues) => {
     try {
-      await addMember({ orgId, ...values }).unwrap()
+      // The server's fullName is @IsOptional() @MinLength(2): that only skips validation for an omitted key, not an empty string, so leaving this optional field blank (its default value) 400'd every time. Omit it instead of sending ''.
+      await addMember({
+        orgId,
+        email: values.email,
+        role: values.role,
+        fullName: values.fullName?.trim() || undefined,
+      }).unwrap()
       notify.success('Member added')
       form.reset()
       setOpen(false)

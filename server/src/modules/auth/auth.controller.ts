@@ -68,6 +68,7 @@ export class AuthController {
   ) {
     const result = await this.auth.register(dto, requestContext(req));
     this.setRefreshCookie(res, result.refreshToken);
+    this.setCsrfCookie(res);
     return { token: result.token, user: result.user };
   }
 
@@ -86,9 +87,14 @@ export class AuthController {
   ) {
     const result = await this.auth.login(dto, requestContext(req));
     this.setRefreshCookie(res, result.refreshToken);
+    this.setCsrfCookie(res);
     return { token: result.token, user: result.user };
   }
 
+  // Deliberately does NOT rotate the CSRF cookie (see setCsrfCookie) — with
+  // multiple tabs sharing one cookie jar, a background refresh in one tab used
+  // to rotate cv_csrf out from under an in-flight logout/refresh in another,
+  // producing a spurious 403 that only a retry would clear.
   @Public()
   @UseGuards(CsrfGuard)
   @HttpCode(200)
@@ -202,6 +208,7 @@ export class AuthController {
       requestContext(req),
     );
     this.setRefreshCookie(res, result.refreshToken);
+    this.setCsrfCookie(res);
     return { token: result.token, user: result.user };
   }
 
@@ -213,8 +220,11 @@ export class AuthController {
       path: COOKIE_PATH,
       maxAge: COOKIE_MAX_AGE,
     });
-    // Double-submit CSRF token: non-httpOnly so same-origin JS can read it and
-    // echo it back in the x-csrf-token header. Path '/' keeps it readable app-wide.
+  }
+
+  // Double-submit CSRF token: non-httpOnly so same-origin JS can read it and echo it back in the x-csrf-token header. Path '/' keeps it readable app-wide. Only minted on register/login/verify-magic-link — a fresh value per session, not per request — so it stays stable across the silent refreshes a long-lived tab performs. See the comment on `refresh()` for why that stability matters.
+  private setCsrfCookie(res: Response): void {
+    const security = cookieSecurity();
     res.cookie(CSRF_COOKIE, randomBytes(24).toString('hex'), {
       httpOnly: false,
       ...security,
