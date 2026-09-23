@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { FieldCipher } from './field-cipher.js';
 import { KeyManagementService } from './key-management.service.js';
 import { LocalKmsService } from './local-kms.service.js';
 
@@ -20,7 +21,8 @@ import { LocalKmsService } from './local-kms.service.js';
       },
       inject: [ConfigService, LocalKmsService],
     },
+    FieldCipher,
   ],
-  exports: [KeyManagementService],
+  exports: [KeyManagementService, FieldCipher],
 })
 export class KeyManagementModule {}
