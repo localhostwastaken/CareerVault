@@ -32,19 +32,23 @@ services:
       # ── Integration drivers ─────────────────────────────────────────────────
       # ⚠  MOCKED IN THIS DEPLOY — the trust model (signed, domain-verified docs)
       #    is only real when these are switched to their "real" values. Every
-      #    driver below is a LOCAL/MOCK impl. Boot logs a loud warning listing
-      #    each mock (see server/src/config/env.validation.ts). Flip the ones you
-      #    need to demo for real and set the matching secrets further down.
+      #    driver below except BLOCKCHAIN_DRIVER is a LOCAL/MOCK impl. Boot logs a
+      #    loud warning listing each mock (see server/src/config/env.validation.ts).
+      #    Flip the ones you need to demo for real and set the matching secrets
+      #    further down.
       #      KEY_MANAGEMENT_DRIVER: local (Node RSA)            → aws    (AWS KMS)
-      #      BLOCKCHAIN_DRIVER:     local (JSON ledger on disk) → amoy   (Polygon Amoy)
+      #      BLOCKCHAIN_DRIVER:     local (JSON ledger on disk) → amoy   (Polygon Amoy) — REAL here
       #      PAYMENT_DRIVER:        mock  (free)                → stripe (real billing)
       #      EMAIL_DRIVER:          console (stdout)            → ses    (real email)
       #      STORAGE_DRIVER:        local (disk)                → s3
       #      DNS_DRIVER:            local (BYPASSED)            → real   (TXT-record check)
       - key: KEY_MANAGEMENT_DRIVER
         value: local
+      # Real anchoring on Polygon Amoy. POLYGON_RPC_URL, ANCHOR_REGISTRY_ADDRESS and
+      # ANCHOR_PRIVATE_KEY (secrets below) MUST be set in the dashboard BEFORE this
+      # deploys: under amoy they are required, so boot validation fails without them.
       - key: BLOCKCHAIN_DRIVER
-        value: local
+        value: amoy
       - key: PAYMENT_DRIVER
         value: mock
       - key: EMAIL_DRIVER
@@ -81,4 +85,12 @@ services:
       - key: GROQ_API_KEY            # enables LLM skill extraction
         sync: false
       - key: AI_SERVICE_SECRET        # shared secret between server and ai-service
+        sync: false
+      # Polygon anchoring (BLOCKCHAIN_DRIVER=amoy above). Chain id, confirmations and the
+      # fee floor keep their Amoy defaults (see server/.env.example).
+      - key: POLYGON_RPC_URL          # Amoy JSON-RPC endpoint; hosted URLs embed an API key
+        sync: false
+      - key: ANCHOR_REGISTRY_ADDRESS  # contracts/deployments/amoy.json → address
+        sync: false
+      - key: ANCHOR_PRIVATE_KEY       # 0x-prefixed key of the authorized, funded anchor wallet
         sync: false
