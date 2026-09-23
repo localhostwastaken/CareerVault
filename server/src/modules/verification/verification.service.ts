@@ -11,12 +11,9 @@ import {
   PUBLIC_SUBJECT_FIELDS,
   SALARY_PROOF_TYPE,
 } from '../document/public-fields.js';
-import {
-  verifyMerkleProof,
-  type MerkleProofStep,
-} from '../../common/utils/merkle.util.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { DocumentType } from '../../generated/prisma/enums.js';
+import { anchorCheck } from './anchor-check.js';
 
 const TYPE_LABEL: Record<string, string> = {
   EXPERIENCE_LETTER: 'experience letter',
@@ -189,29 +186,11 @@ export class VerificationService {
     });
 
     // 5. Blockchain anchor — Merkle proof reconciles to a root that exists on-chain.
-    let anchor: VerificationAnchor | null = null;
-    let anchorStatus: CheckStatus = 'pending';
-    let anchorDetail = 'Awaiting the next on-chain anchoring batch.';
-    if (doc.merkleProof && doc.documentHash) {
-      const root = doc.merkleProof.merkleRoot;
-      const proof = doc.merkleProof.proofPath as unknown as MerkleProofStep[];
-      const onChain = await this.blockchain.verifyRoot(root.rootHash);
-      const ok =
-        verifyMerkleProof(doc.documentHash, proof, root.rootHash) &&
-        onChain.exists;
-      anchorStatus = ok ? 'pass' : 'fail';
-      anchorDetail = ok
-        ? `Anchored on-chain in block ${root.polygonBlockNumber ?? '—'}.`
-        : 'Merkle proof did not reconcile with the anchored root.';
-      anchor = {
-        rootHash: root.rootHash,
-        txHash: root.polygonTxHash,
-        blockNumber: root.polygonBlockNumber
-          ? Number(root.polygonBlockNumber)
-          : null,
-        anchoredAt: root.anchoredAt,
-      };
-    }
+    const {
+      status: anchorStatus,
+      detail: anchorDetail,
+      anchor,
+    } = await anchorCheck(doc, this.blockchain);
     checks.push({
       key: 'anchor',
       label: 'Blockchain anchor',
@@ -219,7 +198,8 @@ export class VerificationService {
       detail: anchorDetail,
     });
 
-    // 6. Revocation/validity — DB is authoritative (R7); on-chain flag is secondary.
+    // 6. Revocation/validity — DB is authoritative (R7); the on-chain flag is a secondary
+    // note, dropped rather than failed when the chain cannot be reached.
     const revoked = doc.status === 'REVOKED' || doc.revokedAt !== null;
     const expired = !revoked && doc.expiresAt !== null && doc.expiresAt < now;
     let statusDetail = 'Active — not revoked or expired.';
@@ -229,11 +209,12 @@ export class VerificationService {
       }.`;
     } else if (expired) {
       statusDetail = `Expired on ${isoDate(doc.expiresAt as Date)}.`;
-    } else if (
-      doc.documentHash &&
-      (await this.blockchain.isRevoked(doc.documentHash)).revoked
-    ) {
-      statusDetail += ' (On-chain revocation flag present.)';
+    } else if (doc.documentHash) {
+      const onChain = await this.blockchain
+        .isRevoked(doc.documentHash)
+        .catch(() => null);
+      if (onChain?.revoked)
+        statusDetail += ' (On-chain revocation flag present.)';
     }
     checks.push({
       key: 'status',
@@ -391,13 +372,6 @@ export class VerificationService {
       checks: [] as Check[],
     };
   }
-}
-
-export interface VerificationAnchor {
-  rootHash: string;
-  txHash: string | null;
-  blockNumber: number | null;
-  anchoredAt: Date | null;
 }
 
 function isoDate(value: Date): string {
