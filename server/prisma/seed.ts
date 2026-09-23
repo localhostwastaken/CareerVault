@@ -16,13 +16,22 @@
 //
 // Run:  npm run db:seed
 import 'dotenv/config';
+import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '../src/generated/prisma/client.js';
+import { fieldEncryption } from '../src/prisma/encryption/field-encryption.extension.js';
+import { FieldCipher } from '../src/services/key-management/field-cipher.js';
+import { LocalKmsService } from '../src/services/key-management/local-kms.service.js';
 
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL as string }),
-});
+// R10: seeded documents are sealed exactly as the app seals them, under the master key
+// that ConfigService resolves from process.env (loaded by dotenv above). Seeding a REMOTE
+// database must therefore use that deployment's KMS_MASTER_KEY and STORAGE_LOCAL_DIR, or
+// the rows it writes are undecryptable there.
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL as string });
+const prisma = new PrismaClient({ adapter }).$extends(
+  fieldEncryption(new FieldCipher(new LocalKmsService(new ConfigService()))),
+);
 
 const DEMO_PASSWORD = 'Password123@';
 
