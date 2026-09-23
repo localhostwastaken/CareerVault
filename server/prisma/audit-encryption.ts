@@ -1,12 +1,15 @@
-// R10 field-encryption audit: proves the fields in ENCRYPTED_FIELDS are ciphertext at
-// rest. Rows are read the way a database dump sees them, through a plain client without
-// the decrypting extension, and every envelope must open under this deployment's key.
-// Rows written before R10 existed are reported as plaintext.
+// R10 field-encryption audit: proves the fields in ENCRYPTED_FIELDS and the objects
+// (issued PDFs) under STORAGE_LOCAL_DIR/objects are ciphertext at rest. Rows and files are
+// read the way a database dump or disk backup sees them — DB rows through a plain client
+// without the decrypting extension, files straight off disk — and every envelope must open
+// under this deployment's key. Data written before R10 existed is reported as plaintext.
 //
 // Prints counts only, never a value. Exits 1 if any value is plaintext or undecryptable.
 //
 // Run:  npm run db:audit-encryption
 import 'dotenv/config';
+import { readdir, readFile } from 'node:fs/promises';
+import { join, relative, sep } from 'node:path';
 import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client.js';
@@ -85,7 +88,62 @@ const databaseFields: AuditSection = {
   },
 };
 
-const SECTIONS: AuditSection[] = [databaseFields];
+const STORAGE_DIR = join(
+  process.env.STORAGE_LOCAL_DIR ?? './storage',
+  'objects',
+);
+
+/** All file paths under `dir`, recursively. Missing dir (nothing issued yet) is empty. */
+async function walk(dir: string): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  const files: string[] = [];
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...(await walk(full)));
+    else files.push(full);
+  }
+  return files;
+}
+
+async function classifyBuffer(label: string, bytes: Buffer): Promise<Verdict> {
+  if (!FieldCipher.isEncryptedBuffer(bytes)) return 'plaintext';
+  try {
+    await cipher.decryptBuffer(label, bytes);
+    return 'encrypted';
+  } catch {
+    return 'undecryptable';
+  }
+}
+
+const storageObjects: AuditSection = {
+  title: 'Storage objects',
+  heading: 'objects/<dir>',
+  async run() {
+    const files = await walk(STORAGE_DIR);
+    // Grouped by top-level folder under objects/ (e.g. "documents") so the report reads
+    // like the DB table above instead of one line per file.
+    const byTop = new Map<string, string[]>();
+    for (const file of files) {
+      const rel = relative(STORAGE_DIR, file).split(sep).join('/');
+      const top = rel.split('/')[0] ?? rel;
+      byTop.set(top, [...(byTop.get(top) ?? []), rel]);
+    }
+    const lines: AuditLine[] = [];
+    for (const [top, rels] of byTop) {
+      const counts = { encrypted: 0, null: 0, plaintext: 0, undecryptable: 0 };
+      for (const rel of rels) {
+        const bytes = await readFile(join(STORAGE_DIR, rel));
+        // Label must match EncryptedStorageService.put: `file:<key>`, where <key> is the
+        // storage key (path relative to .../objects, forward-slashed).
+        counts[await classifyBuffer(`file:${rel}`, bytes)] += 1;
+      }
+      lines.push({ target: top, rows: rels.length, counts });
+    }
+    return lines;
+  },
+};
+
+const SECTIONS: AuditSection[] = [databaseFields, storageObjects];
 
 function printTable(section: AuditSection, lines: AuditLine[]): void {
   const header = [
