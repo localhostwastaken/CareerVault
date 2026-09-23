@@ -38,8 +38,8 @@ type HrMember = { id: string; userId: string };
 // to ISSUED, skipping PENDING_HR - HR acts as both signer and approver. managerSignature and
 // hrSignature are two distinct role-bound statements (C1: each is signed over
 // sha256(JCS({v:1, documentHash, role, memberId})), so the role differs even though the
-// memberId is the same acting HR member) — not one signature reused, both signed with that
-// member's KMS key.
+// memberId is the same acting HR member) — not one signature reused, both signed with the
+// organisation's KMS key; the memberId inside each statement records the acting HR member.
 @Injectable()
 export class BulkIssuanceService {
   private readonly logger = new Logger(BulkIssuanceService.name);
