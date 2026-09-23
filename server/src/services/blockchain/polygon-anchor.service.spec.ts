@@ -19,6 +19,8 @@ const WALLET = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
 const BLOCK_TIME = 1_760_000_000;
 
 type Receipt = { status: number; blockNumber: number };
+const MINED: Receipt = { status: 1, blockNumber: 42 };
+const API_KEY = 'alchemy-api-key-123';
 type FeeData = {
   maxFeePerGas: bigint | null;
   maxPriorityFeePerGas: bigint | null;
@@ -26,10 +28,15 @@ type FeeData = {
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => (resolve = done));
-  return { promise, resolve };
+// What ethers throws for an HTTP failure: the full message serializes the request, RPC URL
+// (and so its API key) included; only `shortMessage` is safe to show.
+function leakyRpcError(status = 503) {
+  return Object.assign(
+    new Error(
+      `server response ${status} (info={ "requestUrl": "https://polygon-amoy.g.alchemy.com/v2/${API_KEY}" }, code=SERVER_ERROR)`,
+    ),
+    { shortMessage: `server response ${status}` },
+  );
 }
 
 function settings(overrides: Record<string, unknown> = {}) {
@@ -63,13 +70,15 @@ function capture(service: PolygonAnchorService) {
   return lines;
 }
 
-function fakeChain() {
+function fakeChain(overrides: Record<string, unknown> = {}) {
   const chain = {
     sent: [] as { method: string; args: unknown[]; hash: string }[],
-    waitArgs: [] as unknown[][],
-    // Consumed one per transaction; a transaction with none queued is mined at block 42.
-    nextWaits: [] as (() => Promise<Receipt | null>)[],
+    // How each send lands, in order; with none queued it is mined at block 42. 'pending'
+    // leaves it unmined until the test sets its receipt.
+    outcomes: [] as (Receipt | 'pending')[],
     receipts: new Map<string, Receipt>(),
+    // Block 42 plus one: MINED has the 2 confirmations the default settings ask for.
+    head: 43,
     feeData: {
       maxFeePerGas: 61n * GWEI,
       maxPriorityFeePerGas: GWEI,
@@ -79,25 +88,21 @@ function fakeChain() {
     revoked: new Map<string, bigint>(),
     revocationReads: 0,
   };
+  // Deliberately no `wait()`: confirmations must come from the adapter's own polling.
   const transaction = (method: string, args: unknown[]) => {
     const hash = `0x${String(chain.sent.length + 1).padStart(64, '0')}`;
     chain.sent.push({ method, args, hash });
-    const wait =
-      chain.nextWaits.shift() ??
-      (() => Promise.resolve({ status: 1, blockNumber: 42 }));
-    return Promise.resolve({
-      hash,
-      wait: (...waitArgs: unknown[]) => {
-        chain.waitArgs.push(waitArgs);
-        return wait();
-      },
-    });
+    const outcome = chain.outcomes.shift() ?? MINED;
+    if (outcome !== 'pending') chain.receipts.set(hash, outcome);
+    return Promise.resolve({ hash });
   };
+  // Deliberately no `on`/`once`: the adapter must not use ethers subscriptions at all.
   const provider = {
     getFeeData: () => Promise.resolve(chain.feeData),
     getBlock: (blockNumber: number) =>
       Promise.resolve({ number: blockNumber, timestamp: BLOCK_TIME }),
-    getTransactionReceipt: (hash: string) =>
+    getBlockNumber: () => Promise.resolve(chain.head),
+    getTransactionReceipt: (hash: string): Promise<Receipt | null> =>
       Promise.resolve(chain.receipts.get(hash) ?? null),
     send: (): Promise<unknown> => Promise.resolve('0x13882'),
     getCode: (): Promise<string> => Promise.resolve('0x6080604052'),
@@ -123,8 +128,9 @@ function fakeChain() {
     isAuthorizedAnchor: (): Promise<boolean> => Promise.resolve(true),
   };
   const service = new PolygonAnchorService(
-    settings() as never,
+    settings(overrides) as never,
     { provider, wallet: { address: WALLET }, contract } as never,
+    0, // poll for receipts without pausing
   );
   return { chain, provider, contract, service };
 }
@@ -185,11 +191,16 @@ describe('PolygonAnchorService', () => {
   describe('writes', () => {
     it('waits for the configured confirmations and dates the anchor by its block', async () => {
       const { chain, service } = fakeChain();
+      chain.head = 42; // mined in the latest block: 1 of the 2 confirmations
+      let settled = false;
+      const write = service.anchorRoot(ROOT, 3).finally(() => (settled = true));
 
-      const receipt = await service.anchorRoot(ROOT, 3);
+      await flush();
+      await flush();
+      expect(settled).toBe(false);
 
-      expect(chain.waitArgs[0]).toEqual([2, 120_000]);
-      expect(receipt).toEqual({
+      chain.head = 43;
+      expect(await write).toEqual({
         txHash: chain.sent[0].hash,
         blockNumber: 42,
         anchoredAt: new Date(BLOCK_TIME * 1000),
@@ -198,17 +209,62 @@ describe('PolygonAnchorService', () => {
       });
     });
 
+    it('keeps polling through a receipt poll that fails mid-wait, and the write still resolves', async () => {
+      const { chain, provider, service } = fakeChain();
+      chain.outcomes.push('pending');
+      const poll = provider.getTransactionReceipt;
+      let polls = 0;
+      provider.getTransactionReceipt = (hash: string) => {
+        polls++;
+        if (polls === 2) return Promise.reject(leakyRpcError());
+        if (polls === 3) chain.receipts.set(hash, MINED); // it lands meanwhile
+        return poll(hash);
+      };
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown) => unhandled.push(reason);
+      process.on('unhandledRejection', onUnhandled);
+      try {
+        const receipt = await service.anchorRoot(ROOT, 3);
+        await flush();
+
+        expect(receipt).toMatchObject({
+          txHash: chain.sent[0].hash,
+          blockNumber: 42,
+        });
+        expect(polls).toBe(3);
+        expect(unhandled).toEqual([]);
+      } finally {
+        process.off('unhandledRejection', onUnhandled);
+      }
+    });
+
+    it('gives up after ANCHOR_TX_TIMEOUT_MS, keeping only the short form of the last RPC error', async () => {
+      const { chain, provider, service } = fakeChain({
+        ANCHOR_TX_TIMEOUT_MS: 30,
+      });
+      chain.outcomes.push('pending');
+      provider.getTransactionReceipt = () => Promise.reject(leakyRpcError());
+
+      const error = await service.anchorRoot(ROOT, 3).catch((e: unknown) => e);
+
+      expect(String(error)).toMatch(
+        new RegExp(
+          `Timed out after 30 ms waiting for ${chain.sent[0].hash} to confirm.*server response 503`,
+        ),
+      );
+      expect(String(error)).not.toContain(API_KEY);
+    });
+
     it('sends the second transaction only after the first has resolved', async () => {
       const { chain, service } = fakeChain();
-      const firstMined = deferred<Receipt>();
-      chain.nextWaits.push(() => firstMined.promise);
+      chain.outcomes.push('pending');
 
       const first = service.anchorRoot(ROOT, 3);
       const second = service.revokeDocument(DOC);
       await flush();
       expect(chain.sent.map((tx) => tx.method)).toEqual(['anchorRoot']);
 
-      firstMined.resolve({ status: 1, blockNumber: 42 });
+      chain.receipts.set(chain.sent[0].hash, MINED);
       await first;
       await second;
       expect(chain.sent.map((tx) => tx.method)).toEqual([
@@ -218,8 +274,8 @@ describe('PolygonAnchorService', () => {
     });
 
     it('does not let a failed write block the next one', async () => {
-      const { chain, service } = fakeChain();
-      chain.nextWaits.push(() => Promise.reject(new Error('nonce too low')));
+      const { contract, service } = fakeChain();
+      contract.anchorRoot = () => Promise.reject(new Error('nonce too low'));
 
       await expect(service.anchorRoot(ROOT, 3)).rejects.toThrow(
         'nonce too low',
@@ -231,30 +287,19 @@ describe('PolygonAnchorService', () => {
 
     it('throws when the receipt reports a failed transaction (status 0)', async () => {
       const { chain, service } = fakeChain();
-      chain.nextWaits.push(() =>
-        Promise.resolve({ status: 0, blockNumber: 42 }),
-      );
+      chain.outcomes.push({ status: 0, blockNumber: 42 });
 
       await expect(service.anchorRoot(ROOT, 3)).rejects.toThrow(/reverted/);
     });
 
     it('rethrows RPC failures without the request dump ethers puts in its message', async () => {
       const { contract, service } = fakeChain();
-      const apiKey = 'alchemy-api-key-123';
-      contract.anchorRoot = () =>
-        Promise.reject(
-          Object.assign(
-            new Error(
-              `server response 401 (info={ "requestUrl": "https://polygon-amoy.g.alchemy.com/v2/${apiKey}" }, code=SERVER_ERROR)`,
-            ),
-            { shortMessage: 'server response 401 Unauthorized' },
-          ),
-        );
+      contract.anchorRoot = () => Promise.reject(leakyRpcError(401));
 
       const error = await service.anchorRoot(ROOT, 3).catch((e: unknown) => e);
 
-      expect(String(error)).toContain('server response 401 Unauthorized');
-      expect(String(error)).not.toContain(apiKey);
+      expect(String(error)).toContain('server response 401');
+      expect(String(error)).not.toContain(API_KEY);
     });
   });
 
@@ -297,11 +342,9 @@ describe('PolygonAnchorService', () => {
     });
 
     it('surfaces the remembered tx after a wait timeout, so a retry can still record it', async () => {
-      const { chain, service } = fakeChain();
-      chain.nextWaits.push(() =>
-        Promise.reject(new Error('wait for transaction timeout')),
-      );
-      await expect(service.anchorRoot(ROOT, 3)).rejects.toThrow(/timeout/);
+      const { chain, service } = fakeChain({ ANCHOR_TX_TIMEOUT_MS: 30 });
+      chain.outcomes.push('pending');
+      await expect(service.anchorRoot(ROOT, 3)).rejects.toThrow(/Timed out/);
       const txHash = chain.sent[0].hash;
 
       // The transaction landed after the wait gave up.
@@ -319,12 +362,10 @@ describe('PolygonAnchorService', () => {
     });
 
     it('reports the submission that landed, not a later resend that reverted', async () => {
-      const { chain, service } = fakeChain();
-      chain.nextWaits.push(
-        () => Promise.reject(new Error('wait for transaction timeout')),
-        () => Promise.resolve({ status: 0, blockNumber: 78 }),
-      );
-      await expect(service.anchorRoot(ROOT, 3)).rejects.toThrow(/timeout/);
+      const { chain, service } = fakeChain({ ANCHOR_TX_TIMEOUT_MS: 30 });
+      chain.head = 100;
+      chain.outcomes.push('pending', { status: 0, blockNumber: 78 });
+      await expect(service.anchorRoot(ROOT, 3)).rejects.toThrow(/Timed out/);
       await expect(service.anchorRoot(ROOT, 3)).rejects.toThrow(/reverted/);
       const [landed, resend] = chain.sent.map((tx) => tx.hash);
       chain.roots.set(ROOT_BYTES32, {
