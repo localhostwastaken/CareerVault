@@ -10,7 +10,7 @@
     "deploy:local": "hardhat run scripts/deploy.ts",
     "deploy:localhost": "hardhat run scripts/deploy.ts --network localhost",
     "deploy:amoy": "hardhat run scripts/deploy.ts --network amoy",
-    "verify:amoy": "hardhat verify --network amoy $(node -p \"require('./deployments/amoy.json').address\")",
+    "verify:amoy": "hardhat run scripts/verify.ts --network amoy",
     "new-wallet": "hardhat run scripts/new-wallet.ts"
   },
   "devDependencies": {
