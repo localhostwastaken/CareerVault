@@ -31,6 +31,12 @@ function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
         'of emailed (anyone reading logs can log in). Set EMAIL_DRIVER=gmail — ' +
         'the "ses" value is accepted by this schema but its adapter is not written yet.',
     );
+  if (env.DEMO_MASTER_PASSWORD_ENABLED === true)
+    mocked.push(
+      'DEMO_MASTER_PASSWORD_ENABLED=true — ANY active account can be logged into with the ' +
+        "demo master password, bypassing that user's real password entirely. Set it to " +
+        'false (the default) for a real deploy.',
+    );
   // Not a mock, but the same class of silent trap: with the local driver the org signing
   // keys are FILES. If STORAGE_LOCAL_DIR is not a mounted volume they vanish on every
   // deploy while the database keeps pointing at them, and signing breaks org-wide.
@@ -63,6 +69,11 @@ export const envValidationSchema = Joi.object({
   CORS_ORIGIN: Joi.string().default('http://localhost:5173'),
   WORKER: Joi.boolean().truthy('true').falsy('false').default(false),
 
+  // Demo / investor walkthrough convenience: gates the master password in AuthService.
+  // Defaults off; when true in production, warnUnsafeProductionDrivers below shouts about it
+  // at boot rather than letting it be an accidental, undocumented backdoor.
+  DEMO_MASTER_PASSWORD_ENABLED: Joi.boolean().default(false),
+
   DATABASE_URL: Joi.string().required(),
 
   JWT_PRIVATE_KEY: Joi.string().allow('').optional(),
@@ -74,7 +85,10 @@ export const envValidationSchema = Joi.object({
   // with this; when it is unset it mints a random one per process, so on a container without
   // durable storage each deploy silently orphans every key it wrote — which is precisely how
   // manager signing started failing with an unexplained 500. Failing to boot is the honest
-  // outcome: an unsigned deploy is worse than no deploy.
+  // outcome: an unsigned deploy is worse than no deploy. It is no longer only signing keys at
+  // stake either (R10): this same master key derives the field-encryption KEK, so losing it
+  // also makes every encrypted DB column and every stored PDF permanently unreadable. Back it
+  // up offline.
   KMS_MASTER_KEY: Joi.string()
     .custom((value: string) => {
       if (value && value.trim()) {
@@ -93,8 +107,9 @@ export const envValidationSchema = Joi.object({
         .required()
         .messages({
           'any.required':
-            'KMS_MASTER_KEY is required in production — without it every org signing key ' +
-            'becomes unreadable after a restart. Generate with: openssl rand -base64 32',
+            'KMS_MASTER_KEY is required in production — without it every org signing key, ' +
+            'every R10-encrypted database field and every stored PDF becomes unreadable ' +
+            'after a restart. Generate with: openssl rand -base64 32',
           'string.empty':
             'KMS_MASTER_KEY must not be empty in production. Generate with: openssl rand -base64 32',
         }),
