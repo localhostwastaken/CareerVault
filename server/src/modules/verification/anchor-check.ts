@@ -31,6 +31,8 @@ export interface AnchorCheck {
   status: CheckStatus;
   detail: string;
   anchor: VerificationAnchor | null;
+  // The chain could not be reached, so later checks should not wait on it a second time.
+  chainUnavailable?: boolean;
 }
 
 // Verification step 5 (R2): the document's Merkle proof must reconcile to a root that exists
@@ -67,6 +69,7 @@ export async function anchorCheck(
       detail:
         'On-chain check temporarily unavailable — the Merkle proof itself is valid.',
       anchor,
+      chainUnavailable: true,
     };
   }
   return exists

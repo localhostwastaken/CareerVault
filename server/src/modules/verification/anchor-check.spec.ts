@@ -103,6 +103,7 @@ describe('anchorCheck', () => {
       detail: 'Merkle root not found on-chain.',
     });
     expect(result.anchor?.rootHash).toBe(ROOT);
+    expect(result.chainUnavailable).toBeFalsy();
   });
 
   it('is pending, not failed, when the chain cannot be reached', async () => {
@@ -114,6 +115,8 @@ describe('anchorCheck', () => {
       status: 'pending',
       detail:
         'On-chain check temporarily unavailable — the Merkle proof itself is valid.',
+      // Tells the revocation step not to wait on the same dead RPC a second time.
+      chainUnavailable: true,
     });
     expect(result.anchor?.rootHash).toBe(ROOT);
   });

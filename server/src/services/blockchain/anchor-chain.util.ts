@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   Contract,
   type FeeData,
+  FetchRequest,
   JsonRpcProvider,
   type TransactionReceipt,
   Wallet,
@@ -19,6 +20,10 @@ import {
 const BYTES32_HEX = /^[0-9a-fA-F]{64}$/;
 const CACHE_LIMIT = 10_000;
 
+// Bounds every JSON-RPC request. ethers' default is 300 s, so a hung RPC would hold a public
+// verification for five minutes before it could degrade to "pending".
+export const RPC_TIMEOUT_MS = 10_000;
+
 export interface AnchorChain {
   provider: JsonRpcProvider;
   wallet: Wallet;
@@ -29,9 +34,11 @@ export interface AnchorChain {
 // log about it) forever. Construction does no I/O.
 export function connectAnchorChain(config: ConfigService): AnchorChain {
   const get = (key: string) => config.getOrThrow<string>(key);
+  const request = new FetchRequest(get('POLYGON_RPC_URL'));
+  request.timeout = RPC_TIMEOUT_MS;
   const chainId = Number(get('ANCHOR_CHAIN_ID'));
   const opts = { staticNetwork: true };
-  const provider = new JsonRpcProvider(get('POLYGON_RPC_URL'), chainId, opts);
+  const provider = new JsonRpcProvider(request, chainId, opts);
   const wallet = new Wallet(get('ANCHOR_PRIVATE_KEY'), provider);
   const address = get('ANCHOR_REGISTRY_ADDRESS');
   const contract = new Contract(address, ANCHOR_REGISTRY_ABI, wallet);

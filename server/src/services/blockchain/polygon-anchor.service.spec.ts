@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Wallet } from 'ethers';
+import { connectAnchorChain, RPC_TIMEOUT_MS } from './anchor-chain.util.js';
 import { PolygonAnchorService } from './polygon-anchor.service.js';
 
 /**
@@ -486,6 +487,14 @@ describe('PolygonAnchorService', () => {
         },
       };
     }
+
+    it("bounds every RPC request to RPC_TIMEOUT_MS instead of ethers' 300 s default", () => {
+      // A hung RPC must fail fast enough for public verification to degrade to "pending".
+      const { provider } = connectAnchorChain(settings() as never);
+
+      expect(RPC_TIMEOUT_MS).toBe(10_000);
+      expect(provider._getConnection().timeout).toBe(RPC_TIMEOUT_MS);
+    });
 
     it('does no network I/O until the adapter is used', async () => {
       const rpc = await rpcServer();

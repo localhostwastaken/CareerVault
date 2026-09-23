@@ -71,14 +71,37 @@ const check = (
 
 describe('VerificationService with the chain unreachable', () => {
   it('reports VERIFIED_PENDING_ANCHOR, not an error or INVALID', async () => {
-    const down = () => Promise.reject(new Error('RPC unreachable'));
-    const service = verificationService({ verifyRoot: down, isRevoked: down });
+    let revocationLookups = 0;
+    const service = verificationService({
+      verifyRoot: () => Promise.reject(new Error('RPC unreachable')),
+      isRevoked: () => {
+        revocationLookups++;
+        return Promise.reject(new Error('RPC unreachable'));
+      },
+    });
 
     const result = await service.verifyByHash(HASH);
 
     expect(result.verdict).toBe('VERIFIED_PENDING_ANCHOR');
     expect(check(result, 'anchor')?.status).toBe('pending');
     // The on-chain revocation flag is advisory; the DB-authoritative status still passes.
+    expect(check(result, 'status')).toMatchObject({
+      status: 'pass',
+      detail: 'Active — not revoked or expired.',
+    });
+    // Step 5 already found the chain down: a hung RPC must cost one timeout, not two.
+    expect(revocationLookups).toBe(0);
+  });
+
+  it('drops only the on-chain note when the revocation lookup alone fails', async () => {
+    const service = verificationService({
+      verifyRoot: () => Promise.resolve({ exists: true }),
+      isRevoked: () => Promise.reject(new Error('RPC unreachable')),
+    });
+
+    const result = await service.verifyByHash(HASH);
+
+    expect(result.verdict).toBe('VERIFIED');
     expect(check(result, 'status')).toMatchObject({
       status: 'pass',
       detail: 'Active — not revoked or expired.',

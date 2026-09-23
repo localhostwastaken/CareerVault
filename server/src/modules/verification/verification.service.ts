@@ -190,6 +190,7 @@ export class VerificationService {
       status: anchorStatus,
       detail: anchorDetail,
       anchor,
+      chainUnavailable,
     } = await anchorCheck(doc, this.blockchain);
     checks.push({
       key: 'anchor',
@@ -199,7 +200,8 @@ export class VerificationService {
     });
 
     // 6. Revocation/validity — DB is authoritative (R7); the on-chain flag is a secondary
-    // note, dropped rather than failed when the chain cannot be reached.
+    // note, dropped rather than failed when the chain cannot be reached — and not even
+    // asked for once step 5 found it unreachable, so a hung RPC costs one timeout, not two.
     const revoked = doc.status === 'REVOKED' || doc.revokedAt !== null;
     const expired = !revoked && doc.expiresAt !== null && doc.expiresAt < now;
     let statusDetail = 'Active — not revoked or expired.';
@@ -209,7 +211,7 @@ export class VerificationService {
       }.`;
     } else if (expired) {
       statusDetail = `Expired on ${isoDate(doc.expiresAt as Date)}.`;
-    } else if (doc.documentHash) {
+    } else if (doc.documentHash && !chainUnavailable) {
       const onChain = await this.blockchain
         .isRevoked(doc.documentHash)
         .catch(() => null);
