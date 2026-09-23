@@ -17,7 +17,8 @@ export class MerkleCron {
     this.enabled = config.get<boolean>('WORKER') ?? false;
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  // The container clock is UTC; without the zone "midnight" would fire at 05:30 IST.
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'Asia/Kolkata' })
   async anchorDaily() {
     if (!this.enabled) return;
     try {

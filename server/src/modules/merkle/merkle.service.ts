@@ -1,6 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { BlockchainService } from '../../services/blockchain/blockchain.service.js';
+import {
+  type AnchorReceipt,
+  BlockchainService,
+} from '../../services/blockchain/blockchain.service.js';
+import {
+  explorerTxUrl,
+  networkName,
+} from '../../services/blockchain/chain-explorer.js';
 import {
   buildMerkleTree,
   merkleProofFor,
@@ -71,20 +78,27 @@ export class MerkleService {
       const rootHash = merkleRootHex(tree);
 
       // Anchor on-chain only if this exact root isn't already anchored. This makes the
-      // batch safe to retry after a partial failure without spending a second tx.
+      // batch safe to retry after a partial failure without spending a second tx; on that
+      // path the chain's own answer is recorded, including the transaction that landed
+      // when this process is the one that sent it.
       const existing = await this.blockchain.verifyRoot(rootHash);
-      const receipt = existing.exists
-        ? null
+      const anchor: Partial<AnchorReceipt> = existing.exists
+        ? existing
         : await this.blockchain.anchorRoot(rootHash, docs.length);
 
       await this.prisma.$transaction(async (tx) => {
         const root = await tx.merkleRoot.create({
           data: {
             rootHash,
-            polygonTxHash: receipt?.txHash ?? null,
-            polygonBlockNumber: receipt ? BigInt(receipt.blockNumber) : null,
+            polygonTxHash: anchor.txHash ?? null,
+            polygonBlockNumber:
+              anchor.blockNumber === undefined
+                ? null
+                : BigInt(anchor.blockNumber),
+            chainId: anchor.chainId ?? null,
+            contractAddress: anchor.contractAddress ?? null,
             documentCount: docs.length,
-            anchoredAt: receipt?.anchoredAt ?? existing.anchoredAt ?? null,
+            anchoredAt: anchor.anchoredAt ?? null,
           },
         });
         for (let index = 0; index < docs.length; index++) {
@@ -112,7 +126,7 @@ export class MerkleService {
 
       // Post-commit side effects are best-effort and never authoritative (R7), so each
       // is independently guarded — one holder's failure must not abort the rest.
-      const txHash = receipt?.txHash ?? null;
+      const txHash = anchor.txHash ?? null;
       for (const doc of docs) {
         await this.pdf
           .embedAnchorMetadata(doc.id, { rootHash, txHash: txHash ?? '' })
@@ -150,6 +164,10 @@ export class MerkleService {
       blockNumber: root.polygonBlockNumber
         ? Number(root.polygonBlockNumber)
         : null,
+      chainId: root.chainId,
+      contractAddress: root.contractAddress,
+      network: networkName(root.chainId),
+      explorerTxUrl: explorerTxUrl(root.chainId, root.polygonTxHash),
       documentCount: root.documentCount,
       anchoredAt: root.anchoredAt,
       createdAt: root.createdAt,
