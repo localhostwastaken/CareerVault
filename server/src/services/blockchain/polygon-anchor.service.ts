@@ -1,16 +1,22 @@
 import { Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  Contract,
   type ContractTransactionResponse,
   formatEther,
-  JsonRpcProvider,
+  type JsonRpcProvider,
   parseEther,
   parseUnits,
-  Wallet,
+  type Wallet,
 } from 'ethers';
 import {
-  ANCHOR_REGISTRY_ABI,
+  type AnchorChain,
+  connectAnchorChain,
+  guard,
+  remember,
+  shortMessage,
+  toBytes32,
+} from './anchor-chain.util.js';
+import {
   type AnchorRegistryContract,
   type FeeOverrides,
 } from './anchor-registry.abi.js';
@@ -32,8 +38,6 @@ import { networkName } from './chain-explorer.js';
 type Revocation = { revoked: boolean; revokedAt?: Date };
 type CachedRevocation = { at: number; value: Revocation };
 
-const BYTES32_HEX = /^[0-9a-fA-F]{64}$/;
-const CACHE_LIMIT = 10_000;
 const REVOCATION_TTL_MS = 60_000;
 const LOW_BALANCE = parseEther('0.05');
 
@@ -58,7 +62,10 @@ export class PolygonAnchorService
   // Revocation can still change; this only absorbs verification bursts.
   private readonly revocations = new Map<string, CachedRevocation>();
 
-  constructor(config: ConfigService, clients = connect(config)) {
+  constructor(
+    config: ConfigService,
+    clients: AnchorChain = connectAnchorChain(config),
+  ) {
     super();
     const setting = (key: string) => Number(config.getOrThrow<number>(key));
     this.chainId = setting('ANCHOR_CHAIN_ID');
@@ -217,46 +224,4 @@ export class PolygonAnchorService
     if (ok) this.logger.log(`Self-check OK — ${what}`);
     else this.logger.error(`Self-check FAILED — ${what}`);
   }
-}
-
-// staticNetwork: without it, an unreachable RPC makes ethers retry network detection (and
-// log about it) forever. Construction does no I/O.
-function connect(config: ConfigService) {
-  const get = (key: string) => config.getOrThrow<string>(key);
-  const chainId = Number(get('ANCHOR_CHAIN_ID'));
-  const opts = { staticNetwork: true };
-  const provider = new JsonRpcProvider(get('POLYGON_RPC_URL'), chainId, opts);
-  const wallet = new Wallet(get('ANCHOR_PRIVATE_KEY'), provider);
-  const address = get('ANCHOR_REGISTRY_ADDRESS');
-  const contract = new Contract(address, ANCHOR_REGISTRY_ABI, wallet);
-  // Contract types every method as `any`; AnchorRegistryContract is the typed view.
-  const registry = contract as unknown as AnchorRegistryContract;
-  return { provider, wallet, contract: registry };
-}
-
-function toBytes32(hex: string): string {
-  if (!BYTES32_HEX.test(hex))
-    throw new Error('Expected a 32-byte hash as 64 hex characters');
-  return `0x${hex.toLowerCase()}`;
-}
-
-// Map iterates in insertion order, so its first key is the oldest.
-function remember<V>(map: Map<string, V>, key: string, value: V): void {
-  map.delete(key);
-  if (map.size >= CACHE_LIMIT) map.delete(map.keys().next().value as string);
-  map.set(key, value);
-}
-
-// ethers messages serialize the whole request, RPC URL included — and a hosted RPC URL
-// carries its API key. Only the short form leaves this adapter, into logs or callers.
-function guard<T>(promise: Promise<T>): Promise<T> {
-  return promise.catch((error: unknown) => {
-    throw new Error(shortMessage(error));
-  });
-}
-
-function shortMessage(error: unknown): string {
-  if (error && typeof error === 'object' && 'shortMessage' in error)
-    return String(error.shortMessage);
-  return error instanceof Error ? error.message : String(error);
 }
