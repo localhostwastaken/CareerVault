@@ -162,12 +162,19 @@ describe('org signing key durability (e2e)', () => {
   }, 60_000);
 
   afterAll(async () => {
+    // Keyed on DOMAIN and SLUG, which are always set. An id is unset when beforeAll fails
+    // early, and Prisma drops an undefined filter, so `{ organizationId: orgId }` would then
+    // delete every document (and with them every organization) in the dev database.
     // Documents hold Restrict FKs to users and the org, so they go first.
-    await prisma.document.deleteMany({ where: { organizationId: orgId } });
-    await prisma.organization.deleteMany({ where: { id: orgId } });
-    await prisma.user.deleteMany({ where: { email: { contains: SLUG } } });
+    if (prisma) {
+      await prisma.document.deleteMany({
+        where: { organization: { domain: DOMAIN } },
+      });
+      await prisma.organization.deleteMany({ where: { domain: DOMAIN } });
+      await prisma.user.deleteMany({ where: { email: { contains: SLUG } } });
+    }
     await app?.close();
-    rmSync(storageDir, { recursive: true, force: true });
+    if (storageDir) rmSync(storageDir, { recursive: true, force: true });
   }, 30_000);
 
   let firstDocumentId: string;

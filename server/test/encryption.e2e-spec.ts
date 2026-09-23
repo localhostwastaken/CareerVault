@@ -161,17 +161,25 @@ describe('field encryption at rest (e2e)', () => {
   }, 90_000);
 
   afterAll(async () => {
-    // Documents hold Restrict FKs to users and the org, so they go first. Users are removed
-    // by id because erasure rewrites the holder's email.
-    await prisma.document.deleteMany({ where: { organizationId: orgId } });
-    await prisma.organization.deleteMany({ where: { id: orgId } });
-    await prisma.user.deleteMany({
-      where: {
-        id: { in: [admin, manager, hr, holder].map((s) => s.userId) },
-      },
-    });
+    // Keyed on DOMAIN and SLUG, which are always set. An id is unset when beforeAll fails
+    // early, and Prisma drops an undefined filter, so `{ organizationId: orgId }` would then
+    // delete every document (and with them every organization) in the dev database.
+    // Documents hold Restrict FKs to users and the org, so they go first. The erased holder
+    // is matched by id, because erasure rewrites its email.
+    if (prisma) {
+      const ids = [admin, manager, hr, holder].flatMap((s) =>
+        s ? [s.userId] : [],
+      );
+      await prisma.document.deleteMany({
+        where: { organization: { domain: DOMAIN } },
+      });
+      await prisma.organization.deleteMany({ where: { domain: DOMAIN } });
+      await prisma.user.deleteMany({
+        where: { OR: [{ email: { contains: SLUG } }, { id: { in: ids } }] },
+      });
+    }
     await app?.close();
-    rmSync(storageDir, { recursive: true, force: true });
+    if (storageDir) rmSync(storageDir, { recursive: true, force: true });
   }, 30_000);
 
   it('stores the signed document as envelopes', async () => {
