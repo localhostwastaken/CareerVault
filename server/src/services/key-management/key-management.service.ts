@@ -1,8 +1,36 @@
-// Custodial document-signing abstraction (R3). Callers depend only on this token;
-// the concrete driver (LocalKms today, AwsKms later) is selected by ConfigService.
+// Custodial document-signing (R3) and field-encryption data-key (R10) abstraction. Callers
+// depend only on this token; the concrete driver (LocalKms today, AwsKms later) is
+// selected by ConfigService.
 export interface OrgKeyPair {
   kmsKeyId: string;
   publicKeyPem: string;
+}
+
+/** A fresh data-encryption key: use `plaintext`, persist only `wrapped` + `keyId`. */
+export interface DataKey {
+  plaintext: Buffer;
+  wrapped: string;
+  keyId: string;
+}
+
+/**
+ * A wrapped data key could not be unwrapped: it was wrapped under a key this deployment
+ * does not hold (`keyId`, from the envelope, vs `expectedKeyId`, the one it is configured
+ * with), or it failed authentication.
+ *
+ * Kept apart from a per-field decryption failure on purpose: a master-key mismatch breaks
+ * every encrypted row at once and is fixed by configuration, not by touching the data.
+ */
+export class DataKeyUnavailableError extends Error {
+  constructor(
+    readonly keyId: string,
+    readonly expectedKeyId: string,
+    message: string,
+    readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = 'DataKeyUnavailableError';
+  }
 }
 
 /**
@@ -46,4 +74,11 @@ export abstract class KeyManagementService {
     documentHashHex: string,
     signatureB64: string,
   ): Promise<boolean>;
+
+  // These two mirror AWS KMS GenerateDataKey / Decrypt, so field encryption (R10) moves
+  // to AwsKms without FieldCipher or any stored envelope changing shape.
+  abstract generateDataKey(): Promise<DataKey>;
+
+  /** Rejects with DataKeyUnavailableError when this deployment cannot open `wrapped`. */
+  abstract decryptDataKey(wrapped: string, keyId: string): Promise<Buffer>;
 }
