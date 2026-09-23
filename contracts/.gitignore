@@ -5,3 +5,7 @@ typechain-types
 .env
 coverage
 coverage.json
+
+# Ephemeral/local deployment records; amoy.json is committed once deployed for real.
+deployments/localhost.json
+deployments/hardhat.json
