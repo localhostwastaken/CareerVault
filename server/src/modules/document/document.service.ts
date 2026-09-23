@@ -456,11 +456,16 @@ export class DocumentService {
       revokedByMemberId: member.id,
     });
     // DB status is authoritative (R7); the on-chain flag is a secondary tamper-evident
-    // trail, so a chain failure must not block the revocation.
+    // trail. Not awaited: on Polygon it means a transaction plus confirmations, and the
+    // revocation has already happened — HR must not wait on, or fail because of, the chain.
     if (doc.documentHash) {
-      await this.blockchain
+      void this.blockchain
         .revokeDocument(doc.documentHash)
-        .catch(() => undefined);
+        .catch((error) =>
+          this.logger.warn(
+            `On-chain revocation of ${id} failed (DB revocation stands): ${String(error)}`,
+          ),
+        );
     }
     await this.notifyUser(
       doc.holderId,

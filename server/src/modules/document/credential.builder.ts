@@ -1,5 +1,9 @@
 import { ConflictException } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client.js';
+import {
+  explorerTxUrl,
+  networkName,
+} from '../../services/blockchain/chain-explorer.js';
 
 // Self-sovereign verification bundle (GDPR / salt-portability).
 //
@@ -11,9 +15,21 @@ import type { Prisma } from '../../generated/prisma/client.js';
 // content, the salt, both signatures, the issuer's public key, and the Merkle proof.
 //
 // Pure by design: no DI, no I/O. DocumentService.buildCredential loads the row (and checks
-// the caller may view it) and hands it here; this module only shapes the JSON-LD. Task 5
-// extends the `anchor` block with on-chain fields — its construction here is otherwise
-// unchanged from before this move.
+// the caller may view it) and hands it here; this module only shapes the JSON-LD. The
+// `anchor` block names the chain and contract the Merkle root was anchored to (R2) — a null
+// chainId is the local simulator, which offers nothing to check independently — and
+// `schemes` spells out every algorithm, so verifying needs nothing from us.
+
+// Each must describe exactly what crypto.util.ts, merkle.util.ts and the KMS compute.
+const SCHEMES = {
+  hash: 'SHA-256(JCS(credentialSubject) ‖ salt) → lowercase hex; JCS = RFC 8785; salt = 64 hex chars appended as UTF-8',
+  statement:
+    'SHA-256(JCS({v:1, documentHash, role, memberId})); RS256 (RSASSA-PKCS1-v1_5/SHA-256) over the 32 raw digest bytes',
+  merkle:
+    'SHA-256 binary tree; leaves = documentHash bytes (not re-hashed); pairs sorted bytewise before hashing; odd node promoted; single-leaf root = leaf',
+  anchor: 'AnchorRegistry.verifyRoot(bytes32 0x<merkleRoot>)',
+};
+
 export type CredentialDocument = Prisma.DocumentGetPayload<{
   include: {
     organization: { select: { name: true; domain: true; publicKeyPem: true } };
@@ -29,19 +45,6 @@ export function buildCredential(doc: CredentialDocument): VerifiableCredential {
       'A verification credential is only available once the document is issued',
     );
   }
-
-  const anchor = doc.merkleProof
-    ? {
-        merkleRoot: doc.merkleProof.merkleRoot.rootHash,
-        proofPath: doc.merkleProof.proofPath,
-        blockchain: 'polygon',
-        txHash: doc.merkleProof.merkleRoot.polygonTxHash,
-        blockNumber: doc.merkleProof.merkleRoot.polygonBlockNumber
-          ? Number(doc.merkleProof.merkleRoot.polygonBlockNumber)
-          : null,
-        anchoredAt: doc.merkleProof.merkleRoot.anchoredAt,
-      }
-    : null;
 
   return {
     '@context': [
@@ -83,7 +86,7 @@ export function buildCredential(doc: CredentialDocument): VerifiableCredential {
       managerSignature: doc.managerSignature,
       hrSignature: doc.hrSignature,
     },
-    anchor,
+    anchor: doc.merkleProof ? anchorBlock(doc.merkleProof) : null,
     revocation:
       doc.status === 'REVOKED'
         ? {
@@ -92,6 +95,7 @@ export function buildCredential(doc: CredentialDocument): VerifiableCredential {
             reason: doc.revocationReasonText,
           }
         : null,
+    schemes: SCHEMES,
     verificationInstructions:
       'Recompute SHA-256( JCS(credentialSubject) + proof.salt ) and confirm it equals ' +
       'proof.documentHash. For each co-signature, recompute the statement ' +
@@ -99,8 +103,31 @@ export function buildCredential(doc: CredentialDocument): VerifiableCredential {
       'role="MANAGER", memberId=proof.signerMemberId for proof.managerSignature, and ' +
       'role="HR", memberId=proof.approverMemberId for proof.hrSignature; then verify each ' +
       'RS256 signature over its statement using issuer.publicKeyPem. If anchor is present, ' +
-      'confirm the Merkle proofPath reconciles to anchor.merkleRoot and that the root is ' +
-      'recorded on-chain at anchor.txHash.',
+      'confirm the Merkle proofPath reconciles to anchor.merkleRoot (schemes.merkle), then ' +
+      'call verifyRoot(bytes32 0x<anchor.merkleRoot>) on the AnchorRegistry contract at ' +
+      'anchor.contractAddress on chain anchor.chainId and confirm it returns exists = true; ' +
+      'anchor.txHash is the transaction that anchored it. An anchor whose network is ' +
+      '"local-simulator" (chainId null) was recorded in CareerVault\'s own ledger, not on a ' +
+      'public chain, so it cannot be checked independently.',
+  };
+}
+
+function anchorBlock(
+  proof: NonNullable<CredentialDocument['merkleProof']>,
+): VerifiableCredential['anchor'] {
+  const root = proof.merkleRoot;
+  return {
+    merkleRoot: root.rootHash,
+    proofPath: proof.proofPath,
+    network: networkName(root.chainId),
+    chainId: root.chainId,
+    contractAddress: root.contractAddress,
+    txHash: root.polygonTxHash,
+    explorerTxUrl: explorerTxUrl(root.chainId, root.polygonTxHash),
+    blockNumber: root.polygonBlockNumber
+      ? Number(root.polygonBlockNumber)
+      : null,
+    anchoredAt: root.anchoredAt,
   };
 }
 
@@ -131,8 +158,11 @@ export interface VerifiableCredential {
   anchor: {
     merkleRoot: string;
     proofPath: Prisma.JsonValue;
-    blockchain: string;
+    network: string;
+    chainId: number | null;
+    contractAddress: string | null;
     txHash: string | null;
+    explorerTxUrl: string | null;
     blockNumber: number | null;
     anchoredAt: Date | null;
   } | null;
@@ -141,5 +171,6 @@ export interface VerifiableCredential {
     code: string | null;
     reason: string | null;
   } | null;
+  schemes: typeof SCHEMES;
   verificationInstructions: string;
 }

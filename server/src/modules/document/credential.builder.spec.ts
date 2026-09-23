@@ -19,8 +19,9 @@ const SIGNED_UNDER_KEY =
   '-----BEGIN PUBLIC KEY-----\nSIGNED-UNDER-KEY\n-----END PUBLIC KEY-----';
 const CURRENT_ORG_KEY =
   '-----BEGIN PUBLIC KEY-----\nCURRENT-ORG-KEY\n-----END PUBLIC KEY-----';
+const REGISTRY = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
 
-const baseDoc = (): CredentialDocument =>
+const baseDoc = (root: Record<string, unknown> = {}): CredentialDocument =>
   ({
     id: 'doc-1',
     type: 'EXPERIENCE_LETTER',
@@ -50,7 +51,10 @@ const baseDoc = (): CredentialDocument =>
         rootHash: 'r'.repeat(64),
         polygonTxHash: '0xabc123',
         polygonBlockNumber: 12345n,
+        chainId: 80002,
+        contractAddress: REGISTRY,
         anchoredAt: new Date('2026-01-16T00:00:00.000Z'),
+        ...root,
       },
     },
   }) as never as CredentialDocument;
@@ -82,16 +86,53 @@ describe('buildCredential', () => {
       managerSignature: 'manager-sig==',
       hrSignature: 'hr-sig==',
     });
-    // Anchor block is untouched by this refactor (Task 5 extends it later).
     expect(credential.anchor).toEqual({
       merkleRoot: 'r'.repeat(64),
       proofPath: [{ position: 'left', hash: 'x'.repeat(64) }],
-      blockchain: 'polygon',
+      network: 'polygon-amoy',
+      chainId: 80002,
+      contractAddress: REGISTRY,
       txHash: '0xabc123',
+      explorerTxUrl: 'https://amoy.polygonscan.com/tx/0xabc123',
       blockNumber: 12345,
       anchoredAt: new Date('2026-01-16T00:00:00.000Z'),
     });
     expect(credential.revocation).toBeNull();
+  });
+
+  it('labels a simulator anchor as such, with no explorer link', () => {
+    const { anchor } = buildCredential(
+      baseDoc({ chainId: null, contractAddress: null }),
+    );
+
+    expect(anchor).toMatchObject({
+      network: 'local-simulator',
+      chainId: null,
+      contractAddress: null,
+      explorerTxUrl: null,
+    });
+  });
+
+  it('spells out every scheme needed to verify it offline', () => {
+    const credential = buildCredential(baseDoc());
+
+    expect(credential.schemes).toEqual({
+      hash: 'SHA-256(JCS(credentialSubject) ‖ salt) → lowercase hex; JCS = RFC 8785; salt = 64 hex chars appended as UTF-8',
+      statement:
+        'SHA-256(JCS({v:1, documentHash, role, memberId})); RS256 (RSASSA-PKCS1-v1_5/SHA-256) over the 32 raw digest bytes',
+      merkle:
+        'SHA-256 binary tree; leaves = documentHash bytes (not re-hashed); pairs sorted bytewise before hashing; odd node promoted; single-leaf root = leaf',
+      anchor: 'AnchorRegistry.verifyRoot(bytes32 0x<merkleRoot>)',
+    });
+    // Kept alongside `schemes` for readers of the earlier credential shape.
+    expect(credential.proof.statementScheme).toBe(
+      'RS256 over sha256(JCS({ v: 1, documentHash, role, memberId }))',
+    );
+    expect(credential.verificationInstructions).toEqual(
+      expect.stringMatching(
+        /verifyRoot.*anchor\.contractAddress.*anchor\.chainId/,
+      ),
+    );
   });
 
   it("carries the key the document was signed under, not the organisation's current key", () => {
