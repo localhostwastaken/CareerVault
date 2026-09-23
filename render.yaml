@@ -35,12 +35,12 @@ services:
       #    driver below is a LOCAL/MOCK impl. Boot logs a loud warning listing
       #    each mock (see server/src/config/env.validation.ts). Flip the ones you
       #    need to demo for real and set the matching secrets further down.
-      #      KEY_MANAGEMENT_DRIVER: local (Node RSA)   → aws     (AWS KMS)
-      #      BLOCKCHAIN_DRIVER:     local (in-memory)  → amoy    (Polygon Amoy)
-      #      PAYMENT_DRIVER:        mock  (free)       → stripe  (real billing)
-      #      EMAIL_DRIVER:          console (stdout)   → ses     (real email)
-      #      STORAGE_DRIVER:        local (disk)       → s3
-      #      DNS_DRIVER:            local (BYPASSED)   → real    (TXT-record check)
+      #      KEY_MANAGEMENT_DRIVER: local (Node RSA)            → aws    (AWS KMS)
+      #      BLOCKCHAIN_DRIVER:     local (JSON ledger on disk) → amoy   (Polygon Amoy)
+      #      PAYMENT_DRIVER:        mock  (free)                → stripe (real billing)
+      #      EMAIL_DRIVER:          console (stdout)            → ses    (real email)
+      #      STORAGE_DRIVER:        local (disk)                → s3
+      #      DNS_DRIVER:            local (BYPASSED)            → real   (TXT-record check)
       - key: KEY_MANAGEMENT_DRIVER
         value: local
       - key: BLOCKCHAIN_DRIVER
