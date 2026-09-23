@@ -19,6 +19,10 @@ interface Ledger {
   revocations: Record<string, string>;
 }
 
+// Honestly a simulator: no chain id or contract, so nothing downstream can present these
+// receipts as a public-chain anchor.
+const SIMULATED = { chainId: null, contractAddress: null };
+
 // A persistent local stand-in for the Polygon AnchorRegistry — an append-only JSON
 // ledger separate from the app DB, so the 6-step verification's on-chain checks are
 // real against an independent record. DB status stays authoritative for revocation (R7).
@@ -54,7 +58,7 @@ export class LocalAnchorService extends BlockchainService {
     this.logger.log(
       `Anchored root ${rootHashHex.slice(0, 12)} block=${blockNumber}`,
     );
-    return { txHash, blockNumber, anchoredAt };
+    return { txHash, blockNumber, anchoredAt, ...SIMULATED };
   }
 
   async verifyRoot(rootHashHex: string): Promise<RootStatus> {
@@ -75,7 +79,7 @@ export class LocalAnchorService extends BlockchainService {
     const anchoredAt = new Date();
     ledger.revocations[documentHashHex] = anchoredAt.toISOString();
     await this.write(ledger);
-    return { txHash, blockNumber, anchoredAt };
+    return { txHash, blockNumber, anchoredAt, ...SIMULATED };
   }
 
   async isRevoked(

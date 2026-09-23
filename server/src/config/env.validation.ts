@@ -31,6 +31,12 @@ function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
         'of emailed (anyone reading logs can log in). Set EMAIL_DRIVER=gmail — ' +
         'the "ses" value is accepted by this schema but its adapter is not written yet.',
     );
+  if (((env.BLOCKCHAIN_DRIVER as string | undefined) ?? 'local') === 'local')
+    mocked.push(
+      'BLOCKCHAIN_DRIVER=local — anchoring is SIMULATED — Merkle roots go to a local JSON ' +
+        'ledger, not Polygon. Set BLOCKCHAIN_DRIVER=amoy (with POLYGON_RPC_URL, ' +
+        'ANCHOR_REGISTRY_ADDRESS and ANCHOR_PRIVATE_KEY) to anchor on Polygon Amoy.',
+    );
   if (env.DEMO_MASTER_PASSWORD_ENABLED === true)
     mocked.push(
       'DEMO_MASTER_PASSWORD_ENABLED=true — ANY active account can be logged into with the ' +
@@ -57,6 +63,21 @@ function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
   console.warn(banner);
   for (const line of mocked) console.warn(`  * ${line}`);
   console.warn(`${banner}\n`);
+}
+
+// Required — and format-checked — only when anchoring for real, so a bad value stops the
+// boot instead of surfacing later as a failed transaction. The message never quotes the
+// value: Joi's default pattern error would echo ANCHOR_PRIVATE_KEY into the boot log.
+function requiredForAmoy(schema: Joi.StringSchema, format: string) {
+  return Joi.string().when('BLOCKCHAIN_DRIVER', {
+    is: 'amoy',
+    then: schema.required().messages({
+      'string.pattern.base': `{{#label}} must be ${format}`,
+      'string.uri': `{{#label}} must be ${format}`,
+      'string.uriCustomScheme': `{{#label}} must be ${format}`,
+    }),
+    otherwise: Joi.string().allow('').optional(),
+  });
 }
 
 // Validated at startup (fail-fast). Secrets are optional in dev — adapters/auth
@@ -129,9 +150,24 @@ export const envValidationSchema = Joi.object({
   AI_SERVICE_URL: Joi.string().default('http://localhost:9910'),
   AI_SERVICE_SECRET: Joi.string().allow('').optional(),
 
-  POLYGON_RPC_URL: Joi.string().allow('').optional(),
-  ANCHOR_REGISTRY_ADDRESS: Joi.string().allow('').optional(),
-  ANCHOR_PRIVATE_KEY: Joi.string().allow('').optional(),
+  POLYGON_RPC_URL: requiredForAmoy(
+    Joi.string().uri({ scheme: ['http', 'https'] }),
+    'an http(s) JSON-RPC URL',
+  ),
+  ANCHOR_REGISTRY_ADDRESS: requiredForAmoy(
+    Joi.string().pattern(/^0x[0-9a-fA-F]{40}$/),
+    'a 0x-prefixed 20-byte contract address',
+  ),
+  ANCHOR_PRIVATE_KEY: requiredForAmoy(
+    Joi.string().pattern(/^0x[0-9a-fA-F]{64}$/),
+    'a 0x-prefixed 32-byte hex private key',
+  ),
+  // Polygon Amoy by default; e2e's chain mode points these at a local Hardhat node.
+  ANCHOR_CHAIN_ID: Joi.number().integer().positive().default(80002),
+  ANCHOR_CONFIRMATIONS: Joi.number().integer().min(1).default(2),
+  // Polygon PoS nodes reject tips under 25 gwei; ethers' own Amoy fallback is 1 gwei.
+  ANCHOR_MIN_PRIORITY_FEE_GWEI: Joi.number().min(0).default(30),
+  ANCHOR_TX_TIMEOUT_MS: Joi.number().integer().positive().default(120000),
   STRIPE_SECRET_KEY: Joi.string().allow('').optional(),
   STRIPE_WEBHOOK_SECRET: Joi.string().allow('').optional(),
   STORAGE_LOCAL_DIR: Joi.string().default('./storage'),
