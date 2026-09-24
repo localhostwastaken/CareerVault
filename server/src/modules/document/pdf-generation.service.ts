@@ -10,6 +10,7 @@ import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import type { Font as CoverageFont } from '@pdf-lib/fontkit';
 import { StorageService } from '../../services/storage/storage.service.js';
+import { pdfStorageKey } from './pdf-storage-key.js';
 
 interface DocLike {
   id: string;
@@ -157,7 +158,7 @@ export class PdfGenerationService {
     );
 
     const bytes = await pdf.save();
-    const key = `documents/${doc.id}.pdf`;
+    const key = pdfStorageKey(doc.id);
     await this.storage.put(key, Buffer.from(bytes), 'application/pdf');
     return `/api/v1/documents/${doc.id}/download`;
   }
@@ -169,7 +170,7 @@ export class PdfGenerationService {
     documentId: string,
     anchor: { rootHash: string; txHash: string },
   ): Promise<void> {
-    const key = `documents/${documentId}.pdf`;
+    const key = pdfStorageKey(documentId);
     const existing = await this.storage.get(key);
     const pdf = await PDFDocument.load(existing);
     pdf.setSubject(`CareerVault anchor — Merkle root ${anchor.rootHash}`);

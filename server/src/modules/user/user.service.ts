@@ -1,11 +1,18 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { StorageService } from '../../services/storage/storage.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { pdfStorageKey } from '../document/pdf-storage-key.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
 
 @Injectable()
 export class UserService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(UserService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUniqueOrThrow({
@@ -27,22 +34,28 @@ export class UserService {
     return this.toProfile(user);
   }
 
-  // GDPR erasure (right to be forgotten). Tombstones the user (trips the JWT/refresh
-  // kill-switch via isActive=false + gdprDeletedAt), scrubs PII, and removes the
-  // AI/discovery/messaging footprint + sessions. Issued documents are retained as the
-  // issuer's record (R7) but their salt is removed (dead-hash → no longer verifiable);
-  // non-issued drafts have their content scrubbed.
+  // GDPR erasure (right to be forgotten, Art. 17). Tombstones the user (trips the
+  // JWT/refresh kill-switch via isActive=false + gdprDeletedAt), scrubs PII, and removes the
+  // AI/discovery/messaging footprint + sessions.
   //
-  // Three further erasures, all in the same transaction so erasure is all-or-nothing:
+  // Documents: every one of the holder's documents, issued, anchored, revoked and expired
+  // ones included, loses its content and its salt. What stays is the issuer's record (R7)
+  // that a document existed: type, status, dates, any revocation code and reason, the hash,
+  // both signatures and the Merkle proof. The anchored hash is then a dead hash: with no
+  // content and no salt nobody can recompute it, and VerificationService discloses nothing
+  // about the holder for it, only that they exercised erasure (is-erased.ts).
+  //
+  // Also in the one transaction, so erasure is all-or-nothing:
   //  - documentVersion.contentJson: sign/updateDraft/approve each snapshot the full
-  //    content into a version row, so scrubbing only document.contentJson would leave a
-  //    complete copy of the holder's personal data behind — an Art.17 failure. Versions
-  //    of ALL the holder's documents are scrubbed, including issued ones: the retained
-  //    issuer record is document.contentJson, the history is not part of that record.
+  //    content into a version row, so every snapshot is scrubbed too.
   //  - verifierApiKey: a key is a live credential bound to the erased identity. Revoking
   //    here mirrors the cancel-revokes-keys rule (R6) so no credential outlives its owner.
   //  - sharedLink: public links resolve by urlToken with no session, so they would keep
   //    serving the holder's documents to anyone holding the URL after erasure.
+  //  - a USER_ERASED audit row (accountability, Art. 5(2)), holding ids only, no PII.
+  //
+  // Stored PDFs are deleted after the commit: storage is not transactional, so a failed
+  // delete must not roll back, or block, an erasure the database has already made.
   async deleteAccount(userId: string) {
     // Same last-admin protection as MemberService.deactivate: erasure deactivates every
     // membership, so the sole ORG_ADMIN erasing themselves would orphan the organization
@@ -62,6 +75,10 @@ export class UserService {
       }
     }
 
+    const documents = await this.prisma.document.findMany({
+      where: { holderId: userId },
+      select: { id: true },
+    });
     const anonymizedEmail = `deleted+${userId}@careervault.invalid`;
     await this.prisma.$transaction([
       this.prisma.extractedSkill.deleteMany({
@@ -77,14 +94,11 @@ export class UserService {
       }),
       this.prisma.document.updateMany({
         where: { holderId: userId },
-        data: { salt: null },
-      }),
-      this.prisma.document.updateMany({
-        where: {
-          holderId: userId,
-          status: { in: ['REQUESTED', 'DRAFT', 'PENDING_HR'] },
+        data: {
+          salt: null,
+          contentJson: {} as Prisma.InputJsonValue,
+          renderedPdfUrl: null,
         },
-        data: { contentJson: {} as Prisma.InputJsonValue },
       }),
       this.prisma.documentVersion.updateMany({
         where: { document: { holderId: userId } },
@@ -112,8 +126,33 @@ export class UserService {
           gdprDeletedAt: new Date(),
         },
       }),
+      this.prisma.auditLog.create({
+        data: {
+          actorId: userId,
+          actorType: 'USER',
+          action: 'USER_ERASED',
+          entityType: 'USER',
+          entityId: userId,
+          retentionTier: 'COMPLIANCE',
+        },
+      }),
     ]);
+    await this.deletePdfs(userId, documents);
     return { deleted: true };
+  }
+
+  private async deletePdfs(
+    userId: string,
+    documents: { id: string }[],
+  ): Promise<void> {
+    const results = await Promise.allSettled(
+      documents.map(({ id }) => this.storage.delete(pdfStorageKey(id))),
+    );
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed > 0)
+      this.logger.error(
+        `GDPR erasure of user ${userId}: ${failed} of ${documents.length} stored PDF(s) could not be deleted; remove them by hand`,
+      );
   }
 
   private toProfile(user: {

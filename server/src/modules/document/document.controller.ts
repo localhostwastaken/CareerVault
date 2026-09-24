@@ -19,6 +19,7 @@ import { Roles } from '../../common/decorators/roles.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
 import { StorageService } from '../../services/storage/storage.service.js';
 import { DocumentService } from './document.service.js';
+import { pdfStorageKey } from './pdf-storage-key.js';
 import { ApproveDocumentDto } from './dto/approve-document.dto.js';
 import { ListDocumentsQuery } from './dto/list-documents.query.js';
 import { RejectDocumentDto } from './dto/reject-document.dto.js';
@@ -151,7 +152,7 @@ export class DocumentController {
   ) {
     const doc = await this.documents.getById(id, user);
     if (!doc.renderedPdfUrl) throw new NotFoundException('PDF not available');
-    const buffer = await this.storage.get(`documents/${id}.pdf`);
+    const buffer = await this.storage.get(pdfStorageKey(id));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${id}.pdf"`);
     res.send(buffer);
