@@ -23,7 +23,21 @@
         "expected": "0"
       }
     ],
-    "keySorting": {
+    "keySortingRfc": {
+      "source": "RFC 8785 section 3.2.3: property-name sorting is by UTF-16 code unit, not Unicode code point. U+1F600 (an astral character, leading surrogate 0xD83D) sorts before U+FB33 only under code-unit order -- a naive code-point-sorting JCS implementation gets this pair backwards.",
+      "input": {
+        "1": "One",
+        "\u20ac": "Euro Sign",
+        "\r": "Carriage Return",
+        "\ufb33": "Hebrew Letter Dalet With Dagesh",
+        "\ud83d\ude00": "Emoji: Grinning Face",
+        "\u0080": "Control",
+        "\u00f6": "Latin Small Letter O With Diaeresis"
+      },
+      "expected": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\u0080\":\"Control\",\"\u00f6\":\"Latin Small Letter O With Diaeresis\",\"\u20ac\":\"Euro Sign\",\"\ud83d\ude00\":\"Emoji: Grinning Face\",\"\ufb33\":\"Hebrew Letter Dalet With Dagesh\"}"
+    },
+    "keySortingReadmeExample": {
+      "source": "canonicalize@3 package README \"Crazy Example\" -- NOT from RFC 8785. ASCII-only keys (does not exercise UTF-16-vs-code-point ordering); kept for its own coverage of numeric-looking-string sorting (\"1\" < \"10\" < \"111\" lexicographically, not numerically) and case sensitivity (\"A\" < \"a\").",
       "input": {
         "1": {
           "f": {

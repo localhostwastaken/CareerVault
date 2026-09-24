@@ -12,7 +12,12 @@ import {
 interface TestVectors {
   rfc8785: {
     numbers: { literal: string; expected: string }[];
-    keySorting: { input: unknown; expected: string };
+    keySortingRfc: { source: string; input: unknown; expected: string };
+    keySortingReadmeExample: {
+      source: string;
+      input: unknown;
+      expected: string;
+    };
   };
   pipeline: {
     documentHash: { content: unknown; salt: string; expected: string }[];
@@ -145,8 +150,21 @@ describe('known-answer vectors (tools/verify-credential/test-vectors.json)', () 
     },
   );
 
-  it('RFC 8785 key-sorting example canonicalizes to the expected string', () => {
-    const { input, expected } = VECTORS.rfc8785.keySorting;
+  // RFC 8785 §3.2.3: property names sort by UTF-16 CODE UNIT, not Unicode code point — the
+  // only object-key example so far (the README one below) used ASCII-only keys, so it could
+  // not catch an implementation that sorts by code point instead. The astral emoji U+1F600
+  // (a surrogate pair starting 0xD83D) must sort before the Hebrew presentation-form letter
+  // U+FB33 under code-unit order, even though U+1F600 > U+FB33 as a raw code point.
+  it('RFC 8785 §3.2.3 key-sorting example canonicalizes to the expected string', () => {
+    const { input, expected } = VECTORS.rfc8785.keySortingRfc;
+    expect(canonicalizeJson(input)).toBe(expected);
+  });
+
+  // NOT from RFC 8785 (see the vector's own "source" field) — the canonicalize@3 package's
+  // own README example. Kept for its ASCII-safe coverage of numeric-looking-string sorting
+  // ("1" < "10" < "111" lexicographically, not numerically) and case sensitivity.
+  it('canonicalize README key-sorting example canonicalizes to the expected string', () => {
+    const { input, expected } = VECTORS.rfc8785.keySortingReadmeExample;
     expect(canonicalizeJson(input)).toBe(expected);
   });
 
