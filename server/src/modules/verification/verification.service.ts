@@ -130,7 +130,7 @@ export class VerificationService {
       });
     } catch (error) {
       if (!isFieldReadError(error)) throw error;
-      // SharedLink holds no encrypted field, so without the document this read can't fail so.
+      // SharedLink has no encrypted field, so read without its document it can't fail this way.
       const bare = await this.prisma.sharedLink.findUnique({
         where: { urlToken: token },
       });
