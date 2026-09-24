@@ -168,6 +168,7 @@ the sensitive document columns.
   - reason text in audit logs and notifications is plaintext;
   - **dev only:** with strict mode off, plaintext found in an encrypted column is read back as legacy data. Verification also trusts the plaintext `signing_public_key_pem` column. Together, these let someone with DB write access plant a self-consistent forged row, which the batch then anchors; `db:audit-encryption` flags it. Production runs strict mode, which closes this;
   - envelopes are bound to the field, not the row, so a DB writer can copy a real envelope into another row and the app decrypts it for that row's holder. Binding the AAD to the row id is roadmap;
+  - membership grants aren't signed or audited. A DB writer can insert `MANAGER`/`HR` rows for their own accounts and issue through the app, which signs with the real org key; strict mode and the batch gate don't stop that. Auditing or signing grants is roadmap;
   - there's no master-key rotation tooling;
   - the master key is an environment secret. **Roadmap:** AWS KMS, and a blind index for email.
 
@@ -190,6 +191,7 @@ No account required.
 - On-chain anchor status, with PolygonScan links for the transaction and the contract. An unreachable chain reads as `VERIFIED_PENDING_ANCHOR`, never as a failure.
 - Tamper detection (salt/hash/signature mismatch)
 - An erased holder's document returns `erased: true` and no content, with an integrity check that names erasure
+- A record whose stored fields can't be read (a failed envelope, or plaintext under strict mode) reads `INVALID` with no content instead of failing the request, including within a bulk call
 
 **Frontend pages:** `/verify`, `/verify/hash/:hash`, `/verify/:token`
 
@@ -409,3 +411,4 @@ manage keys)
 | AWS KMS driver, KEK rotation tooling, email blind index | Roadmap |
 | Per-member signing keys, multisig registry owner | Roadmap |
 | Row-bound envelope AAD (so a copied envelope fails in another row) | Roadmap |
+| Audited or signed membership grants (so a DB writer can't grant themselves a signing role) | Roadmap |

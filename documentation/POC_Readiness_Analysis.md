@@ -493,4 +493,5 @@ references, is in [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.m
 - an AWS KMS driver and KEK rotation tooling;
 - per-member signing keys and a multisig registry owner;
 - an email blind index;
-- binding the envelope AAD to the row id, so a copied envelope fails in another row.
+- binding the envelope AAD to the row id, so a copied envelope fails in another row;
+- auditing or signing membership grants, so a DB writer can't grant themselves a signing role and issue through the app.

@@ -191,8 +191,10 @@ Three layers, each with a different job. Details and evidence are in §4 of
    - **Strict reads.** With `FIELD_ENCRYPTION_STRICT=true`, which `render.yaml` sets for production, a
      non-envelope value in an encrypted column is refused on read instead of being returned as legacy
      plaintext. The Merkle batch also skips any document whose fields don't decrypt or no longer
-     recompute its hash. So a database writer without the master key can't plant new content that
-     verifies or gets anchored. Dev defaults to `false`, so a database seeded before R10 still reads.
+     recompute its hash. So a row planted directly in the database by someone without the master
+     key can't verify or get anchored. That doesn't cover a database writer who grants themselves
+     manager and HR memberships and issues through the app, which signs with the real org key
+     (viva guide, L15). Dev defaults to `false`, so a database seeded before R10 still reads.
 
 **Plaintext by design:**
 - `document_hash`: it's the public lookup key and the Merkle leaf, and it's salted and one-way;
