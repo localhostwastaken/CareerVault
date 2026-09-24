@@ -474,6 +474,8 @@ references, is in [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.m
 |---|---|---|
 | Field encryption (R10) | KMS data keys (`generateDataKey`/`decryptDataKey`) and fail-safe master-key loading. `FieldCipher`: AES-256-GCM envelopes, per-field AAD, a boot self-test. A Prisma 7 query extension seals the `Document`/`DocumentVersion` fields at rest. Seeding goes through the extension. `npm run db:audit-encryption` added. | Unit and e2e specs. `test/encryption.e2e-spec.ts` asserts the envelopes with raw SQL. |
 | PDFs at rest | `EncryptedStorageService` wraps the storage driver (AAD label `file:<key>`). | The audit script's storage section |
+| Strict reads + batch gate | `FIELD_ENCRYPTION_STRICT` (on in `render.yaml`, off by default for dev) refuses plaintext in an encrypted column. Before anchoring, the Merkle batch re-reads each candidate and skips any that doesn't decrypt or recompute its hash, so our wallet can't anchor a DB writer's planted row. | Unit specs; `test/strict-encryption.e2e-spec.ts` plants a self-signed plaintext row |
+| GDPR erasure | Scrubs the content and salt of every one of the holder's documents, whatever their status, deletes stored PDFs after the commit and writes a `USER_ERASED` audit row. The public lookup of an erased document returns no content or name. | `test/erasure.e2e-spec.ts` |
 | Demo master password | Gated behind `DEMO_MASTER_PASSWORD_ENABLED`, default `false`, with a loud boot warning when on. | `auth.service.ts`, `env.validation.ts` |
 | Credential | Extracted into a pure `credential.builder.ts`. It ships the per-document `signingPublicKeyPem` (not the org's *current* key) and names the chain, contract and transaction in `anchor`. | Unit specs |
 | Contracts | NatSpec on every public function and event. Tests for batch ops, auth guards, ownership and lookups. The Amoy deploy script asserts the chain, waits 5 confirmations and writes a deployment record. `verify:amoy` runs through a validated script. `new-wallet` writes the key straight into the `.env` files and prints only the address. | `cd contracts && npm test` (18 passing) |
@@ -485,10 +487,10 @@ references, is in [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.m
 **Still pending (human-gated):**
 - deploying `AnchorRegistry` to Amoy, then filling `KNOWN_REGISTRIES[80002]` and the `<AMOY_REGISTRY_ADDRESS>` placeholders;
 - pinning Supabase's CA, enforcing SSL and turning off the Data API;
-- resetting and re-seeding Supabase with Render's `KMS_MASTER_KEY`.
+- resetting and re-seeding Supabase with Render's `KMS_MASTER_KEY`, which strict mode needs before it deploys: any pre-R10 plaintext row would otherwise fail to read.
 
 **Roadmap:**
 - an AWS KMS driver and KEK rotation tooling;
 - per-member signing keys and a multisig registry owner;
 - an email blind index;
-- GDPR scrubbing of issued content, plus PDF deletion.
+- binding the envelope AAD to the row id, so a copied envelope fails in another row.

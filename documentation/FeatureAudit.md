@@ -5,7 +5,8 @@
 > **Updated September 2026 (LY final hardening):**
 > - field-level envelope encryption (R10) and encrypted PDFs;
 > - the Polygon Amoy anchoring driver (the contract deploy is still pending);
-> - the standalone offline credential verifier.
+> - the standalone offline credential verifier;
+> - strict R10 reads (`FIELD_ENCRYPTION_STRICT`, on in production), a batch-time integrity gate before anchoring, and complete GDPR erasure of the holder's documents and PDFs.
 >
 > The byte-exact spec, with code references, is in [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.md).
 
@@ -27,7 +28,7 @@
 **User profile (User module):**
 - `GET /api/v1/users/me` — full user profile
 - `PATCH /api/v1/users/me` — update profile (name, phone, avatar)
-- `DELETE /api/v1/users/me` — GDPR account deletion (anonymize PII, drop discovery/AI data, revoke sessions)
+- `DELETE /api/v1/users/me` — GDPR account deletion (anonymize PII, drop discovery/AI data, revoke sessions, scrub every document, delete PDFs)
 
 **Frontend pages:** `/auth/login`, `/auth/register`, `/auth/magic`, `/app/profile`
 
@@ -37,13 +38,11 @@
 - GDPR account deletion. What it does:
   - anonymizes PII and revokes sessions, API keys and share links;
   - drops discovery data;
-  - nulls the salt on all the holder's documents, so nobody can recompute or prove the hash from content;
-  - scrubs drafts and every version snapshot.
-- What it doesn't do yet:
-  - issued documents' content is retained (encrypted) as the issuer's record, in the same row as the hash;
-  - the public hash lookup still returns that document's allow-listed fields, including the name, so the hash is **not yet unlinkable**;
-  - PDFs aren't deleted.
-  All of this is roadmap. Withholding content when the salt is null is a pending code change.
+  - on **every** one of the holder's documents (issued, anchored, revoked and expired ones included), nulls the salt, scrubs the content to `{}` and nulls the PDF link, so nobody can recompute or prove the hash from content;
+  - scrubs every version snapshot;
+  - writes a `USER_ERASED` audit row (ids only, COMPLIANCE tier) in the same transaction;
+  - after the commit, deletes the stored PDFs, best effort: a failed delete is logged for manual removal and never undoes the erasure.
+- What stays is the issuer's record: the hash, both signatures and the Merkle proof, with the document's type, status, dates and any revocation code and reason. The public hash lookup of an erased document returns `erased: true`, no document content and no revocation reason text. Its integrity check says the holder exercised their right to erasure and the original content no longer exists. Audit rows keep document hashes, member ids and reason text as the compliance trail.
 
 ---
 
@@ -135,6 +134,7 @@ Per R3 & R4 spec:
 **Features:**
 - Daily midnight (Asia/Kolkata) cron batch, gated by `WORKER=true`, plus an admin **Anchor now** card on `/app/analytics` with recent batches and PolygonScan links.
 - Merkle tree: SHA-256 over sorted pairs; leaves are the raw document hashes; an odd node is promoted, not duplicated.
+- Integrity gate: before a candidate joins the tree, its encrypted fields are re-read (strict mode applies) and its content and salt must recompute its hash. A failing document is skipped, logged without values and left `ISSUED`; the rest of the batch anchors.
 - LocalAnchor (a persistent JSON ledger at `./storage/chain/ledger.json`) is the dev default. Its anchors have no chain id and can't be checked independently.
 - **PolygonAnchorService is implemented** (`BLOCKCHAIN_DRIVER=amoy`, ethers v6). It calls `AnchorRegistry.anchorRoot` on Polygon Amoy (chain 80002) with:
   - a 30 gwei tip floor;
@@ -162,10 +162,12 @@ the sensitive document columns.
   - a boot self-test refuses to start if data keys can't be opened;
   - `npm run db:audit-encryption` counts encrypted / null / plaintext / undecryptable values in the DB and storage and exits 1 on any plaintext;
   - `test/encryption.e2e-spec.ts` asserts the envelopes with raw SQL.
-- **Plaintext by design:** `document_hash` (the public lookup key and Merkle leaf; salted and one-way), user email and name, and embeddings.
+- **Plaintext by design:** `document_hash` (the public lookup key and Merkle leaf; salted and one-way), `signing_public_key_pem`, user email and name, and embeddings.
+- **Strict reads:** `FIELD_ENCRYPTION_STRICT=true` (set in `render.yaml` for production; `false` by default for dev databases with pre-R10 rows) refuses any non-envelope value in an encrypted column instead of returning it as legacy plaintext. The Merkle batch also skips, and never anchors, a document whose fields don't decrypt or don't recompute its hash. `test/strict-encryption.e2e-spec.ts` plants a self-signed plaintext row and proves both.
 - **Known gaps:**
   - reason text in audit logs and notifications is plaintext;
-  - plaintext found in an encrypted column is read back as legacy data. Verification also trusts the plaintext `signing_public_key_pem` column. Together, these let someone with DB write access plant a self-consistent forged row; `db:audit-encryption` flags it. Failing closed is a pending code change.
+  - **dev only:** with strict mode off, plaintext found in an encrypted column is read back as legacy data. Verification also trusts the plaintext `signing_public_key_pem` column. Together, these let someone with DB write access plant a self-consistent forged row, which the batch then anchors; `db:audit-encryption` flags it. Production runs strict mode, which closes this;
+  - envelopes are bound to the field, not the row, so a DB writer can copy a real envelope into another row and the app decrypts it for that row's holder. Binding the AAD to the row id is roadmap;
   - there's no master-key rotation tooling;
   - the master key is an environment secret. **Roadmap:** AWS KMS, and a blind index for email.
 
@@ -187,6 +189,7 @@ No account required.
 - Org public key verification
 - On-chain anchor status, with PolygonScan links for the transaction and the contract. An unreachable chain reads as `VERIFIED_PENDING_ANCHOR`, never as a failure.
 - Tamper detection (salt/hash/signature mismatch)
+- An erased holder's document returns `erased: true` and no content, with an integrity check that names erasure
 
 **Frontend pages:** `/verify`, `/verify/hash/:hash`, `/verify/:token`
 
@@ -244,9 +247,9 @@ No account required.
 
 **Audit logs:**
 - **Logged events:**
-  - COMPLIANCE tier: document signed, issued and revoked; every public verification (verdict); bulk-issuance start and completion; an org signing key replaced.
+  - COMPLIANCE tier: document signed, issued and revoked; every public verification (verdict); bulk-issuance start and completion; an org signing key replaced; GDPR erasure (`USER_ERASED`).
   - STANDARD tier: document rejected.
-- **What each row records:** actor, action, entity type and id, details in `new_value`, and a timestamp. The `old_value`, `ip_address` and `user_agent` columns exist but aren't populated yet. Logins, profile edits, anchoring and GDPR erasure aren't audited.
+- **What each row records:** actor, action, entity type and id, details in `new_value`, and a timestamp. The `old_value`, `ip_address` and `user_agent` columns exist but aren't populated yet. Logins, profile edits and anchoring aren't audited.
 - **Retention:** STANDARD rows are auto-purged after 90 days by the retention cron. COMPLIANCE rows are never auto-purged; the 7-year window is policy, not enforced in code.
 
 ---
@@ -405,3 +408,4 @@ manage keys)
 | Database TLS pinning + Supabase Data API off | Pending, human-gated. Pin Supabase's CA (`sslmode=verify-full`), then enforce SSL. Nothing in the repo does this yet. |
 | AWS KMS driver, KEK rotation tooling, email blind index | Roadmap |
 | Per-member signing keys, multisig registry owner | Roadmap |
+| Row-bound envelope AAD (so a copied envelope fails in another row) | Roadmap |

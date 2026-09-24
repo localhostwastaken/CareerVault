@@ -66,7 +66,10 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
   - **PDFs:** issued PDFs are sealed by `EncryptedStorageService` with label `file:<key>`.
   - **Plaintext by design:** `documentHash`, `signingPublicKeyPem`, user email and name (a blind index is roadmap), and embeddings.
   - **Known gap:** revocation and rejection reason text is also copied into `audit_logs.new_value` and notifications, in plaintext.
-  - **Known gap:** reads return non-envelope values in encrypted columns unchanged (legacy passthrough). Verification also trusts the plaintext `signing_public_key_pem` column. Together, these let a DB writer plant a self-consistent forged row; `db:audit-encryption` flags it, and failing closed is a pending code change.
+  - **Strict reads:** `FIELD_ENCRYPTION_STRICT` (Joi boolean, default `false`; `true` in `render.yaml`) reaches the extension as `fieldEncryption(cipher, { strict })`. On, a non-null, non-envelope value in an encrypted column makes the read throw `PlaintextFieldError`, which names the field and never the value. Off, it is returned unchanged (legacy passthrough), which dev databases with pre-R10 rows need.
+  - **Batch integrity gate:** `modules/merkle/integrity-gate.ts` re-reads each Merkle candidate's encrypted fields through `PrismaService` and requires `hashDocument(content, salt) === documentHash`. A failure is skipped, logged without values and left `ISSUED`. Our wallet signs every anchor, so never select candidates around the gate.
+  - **Known gap (dev only):** with strict off, legacy passthrough plus the trusted plaintext `signing_public_key_pem` let a DB writer plant a self-consistent forged row that the batch then anchors; `db:audit-encryption` flags it.
+  - **Known gap:** envelopes are bound to the field, not the row, so an envelope copied into another row decrypts there. A row-bound AAD is roadmap.
   - **Never** filter, sort or `distinct` on an encrypted field (the extension throws), and never write one through a nested relation write.
   - `npm run db:audit-encryption` proves the DB and storage hold no plaintext.
 - **Billing (R5):** org tier = promotional feature gates (not Stripe). User `subscriptions.tier` = Stripe-billed.

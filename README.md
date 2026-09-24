@@ -188,9 +188,16 @@ Three layers, each with a different job. Details and evidence are in §4 of
      AES-256-GCM, with the field name as AAD.
    - `npm run db:audit-encryption` (in `server/`) proves no plaintext remains; it reports any row
      written before R10 as plaintext.
+   - **Strict reads.** With `FIELD_ENCRYPTION_STRICT=true`, which `render.yaml` sets for production, a
+     non-envelope value in an encrypted column is refused on read instead of being returned as legacy
+     plaintext. The Merkle batch also skips any document whose fields don't decrypt or no longer
+     recompute its hash. So a database writer without the master key can't plant new content that
+     verifies or gets anchored. Dev defaults to `false`, so a database seeded before R10 still reads.
 
 **Plaintext by design:**
 - `document_hash`: it's the public lookup key and the Merkle leaf, and it's salted and one-way;
+- `signing_public_key_pem`: a public key, pinned per document. Verification trusts it, and strict
+  reads are what stop a database writer pairing a swapped key with planted content;
 - user emails and names: login looks them up (a blind index is on the roadmap);
 - embeddings;
 - audit and notification text.

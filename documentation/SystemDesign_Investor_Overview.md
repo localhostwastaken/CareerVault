@@ -69,7 +69,7 @@ CareerVault flips the model: **put the verified proof in the employee's hands**,
 | Revoked documents still circulating | Issuers (companies) | No mechanism to invalidate distributed copies |
 | GDPR vs. immutable records conflict | Platform operators | Typically ignored or handled poorly |
 
-CareerVault solves all five: digital signatures prove authenticity, blockchain anchoring proves integrity, share links give employees portability, revocation propagates instantly, and salt-based GDPR deletion makes on-chain hashes unlinkable without breaking the blockchain. *(As implemented, Sep 2026: deleting the salt stops anyone recomputing or proving the hash from content. However, an issued document's content, including the person's name, stays in our database next to the hash, and the public hash lookup still returns it. Full unlinkability is roadmap; see §14.)*
+CareerVault solves all five: digital signatures prove authenticity, blockchain anchoring proves integrity, share links give employees portability, revocation propagates instantly, and salt-based GDPR deletion makes on-chain hashes unlinkable without breaking the blockchain. *(As implemented, Sep 2026: erasure deletes the salt and the content of every one of the holder's documents, so nobody can recompute or prove the hash, and the public hash lookup then returns no content or name; it says the holder exercised erasure. Our database keeps the issuer's record, tied to an anonymized account; see §14.)*
 
 ---
 
@@ -203,7 +203,7 @@ graph TB
 |---|---|
 | Speed & cost | All reads/writes go through PostgreSQL (milliseconds, free). Blockchain is only used for the daily anchor (one transaction/day, ~$0.01 on Polygon). |
 | User experience | Users interact with a normal web app. No wallets, no gas fees, no seed phrases. |
-| Trust & tamper-proofing | The nightly blockchain anchor means that even if our database were compromised, anyone can independently verify a document against the public blockchain record. *(True for documents anchored before a compromise. Someone who can write to the database can still plant a new, self-signed document that verifies as pending and is anchored in the next batch. See the viva guide, limitation L13.)* |
+| Trust & tamper-proofing | The nightly blockchain anchor means that even if our database were compromised, anyone can independently verify a document against the public blockchain record. *(True for documents anchored before a compromise. In production, strict field-encryption reads and a batch-time integrity gate stop someone with only database write access from planting new content that verifies or gets anchored: without the master key they can't produce the encrypted fields. With strict mode off, as in dev, they can; see the viva guide, limitation L13.)* |
 | Resilience | Merkle roots are published in **three places**: Polygon blockchain, IPFS, and a public GitHub repo. Even if two fail, the proof survives. **Roadmap:** only the Polygon anchor is implemented; the IPFS and GitHub mirrors aren't built. Even so, a holder's downloaded credential plus the chain already verify without CareerVault. |
 
 ---
@@ -411,24 +411,24 @@ The recruiter sees a clear **Verification Report** with pass/fail for each step 
 
 ### Privacy & GDPR
 
-Account deletion (`DELETE /users/me`) implements the Right to be Forgotten as follows (status as of September 2026):
+Account deletion (`DELETE /users/me`) implements the Right to be Forgotten as follows (status as of September 2026, LY final hardening):
 
-1. **Roadmap:** stored PDFs are **not yet deleted** on erasure. They remain on the server's disk, encrypted at rest by the application.
+1. **Stored PDFs are deleted** once the erasure commits. The deletion is best effort: a PDF that can't be deleted is logged for manual removal, and a failure never undoes the erasure.
 2. All shareable links deactivated.
-3. **Salt removed from all of the holder's documents.** Without the salt, nobody can recompute or prove the anchored hash from content. On its own this does **not** make the hash unlinkable yet: see the note below.
+3. **Salt and content removed from every one of the holder's documents**, issued, anchored, revoked and expired ones included. With neither, nobody can recompute or prove the anchored hash from content.
 4. The user's name, email and phone are replaced with anonymized placeholders.
-   - Drafts and every version snapshot are scrubbed.
+   - Every version snapshot is scrubbed.
    - AI/discovery data, messages, notifications and sessions are deleted, and verifier API keys are revoked.
-   - **Issued documents' content is retained** (encrypted) as the issuer's record.
-5. **Roadmap:** the erasure itself is **not yet written to the audit log**.
+   - What stays is the issuer's record: the hash, both signatures and the Merkle proof, with the document's type, status, dates and any revocation code and reason.
+5. **The erasure is written to the audit log** (`USER_ERASED`, COMPLIANCE tier, ids only), in the same transaction.
 
-**The blockchain hash remains** (it's immutable), and without the salt no one can recompute it from content. **Today, though, the link survives in our own database.** An issued document's content stays in the same row as the plaintext hash, and the public hash lookup (`/verify/hash/<hash>`) still returns its allow-listed fields, including the person's name on experience letters and recommendations. Since the hash is printed on the PDF, anyone holding an erased person's PDF can still read their name. Full unlinkability needs the roadmap issued-content scrub, or at least withholding content from the public lookup once the salt is gone (a pending code change). The retention of issued content (point 4) also still needs a legal answer.
+**The blockchain hash remains** (it's immutable), but it's now a dead hash: no content and no salt exist to recompute it. The public hash lookup (`/verify/hash/<hash>`) of an erased document returns no content and no name. It says only that the holder exercised their right to erasure and the original content no longer exists, alongside which organisation issued the document and its anchor. Audit rows keep document hashes, member ids and reason text as the compliance trail. Whether keeping the issuer's record and that trail is enough for Art. 17 still needs a legal answer.
 
 ### Audit Trail
 
 - **COMPLIANCE tier (7-year policy; never auto-purged):**
-  - audited today: document signing, issuance and revocation; every public verification (hash lookups and share-link views); bulk issuance; org signing-key replacement;
-  - **not yet audited:** blockchain anchoring, GDPR deletions.
+  - audited today: document signing, issuance and revocation; every public verification (hash lookups and share-link views); bulk issuance; org signing-key replacement; GDPR erasure (`USER_ERASED`);
+  - **not yet audited:** blockchain anchoring.
 - **STANDARD tier (auto-purged after 90 days):**
   - audited today: document rejection only;
   - **not yet audited:** logins, profile updates, draft edits.
@@ -466,7 +466,7 @@ The contract also supports batch operations (`batchAnchorRoots`, `batchRevokeDoc
 | **Merkle tree batching** | One blockchain transaction per day for all documents | Cost-efficient (~$0.01/day vs. $0.01 per document); same security guarantee |
 | **Triple redundancy** | Polygon + IPFS + GitHub (**roadmap:** only Polygon is implemented) | If any two systems fail, proof can be reconstructed from the third |
 | **Dual signatures** | Manager signs + HR co-signs | Two-person integrity on the interactive path: the application enforces two different people. Both signatures use the organisation's single key, and bulk issuance lets one HR member issue directly. |
-| **Salt-based GDPR** | Random salt mixed into hash; delete salt = dead hash | Achieves GDPR compliance without modifying the immutable blockchain. *(As implemented: deleting the salt stops recomputation, but issued content stays linked to the hash and the public lookup still returns the name. Full unlinkability is roadmap; see §14.)* |
+| **Salt-based GDPR** | Random salt mixed into hash; delete salt = dead hash | Achieves GDPR compliance without modifying the immutable blockchain. *(As implemented: erasure deletes the salt and the content, so the anchored hash is dead, and the public lookup returns no content or name; it says the holder exercised erasure. See §14.)* |
 | **No dispute mediation** | Organization has absolute authority over their documents | Simplifies the system; mirrors real-world employer authority |
 | **Magic links for external managers** | 15-minute passwordless links | Professors writing recommendation letters don't need to create an account |
 | **90-day document expiry** | Experience letters & salary proofs auto-expire | Encourages document freshness; recommendation letters are permanent |
@@ -480,6 +480,6 @@ CareerVault is a **career document verification platform** that combines the sim
 
 - **Simple for users** -- no crypto wallets, no blockchain knowledge required
 - **Trustworthy for verifiers** -- six-layer verification with on-chain proof
-- **Compliant for enterprises** -- salt-based GDPR erasure and a compliance audit trail for the document lifecycle (full erasure and wider audit coverage are roadmap; see §14)
+- **Compliant for enterprises** -- salt-based GDPR erasure that scrubs every document and deletes PDFs, and a compliance audit trail for the document lifecycle and erasures (wider audit coverage is roadmap; see §14)
 - **Cost-efficient to operate** -- one blockchain transaction per day, regardless of volume
 - **Revenue-generating from day one** -- multiple monetization streams across all user types

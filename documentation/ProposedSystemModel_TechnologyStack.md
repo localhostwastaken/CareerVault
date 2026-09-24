@@ -9,7 +9,7 @@
 >
 > - **Deployment.** Render (API) + Supabase (Postgres) + Vercel (React/Vite client), not the AWS topology in §2.2.
 > - **Keys.** Custodial RSA-2048 org keys are generated and held by the server (`LocalKms`), stored AES-256-GCM-wrapped under `KMS_MASTER_KEY`. AWS KMS and HashiCorp Vault are **Roadmap**.
-> - **Encryption.** R10 application envelope encryption covers the sensitive document fields and PDFs (AES-256-GCM, `KMS_MASTER_KEY` → HKDF field KEK → a data key per row payload) and is **Implemented**. At rest, the database is encrypted by Supabase (provider AES-256).
+> - **Encryption.** R10 application envelope encryption covers the sensitive document fields and PDFs (AES-256-GCM, `KMS_MASTER_KEY` → HKDF field KEK → a data key per row payload) and is **Implemented**. Production reads it strictly (`FIELD_ENCRYPTION_STRICT=true`): plaintext in an encrypted column is refused, and the Merkle batch skips any document that doesn't decrypt or recompute its hash. At rest, the database is encrypted by Supabase (provider AES-256).
 > - **Contract.** `AnchorRegistry` (`anchorRoot(bytes32, uint256)`, `revokeDocument`, `verifyRoot`, `isRevoked`) supersedes the `MerkleRootRegistry` sketched in §2.4. It targets the **Polygon Amoy testnet** (deploy pending).
 > - **Hash.** `SHA-256(JCS(credentialSubject) ‖ salt)`, never an unsalted hash of the JSON-LD payload.
 > - **Not built.** Redis/BullMQ, S3, SES, live Stripe, the GitHub/IPFS mirrors and the PDF-embedded proof are **Roadmap** or superseded.
@@ -201,7 +201,7 @@ flowchart TB
 - **Redis 7:** Multi-purpose — session cache, rate limiter state, BullMQ job queue backing store, magic link token store, and general application cache. **Roadmap:** today rate limiting is in-memory and magic links live in Postgres.
 - **AWS S3:** Stores generated PDFs. Server-side encryption (SSE-S3 or SSE-KMS). Lifecycle policies for GDPR deletion. Versioning disabled (deletion means deletion).
   - **Roadmap.**
-  - **Implemented:** PDFs are stored on the server's disk and encrypted by the application (`EncryptedStorageService`, AES-256-GCM). They are not yet deleted on GDPR erasure.
+  - **Implemented:** PDFs are stored on the server's disk and encrypted by the application (`EncryptedStorageService`, AES-256-GCM). GDPR erasure deletes them after it commits, best effort, logging any it can't delete.
 
 **External Integrations:**
 
@@ -1772,7 +1772,7 @@ X-Request-ID: <uuid>  (for tracing)
 }
 ```
 
-> **As implemented (Sep 2026):** the real endpoint is `DELETE /api/v1/users/me`. It runs synchronously and returns `{ "deleted": true }`, inside the standard response envelope. It doesn't delete PDFs. The "dead hashes" note overstates it: the salt is nulled, so no one can recompute the hash from content, but an issued document's content stays linked to its hash, and the public hash lookup still returns its allow-listed fields. See "Data Retention & Compliance" below.
+> **As implemented (Sep 2026):** the real endpoint is `DELETE /api/v1/users/me`. It runs synchronously and returns `{ "deleted": true }`, inside the standard response envelope. It nulls the salt and scrubs the content of every one of the holder's documents, then deletes the stored PDFs (best effort) after the commit. The "dead hashes" note now holds: with no content and no salt, nobody can recompute the hash, and the public hash lookup returns no content or name; it says the holder exercised erasure. The row keeps the hash, signatures and Merkle proof as the issuer's record. See "Data Retention & Compliance" below.
 
 ---
 
@@ -1993,8 +1993,8 @@ The Webhook Dispatcher handler is a placeholder for V2, where organizations and 
 |---|---|---|---|
 | **Issuance Audit Logs** | 7 years | Automatic purge after retention period | Legal compliance, dispute resolution |
 | **System Logs (IPs, Logins)** | 90 days | Automatic purge via CloudWatch log group retention | Operational necessity |
-| **User Profile Data** | Until GDPR deletion request | Full wipe: user row, S3 PDFs, share links, salt. **As implemented:** the user row is anonymized (tombstoned, not deleted), share links are deactivated and the salt is nulled. PDF deletion is Roadmap. | User consent |
-| **Document Data** | Until GDPR deletion or org-initiated purge | Full wipe from SQL and S3. On-chain hash becomes dead. **As implemented:** drafts and every version snapshot are scrubbed, and the salt is nulled on all the holder's documents, so nobody can recompute or prove the hash from content. Issued documents' content is retained (encrypted) as the issuer's record, in the same row as the hash, and the public hash lookup still returns its allow-listed fields (including the name). So the hash is **not yet unlinkable**. Org-initiated purge and PDF deletion are Roadmap. | User consent + contractual |
+| **User Profile Data** | Until GDPR deletion request | Full wipe: user row, S3 PDFs, share links, salt. **As implemented:** the user row is anonymized (tombstoned, not deleted), share links are deactivated, the salt is nulled, and stored PDFs are deleted after the commit (best effort). | User consent |
+| **Document Data** | Until GDPR deletion or org-initiated purge | Full wipe from SQL and S3. On-chain hash becomes dead. **As implemented:** the salt is nulled and the content scrubbed on every one of the holder's documents, issued ones included, and every version snapshot is scrubbed, so nobody can recompute or prove the hash from content. The hash, signatures and Merkle proof stay as the issuer's record, and the public hash lookup returns no content or name for it; it says the holder exercised erasure. Org-initiated purge is Roadmap. | User consent + contractual |
 | **Payment Records** | 7 years | Retained in Stripe (Stripe's retention policy) | Tax/legal compliance |
 | **Merkle Roots (on-chain)** | Permanent (immutable) | Cannot be deleted from Polygon | Legitimate interest (verification integrity) |
 
@@ -2004,13 +2004,13 @@ The Webhook Dispatcher handler is a placeholder for V2, where organizations and 
 |---|---|---|
 | **Encryption at Rest** | RDS (AES-256), S3 (SSE-KMS), Redis (ElastiCache encryption) | **Implemented differently (Sep 2026):** Supabase provider AES-256, plus R10 application envelope encryption of the sensitive document fields and PDFs (AES-256-GCM). RDS, S3 and ElastiCache are Roadmap. |
 | **Encryption in Transit** | TLS 1.3 everywhere, HSTS headers | **Partial:** HTTPS on Vercel and Render; HSTS via `helmet`. Pinning Supabase's CA (`sslmode=verify-full`) for the API↔DB leg is a pending deployment step. |
-| **GDPR Right to Erasure** | Full wipe endpoint. User row, PDFs, share links, salt deleted. On-chain hash = dead. | **Partial:** `DELETE /users/me` nulls the salt (the hash can no longer be recomputed from content), scrubs drafts and version snapshots, anonymizes PII, and revokes links, keys and sessions. Issued content is retained (encrypted), and the public hash lookup still returns its allow-listed fields, including the name, so the hash is not yet unlinkable. Scrubbing issued content (or withholding it when the salt is gone), PDF deletion and an erasure audit row are Roadmap. |
+| **GDPR Right to Erasure** | Full wipe endpoint. User row, PDFs, share links, salt deleted. On-chain hash = dead. | **Implemented:** `DELETE /users/me` nulls the salt and scrubs the content of every one of the holder's documents, scrubs version snapshots, anonymizes PII, and revokes links, keys and sessions. It writes a `USER_ERASED` audit row in the same transaction, then deletes the stored PDFs, best effort. The public hash lookup of an erased document returns no content or name; it says the holder exercised erasure. The user row is tombstoned rather than deleted, and the issuer's record (hash, signatures, proof) and audit rows are kept. |
 | **GDPR Data Portability** | Export endpoint: download all documents as ZIP | **Roadmap.** The per-document credential file (`GET /documents/:id/credential`) is implemented. |
 | **Password Security** | bcrypt (cost 12), minimum 8 characters, no password reuse check (V1) | Planned for V1 |
 | **Rate Limiting** | Redis sliding window, per-endpoint limits | Planned for V1 |
 | **Input Validation** | class-validator on all DTOs, Prisma parameterized queries | Planned for V1 |
 | **RBAC** | NestJS guards, organization-scoped queries | Planned for V1 |
-| **Audit Trail** | All significant actions logged with actor, target, timestamp, IP | **Partial:** document lifecycle and public verifications are logged, with actor, target, details and timestamp. IP isn't recorded yet, and anchoring and GDPR erasure aren't audited. |
+| **Audit Trail** | All significant actions logged with actor, target, timestamp, IP | **Partial:** document lifecycle and public verifications are logged, with actor, target, details and timestamp. GDPR erasure is audited (`USER_ERASED`). IP isn't recorded yet, and anchoring isn't audited. |
 | **Key Management** | AWS KMS + HashiCorp Vault, no keys in code or environment variables | **Implemented differently:** `LocalKms`, with org keys wrapped under `KMS_MASTER_KEY`. The master key **is** an environment secret (Render). AWS KMS and Vault are Roadmap. |
 | **Dependency Scanning** | GitHub Dependabot, `npm audit` in CI | Planned for V1 |
 | **SAST** | ESLint security plugins, SonarQube (V2) | Partial V1 |
