@@ -4,6 +4,9 @@
 // documents, so `npm run db:seed` is safe to run repeatedly.
 //
 // Actors created (all share DEMO_PASSWORD except the external magic-link-only manager):
+// SEED_DEMO_PASSWORD when set, else the published local-dev default `Password123@`. A
+// deployed stack must be seeded with a non-public SEED_DEMO_PASSWORD: the default is in the
+// README, so anyone could otherwise sign in as TechCorp's admin.
 //   TechCorp (verified)        — Olivia (ORG_ADMIN), Marcus (MANAGER), Hannah (HR)
 //   GlobalSolutions (verified) — Gabriel (MANAGER)
 //   Holders (no membership)    — Alice (discoverable), Bob
@@ -33,7 +36,11 @@ const prisma = new PrismaClient({ adapter }).$extends(
   fieldEncryption(new FieldCipher(new LocalKmsService(new ConfigService()))),
 );
 
-const DEMO_PASSWORD = 'Password123@';
+const DEMO_PASSWORD = process.env.SEED_DEMO_PASSWORD || 'Password123@';
+// A password set through the environment is a secret, so it is never echoed back.
+const PASSWORD_NOTE = process.env.SEED_DEMO_PASSWORD
+  ? 'the SEED_DEMO_PASSWORD you set'
+  : `"${DEMO_PASSWORD}"`;
 
 type MemberRole = 'ORG_ADMIN' | 'MANAGER' | 'HR' | 'RECRUITER';
 
@@ -182,7 +189,7 @@ async function main(): Promise<void> {
 
   console.log('Seed complete.');
   console.log('  Organizations (verified): TechCorp, GlobalSolutions');
-  console.log(`  Staff/holders (password "${DEMO_PASSWORD}"):`);
+  console.log(`  Staff/holders (password ${PASSWORD_NOTE}):`);
   console.log('    ORG_ADMIN  admin@techcorp.example.com');
   console.log('    MANAGER    marcus@techcorp.example.com   (TechCorp)');
   console.log('    HR         hr@techcorp.example.com');
@@ -212,10 +219,12 @@ function upsertOrg(
   });
 }
 
+// The hash is rewritten on update too, so re-seeding with a new SEED_DEMO_PASSWORD takes
+// effect on accounts an earlier seed created, not only on a fresh database.
 function upsertUser(email: string, fullName: string, passwordHash: string | null, isDiscoverable = false) {
   return prisma.user.upsert({
     where: { email },
-    update: { fullName },
+    update: { fullName, passwordHash },
     create: { email, fullName, passwordHash, emailVerified: true, isDiscoverable },
   });
 }

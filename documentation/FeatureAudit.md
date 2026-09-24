@@ -338,7 +338,7 @@ All external integrations are behind swappable adapters — local/mock by defaul
 
 ## Seeded Demo Accounts
 
-Run `npm run db:seed` in `server/`. All accounts use password: `Password123@`
+Run `npm run db:seed` in `server/`. All accounts use the password in `SEED_DEMO_PASSWORD`, or the local-dev default `Password123@` when it's unset. The deployed stack is seeded with a non-public value (`documentation/Deploy_Runbook.md`).
 
 | Name | Role | Org |
 |------|------|-----|

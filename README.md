@@ -207,7 +207,11 @@ Three layers, each with a different job. Details and evidence are in §4 of
 The master key is an environment secret; an AWS KMS driver is on the roadmap.
 
 ## Demo accounts
-After `npm run db:seed`, sign in with password `Password123@`:
+After `npm run db:seed` on your own machine, sign in with password `Password123@`, the local-dev
+default. The seed uses `SEED_DEMO_PASSWORD` instead when it is set. The deployed demo is seeded with
+a non-public `SEED_DEMO_PASSWORD` that the team shares privately
+([deploy runbook](documentation/Deploy_Runbook.md), step 6), so the published password doesn't
+open these accounts there.
 
 | Email | Role | Organization |
 |---|---|---|
