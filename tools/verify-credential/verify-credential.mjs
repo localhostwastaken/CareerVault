@@ -13,7 +13,10 @@
 // document has actually been anchored, see the final summary for the pending case; and,
 // only when the registry is pinned (built-in or --registry), that the Merkle root exists in
 // CareerVault's OWN AnchorRegistry, not just some contract the file names — see
-// `KNOWN_REGISTRIES` below.
+// `KNOWN_REGISTRIES` below — and that the registry does not record the document as revoked.
+// A revoked credential exits 1: whether the file itself says so, or the pinned registry
+// does. Only CareerVault's wallet can write that registry's flag and nothing can clear it,
+// so it is conclusive. A revocation found at an unpinned address only warns, prominently.
 //
 // What it does NOT prove: that `issuer.publicKeyPem` belongs to the named organization.
 // Nothing in the file, or on chain, binds a key to a legal identity — anyone can build a
@@ -126,10 +129,18 @@ function registryPinStatus(anchor, registryOverride) {
 // ---- Reporting: every check prints exactly one ✓ / ✗ / ⚠ line + detail ----
 
 const ICON = { pass: '✓', fail: '✗', warn: '⚠' };
+// Counted here rather than read back from the check functions' return values, so a ✗ printed
+// mid-way through a check that goes on to print a ✓ still fails the run.
+const tally = { fail: 0 };
 function report(kind, label, detail) {
+  if (kind === 'fail') tally.fail++;
   console.log(`${ICON[kind]} ${label} — ${detail}`);
   return kind;
 }
+const isoOrNull = (value) => {
+  const date = new Date(value ?? NaN);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+};
 const say = (explain, ...lines) => {
   if (explain) for (const l of lines) console.log(`    ${l}`);
 };
@@ -161,6 +172,15 @@ function checkSignature(cred, label, role, memberId, signatureB64, explain) {
   } catch (err) {
     return report('fail', label, `verification error: ${err.message}`);
   }
+}
+
+// The file's own revocation block (the server fills it once the document is REVOKED, which is
+// terminal). A credential that says it was revoked must never pass; one that says nothing
+// proves nothing either way, so that prints no line.
+function checkRevocationNotice(cred) {
+  if (cred.revocation == null) return null;
+  const at = isoOrNull(cred.revocation.revokedAt);
+  return report('fail', 'Revocation', `the credential states it was revoked${at ? ` on ${at}` : ''}`);
 }
 
 // 4. Merkle: the documentHash must fold, through the anchored proof path, to anchor.merkleRoot.
@@ -229,13 +249,18 @@ async function checkOnChain(cred, { rpc, registry }, explain, chainInfo) {
 
     const [revoked, revokedAt] = await contract.isRevoked(`0x${proof.documentHash}`);
     chainInfo.revoked = revoked;
-    report(
-      revoked ? 'warn' : 'pass',
-      'On-chain revocation',
-      revoked ? `REVOKED at ${new Date(Number(revokedAt) * 1000).toISOString()}` : 'not revoked',
-    );
+    const pinned = pinStatus === 'matched';
+    const revokedOn = new Date(Number(revokedAt) * 1000).toISOString();
+    if (!revoked) report('pass', 'On-chain revocation', 'not revoked');
+    else if (pinned) report('fail', 'On-chain revocation', `REVOKED on ${revokedOn} in ${registryName}`);
+    else report('warn', 'On-chain revocation', `REVOKED on ${revokedOn} at an unpinned address — treat it as revoked`);
 
-    if (!anchor.txHash) return report('fail', 'On-chain receipt', 'anchor.txHash missing');
+    // A batch retry after a restart can record the anchor without its transaction. The root
+    // itself was just confirmed above, so the missing hash alone is no reason to fail.
+    if (!anchor.txHash) {
+      const where = pinned ? `in ${registryName}` : 'at the address the file names (unpinned)';
+      return report('warn', 'On-chain receipt', `no transaction hash recorded; root confirmed ${where}`);
+    }
     const receipt = await provider.getTransactionReceipt(anchor.txHash);
     const iface = contract.interface;
     const found = (receipt?.logs ?? []).some((log) => {
@@ -260,6 +285,16 @@ async function checkOnChain(cred, { rpc, registry }, explain, chainInfo) {
 // `pinStatus`/`revoked` (not the check functions' pass/fail strings) since those are pure
 // and need no re-run.
 function printSummary(cred, exitCode, pinStatus, pinSource, revoked) {
+  if (cred.revocation != null || (revoked && pinStatus === 'matched')) {
+    console.log(
+      '\n✗ REVOKED — ' +
+        (cred.revocation != null
+          ? 'the credential itself states it was revoked.'
+          : 'the pinned AnchorRegistry records this document as revoked, and nothing can clear that flag.') +
+        ' Do not accept it.',
+    );
+    return;
+  }
   if (exitCode !== 0) {
     console.log('\n✗ Verification FAILED — see the ✗ line(s) above.');
     return;
@@ -270,16 +305,17 @@ function printSummary(cred, exitCode, pinStatus, pinSource, revoked) {
     "proof.documentHash on CareerVault's public verify page " +
     `(/verify/hash/${cred.proof?.documentHash}) and confirm it names the same organization ` +
     'and verdict.';
-  const revokedNote = revoked
-    ? ' NOTE: this document has been REVOKED on-chain (R7: the database is authoritative ' +
-      'and the chain is secondary, so this warns rather than fails offline verification).'
+  // Only reachable for an unpinned registry: a pinned one's revocation failed the run above.
+  const revokedLead = revoked
+    ? 'REVOKED ON-CHAIN at the address the file names, which is not confirmed to be ' +
+      "CareerVault's registry: treat this document as revoked unless the issuer says otherwise. "
     : '';
 
   if (pinStatus === 'pending') {
     console.log(
       `\n⚠ Exit 0 proves: content integrity and both role-bound signatures verify under the ` +
         `embedded issuer key. This document is NOT YET ANCHORED — there is no Merkle proof ` +
-        `and no on-chain evidence to check at all yet.${revokedNote} ${caveat}`,
+        `and no on-chain evidence to check at all yet. ${caveat}`,
     );
     return;
   }
@@ -287,14 +323,14 @@ function printSummary(cred, exitCode, pinStatus, pinSource, revoked) {
     pinSource === 'override' ? 'the registry you pinned with --registry' : "CareerVault's pinned AnchorRegistry";
   const anchoredClaim =
     pinStatus === 'matched'
-      ? `that its Merkle root exists in ${registryName}`
+      ? `that its Merkle root exists in ${registryName}, which records no revocation of it`
       : pinStatus === 'unpinned'
         ? 'that its Merkle root exists on-chain at the address the file names (NOT confirmed to be CareerVault\'s registry — unpinned for this chain, see the Registry line)'
         : 'nothing about anchoring — this document is NOT independently anchored (no public chain to check)';
   const icon = revoked ? '⚠' : '✓';
   console.log(
-    `\n${icon} Exit 0 proves: content integrity, both role-bound signatures verify under the ` +
-      `embedded issuer key, Merkle inclusion, and ${anchoredClaim}.${revokedNote} ${caveat}`,
+    `\n${icon} ${revokedLead}Exit 0 proves: content integrity, both role-bound signatures verify ` +
+      `under the embedded issuer key, Merkle inclusion, and ${anchoredClaim}. ${caveat}`,
   );
 }
 
@@ -314,14 +350,14 @@ async function verifyCredential(cred, { rpc, registry, explain }) {
   console.log();
 
   const chainInfo = { revoked: null };
-  const results = [
-    checkIntegrity(cred, explain),
-    checkSignature(cred, 'Manager signature', 'MANAGER', cred.proof.signerMemberId, cred.proof.managerSignature, explain),
-    checkSignature(cred, 'HR signature', 'HR', cred.proof.approverMemberId, cred.proof.hrSignature, explain),
-    checkMerkle(cred, explain),
-    await checkOnChain(cred, { rpc, registry }, explain, chainInfo),
-  ];
-  const exitCode = results.includes('fail') ? 1 : 0;
+  tally.fail = 0;
+  checkIntegrity(cred, explain);
+  checkSignature(cred, 'Manager signature', 'MANAGER', cred.proof.signerMemberId, cred.proof.managerSignature, explain);
+  checkSignature(cred, 'HR signature', 'HR', cred.proof.approverMemberId, cred.proof.hrSignature, explain);
+  checkRevocationNotice(cred);
+  checkMerkle(cred, explain);
+  await checkOnChain(cred, { rpc, registry }, explain, chainInfo);
+  const exitCode = tally.fail > 0 ? 1 : 0;
   const pinSource = registry ? 'override' : 'builtin';
   printSummary(cred, exitCode, registryPinStatus(anchor, registry), pinSource, chainInfo.revoked);
   return exitCode;

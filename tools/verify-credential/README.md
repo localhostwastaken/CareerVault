@@ -38,8 +38,8 @@ under the embedded issuer key (they are **one** org key used for two distinct, r
 statements — not one key per signer); that hash is included in the anchored Merkle tree; and
 — **only** because the registry was pinned, either built in or via `--registry` — that the
 Merkle root exists in that specific `AnchorRegistry`, not just some contract the file happens
-to name. Exit 0 is also reached, with fewer `✓`s, in two narrower cases the final summary line
-spells out every time:
+to name, and that the registry does not record the document as revoked. Exit 0 is also
+reached, with fewer `✓`s, in the narrower cases the final summary line spells out every time:
 
 - **Not yet anchored** (`anchor: null` — true of every issued document until the next
   anchoring batch runs; see `credential.builder.ts`): only Integrity and the two signatures
@@ -48,6 +48,9 @@ spells out every time:
 - **Anchored but unpinned, or on the local simulator**: Merkle inclusion is proven, but
   nothing ties the root to a *specific, known* registry (unpinned chain) or to any public
   chain at all (`anchor.chainId: null`, CareerVault's local simulator).
+- **No transaction hash recorded** (`anchor.txHash: null`): a batch that retried after a
+  restart can record the anchor without its transaction when the server can't look it up.
+  The root itself is still confirmed with `verifyRoot`, so the receipt line is `⚠`, not `✗`.
 
 It does **not**, ever, prove that `issuer.publicKeyPem` belongs to the named organization.
 Nothing in the file, or on chain, binds a key to a legal identity — anyone can build a
@@ -57,9 +60,20 @@ organization directly, or look up `proof.documentHash` on CareerVault's public v
 (`/verify/hash/<documentHash>`) and confirm it names the same organization and verdict. The
 final summary line restates exactly this, every run, with the real `documentHash` filled in.
 
-If the on-chain revocation check finds the document revoked, the summary says so too — that
-alone does not fail verification (R7: the database is authoritative, the chain is secondary),
-but it is never left out of the final sentence silently.
+**A revoked credential exits 1**, and its summary line starts `✗ REVOKED`, in two cases:
+
+- the file's own `revocation` block is filled in (CareerVault fills it once the document is
+  `REVOKED`, a terminal status); or
+- the registry is pinned and `isRevoked` says so. Only CareerVault's authorized wallet can
+  write that registry's revocation flag, and nothing can clear it, so the answer is
+  conclusive.
+
+A revocation found at an **unpinned** address only warns (`⚠`, exit 0): nothing says that
+contract is CareerVault's. The summary then starts with `REVOKED ON-CHAIN` and says to treat
+the document as revoked. One case stays invisible offline: the server writes the on-chain flag
+fire-and-forget after the database revocation, and nothing retries a write that failed, so a
+revoked document can have no flag. The public verify page, which reads the database, still
+shows it as `REVOKED`.
 
 ## What it checks, in order
 
@@ -70,6 +84,9 @@ but it is never left out of the final sentence silently.
    verifies `proof.managerSignature` (RS256) over it with `issuer.publicKeyPem`.
 3. **HR signature** — same, with role `HR` and `proof.approverMemberId` /
    `proof.hrSignature`. (2 and 3 verify under the same single embedded key — see above.)
+   **Revocation** — printed only when the file carries a `revocation` block, and then always
+   ✗: a credential that says it was revoked must never pass. A missing block proves nothing
+   either way, so it prints no line.
 4. **Merkle** — folds `anchor.proofPath` from `proof.documentHash` up to a root
    (`sha256(min(a,b) ‖ max(a,b))`, pairs sorted bytewise, position not trusted) and compares
    it to `anchor.merkleRoot`. No anchor yet → ⚠ pending.
@@ -83,18 +100,21 @@ but it is never left out of the final sentence silently.
 6. **On-chain** — calls `AnchorRegistry.verifyRoot` and `.isRevoked` on `anchor.chainId` via
    `anchor.contractAddress`, and confirms a receipt exists for the file's `anchor.txHash`
    containing a matching `RootAnchored` log — this receipt check is what actually confirms
-   `txHash` is real; nothing before it does. Also prints the registry's own `anchoredBy`
+   `txHash` is real; nothing before it does. A revocation is ✗ in a pinned registry and ⚠ at an
+   unpinned address (see above). A missing `anchor.txHash` is ⚠ ("no transaction hash
+   recorded; root confirmed …"), never ✗ on its own. Also prints the registry's own `anchoredBy`
    address (the issuer key fingerprint is printed earlier, in the headline — not here), and
    builds any explorer link itself from a hardcoded `(chainId → base URL)` map plus that same
    file-supplied `txHash` — it never prints the credential's own `anchor.explorerTxUrl`,
    which a forged file could point anywhere. A `null` chainId (CareerVault's local simulator)
    has no public chain to check, and prints ⚠ instead of attempting one.
 
-Each check prints one line: `✓` pass, `✗` fail, or `⚠` informational (pending, unpinned,
-revoked, or nothing independently checkable — none of these fail the run). The process exits
-`0` only if nothing printed `✗`, `1` if something did, and `2` for a usage error (e.g. a bad
-`--registry`). A final summary line restates, in one sentence, exactly what that outcome does
-and does not prove for this specific credential.
+Each check prints one line (the file's Revocation line only when it applies): `✓` pass, `✗`
+fail, or `⚠` informational (pending, unpinned, a revocation at an unpinned address, no
+recorded transaction hash, or nothing independently checkable — none of these fail the run).
+The process exits `0` only if nothing printed `✗`, `1` if anything did, and `2` for a usage
+error (e.g. a bad `--registry`). A final summary line restates, in one sentence, exactly what
+that outcome does and does not prove for this specific credential.
 
 ## Registry pinning
 
@@ -204,6 +224,11 @@ Run against a real local Hardhat node (never a public network):
       --rpc http://127.0.0.1:8545 \
       --registry 0x000000000000000000000000000000DeaDBeef
     # -> ✗ Registry (the real address is not the pinned one), exit 1, no RPC calls attempted
+
+    # then revoke the document as HR (the chain write follows the DB revocation) and rerun
+    # the first command on the same credential file:
+    # -> ✗ On-chain revocation and a "✗ REVOKED" summary, exit 1; without --registry the
+    #    chain is unpinned, so the same flag is ⚠ with a summary starting "REVOKED ON-CHAIN"
 
 Stop the Hardhat node afterwards. Never point any of this at a public network, and never
 read, print, or use the real `ANCHOR_PRIVATE_KEY` from `server/.env` or `contracts/.env` —
