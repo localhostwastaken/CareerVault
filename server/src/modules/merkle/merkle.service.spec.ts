@@ -118,6 +118,7 @@ describe('MerkleService', () => {
 
   it('records the landed transaction when a retry finds the root already anchored', async () => {
     let anchorCalls = 0;
+    let lookups = 0;
     const { service, created } = merkleService({
       verifyRoot: () =>
         Promise.resolve({
@@ -133,11 +134,16 @@ describe('MerkleService', () => {
         anchorCalls++;
         return Promise.reject(new Error('must not anchor the same root twice'));
       },
+      findAnchorTx: () => {
+        lookups++;
+        return Promise.resolve(null);
+      },
     });
 
     const result = await service.runBatch();
 
     expect(anchorCalls).toBe(0);
+    expect(lookups).toBe(0);
     expect(result.txHash).toBe('0xlanded');
     expect(created[0]).toMatchObject({
       polygonTxHash: '0xlanded',
@@ -145,6 +151,32 @@ describe('MerkleService', () => {
       chainId: 80002,
       contractAddress: REGISTRY,
       anchoredAt: ANCHORED_AT,
+    });
+  });
+
+  // Another process sent it (a restart mid-wait): its RootAnchored event names the tx.
+  it('looks up the transaction of a root it finds anchored but did not send', async () => {
+    const { service, created } = merkleService({
+      verifyRoot: () =>
+        Promise.resolve({
+          exists: true,
+          documentCount: 2,
+          anchoredAt: ANCHORED_AT,
+          chainId: 80002,
+          contractAddress: REGISTRY,
+        }),
+      findAnchorTx: () =>
+        Promise.resolve({ txHash: '0xrecovered', blockNumber: 88 }),
+    });
+
+    const result = await service.runBatch();
+
+    expect(result.txHash).toBe('0xrecovered');
+    expect(created[0]).toMatchObject({
+      polygonTxHash: '0xrecovered',
+      polygonBlockNumber: 88n,
+      chainId: 80002,
+      contractAddress: REGISTRY,
     });
   });
 
@@ -156,6 +188,7 @@ describe('MerkleService', () => {
           documentCount: 2,
           anchoredAt: ANCHORED_AT,
         }),
+      findAnchorTx: () => Promise.resolve(null),
     });
 
     await service.runBatch();

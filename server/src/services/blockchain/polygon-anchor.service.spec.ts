@@ -88,6 +88,8 @@ function fakeChain(overrides: Record<string, unknown> = {}) {
     rootReads: 0,
     revoked: new Map<string, bigint>(),
     revocationReads: 0,
+    anchorLogs: [] as { transactionHash: string; blockNumber: number }[],
+    logQueries: [] as { filter: unknown; fromBlock: unknown }[],
   };
   // Deliberately no `wait()`: confirmations must come from the adapter's own polling.
   const transaction = (method: string, args: unknown[]) => {
@@ -127,6 +129,13 @@ function fakeChain(overrides: Record<string, unknown> = {}) {
       return Promise.resolve(at ? [true, at] : [false, 0n]);
     },
     isAuthorizedAnchor: (): Promise<boolean> => Promise.resolve(true),
+    filters: {
+      RootAnchored: (rootHash: string) => ({ event: 'RootAnchored', rootHash }),
+    },
+    queryFilter: (filter: unknown, fromBlock?: number): Promise<unknown[]> => {
+      chain.logQueries.push({ filter, fromBlock });
+      return Promise.resolve(chain.anchorLogs);
+    },
   };
   const service = new PolygonAnchorService(
     settings(overrides) as never,
@@ -380,6 +389,76 @@ describe('PolygonAnchorService', () => {
         txHash: landed,
         blockNumber: 77,
       });
+    });
+  });
+
+  // A root this process did not send (it restarted mid-wait, or a send timed out after
+  // being broadcast) still has its RootAnchored event, which names the transaction.
+  describe('findAnchorTx', () => {
+    const DEPLOY_BLOCK = 27_000_000;
+
+    it('recovers the anchoring transaction from its RootAnchored event, scanning from the deploy block', async () => {
+      const { chain, service } = fakeChain({
+        ANCHOR_REGISTRY_DEPLOY_BLOCK: DEPLOY_BLOCK,
+      });
+      chain.anchorLogs.push({
+        transactionHash: '0xlanded',
+        blockNumber: DEPLOY_BLOCK + 123,
+      });
+
+      expect(await service.findAnchorTx(ROOT)).toEqual({
+        txHash: '0xlanded',
+        blockNumber: DEPLOY_BLOCK + 123,
+      });
+      expect(chain.logQueries).toEqual([
+        {
+          filter: { event: 'RootAnchored', rootHash: ROOT_BYTES32 },
+          fromBlock: DEPLOY_BLOCK,
+        },
+      ]);
+    });
+
+    it.each([
+      ['unset', {}],
+      ['empty', { ANCHOR_REGISTRY_DEPLOY_BLOCK: '' }],
+    ])(
+      'skips the lookup and warns when ANCHOR_REGISTRY_DEPLOY_BLOCK is %s, rather than scanning from block 0',
+      async (_, overrides) => {
+        const { chain, service } = fakeChain(overrides);
+        const lines = capture(service);
+
+        expect(await service.findAnchorTx(ROOT)).toBeNull();
+        expect(chain.logQueries).toEqual([]);
+        expect(lines).toEqual([
+          expect.stringMatching(
+            /^WARN .*ANCHOR_REGISTRY_DEPLOY_BLOCK is unset/,
+          ),
+        ]);
+      },
+    );
+
+    it('returns null and warns when no RootAnchored event names the root', async () => {
+      const { service } = fakeChain({
+        ANCHOR_REGISTRY_DEPLOY_BLOCK: DEPLOY_BLOCK,
+      });
+      const lines = capture(service);
+
+      expect(await service.findAnchorTx(ROOT)).toBeNull();
+      expect(lines).toEqual([expect.stringMatching(/^WARN .*no RootAnchored/)]);
+    });
+
+    it('never throws when the log query fails, and keeps the RPC URL out of its warning', async () => {
+      const { contract, service } = fakeChain({
+        ANCHOR_REGISTRY_DEPLOY_BLOCK: DEPLOY_BLOCK,
+      });
+      contract.queryFilter = () => Promise.reject(leakyRpcError(413));
+      const lines = capture(service);
+
+      expect(await service.findAnchorTx(ROOT)).toBeNull();
+      expect(lines).toEqual([
+        expect.stringMatching(/^WARN .*server response 413/),
+      ]);
+      expect(lines.join('\n')).not.toContain(API_KEY);
     });
   });
 

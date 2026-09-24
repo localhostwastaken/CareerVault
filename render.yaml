@@ -101,3 +101,7 @@ services:
         sync: false
       - key: ANCHOR_PRIVATE_KEY       # 0x-prefixed key of the authorized, funded anchor wallet
         sync: false
+      # contracts/deployments/amoy.json → blockNumber. Optional: lets a batch retry that finds
+      # its root already anchored look up the transaction; unset, it records none.
+      - key: ANCHOR_REGISTRY_DEPLOY_BLOCK
+        sync: false

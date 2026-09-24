@@ -1,3 +1,4 @@
+import { getAddress } from 'ethers';
 import Joi from 'joi';
 
 // Boot-time honesty check: the trust model depends on REAL DNS TXT verification,
@@ -86,6 +87,24 @@ function requiredForAmoy(schema: Joi.StringSchema, format: string) {
   });
 }
 
+// ethers accepts an all-lowercase address but rejects a mixed-case one whose EIP-55 checksum is
+// wrong, and only when the adapter first calls the contract. Its error quotes the value, so
+// the failure is reported by code, never by passing that message on.
+const contractAddress = Joi.string()
+  .pattern(/^0x[0-9a-fA-F]{40}$/)
+  .custom((value: string, helpers) => {
+    try {
+      getAddress(value);
+      return value;
+    } catch {
+      return helpers.error('address.checksum');
+    }
+  })
+  .messages({
+    'address.checksum':
+      '{{#label}} has a bad EIP-55 checksum; copy it exactly from contracts/deployments/amoy.json, or write it all lowercase',
+  });
+
 // Validated at startup (fail-fast). Secrets are optional in dev — adapters/auth
 // provision local dev keys when absent. DATABASE_URL is the only hard requirement.
 export const envValidationSchema = Joi.object({
@@ -166,7 +185,7 @@ export const envValidationSchema = Joi.object({
     'an http(s) JSON-RPC URL',
   ),
   ANCHOR_REGISTRY_ADDRESS: requiredForAmoy(
-    Joi.string().pattern(/^0x[0-9a-fA-F]{40}$/),
+    contractAddress,
     'a 0x-prefixed 20-byte contract address',
   ),
   ANCHOR_PRIVATE_KEY: requiredForAmoy(
@@ -179,6 +198,10 @@ export const envValidationSchema = Joi.object({
   // Polygon PoS nodes reject tips under 25 gwei; ethers' own Amoy fallback is 1 gwei.
   ANCHOR_MIN_PRIORITY_FEE_GWEI: Joi.number().min(0).default(30),
   ANCHOR_TX_TIMEOUT_MS: Joi.number().integer().positive().default(120000),
+  // The block the registry was deployed in (contracts/deployments/amoy.json → blockNumber).
+  // A batch retry that finds its root already anchored, but did not send it itself, looks
+  // the anchoring transaction up from here; unset, it records no transaction hash.
+  ANCHOR_REGISTRY_DEPLOY_BLOCK: Joi.number().integer().min(0).empty(''),
   STRIPE_SECRET_KEY: Joi.string().allow('').optional(),
   STRIPE_WEBHOOK_SECRET: Joi.string().allow('').optional(),
   STORAGE_LOCAL_DIR: Joi.string().default('./storage'),

@@ -1,4 +1,9 @@
-import type { ContractTransactionResponse } from 'ethers';
+import type {
+  ContractTransactionResponse,
+  DeferredTopicFilter,
+  EventLog,
+  Log,
+} from 'ethers';
 
 // R2: the AnchorRegistry surface the server binds to, as a human-readable ABI. It is a copy
 // of contracts/contracts/AnchorRegistry.sol rather than an import because the Docker build
@@ -36,4 +41,9 @@ export interface AnchorRegistryContract {
   ): Promise<[boolean, { documentCount: bigint; anchoredAt: bigint }]>;
   isRevoked(documentHash: string): Promise<[boolean, bigint]>;
   isAuthorizedAnchor(account: string): Promise<boolean>;
+  filters: { RootAnchored(rootHash: string): DeferredTopicFilter };
+  queryFilter(
+    event: DeferredTopicFilter,
+    fromBlock?: number,
+  ): Promise<Array<EventLog | Log>>;
 }

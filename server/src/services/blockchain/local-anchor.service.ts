@@ -6,6 +6,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   AnchorReceipt,
+  AnchorTx,
   BlockchainService,
   RootStatus,
 } from './blockchain.service.js';
@@ -70,6 +71,11 @@ export class LocalAnchorService extends BlockchainService {
           anchoredAt: new Date(rec.anchoredAt),
         }
       : { exists: false };
+  }
+
+  async findAnchorTx(rootHashHex: string): Promise<AnchorTx | null> {
+    const rec = (await this.read().catch(() => null))?.anchors[rootHashHex];
+    return rec ? { txHash: rec.txHash, blockNumber: rec.blockNumber } : null;
   }
 
   async revokeDocument(documentHashHex: string): Promise<AnchorReceipt> {

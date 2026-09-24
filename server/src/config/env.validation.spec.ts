@@ -67,6 +67,34 @@ describe('env validation — anchoring', () => {
     expect(validate({ ...AMOY, [key]: value }).error?.message).toContain(key);
   });
 
+  // ethers refuses a mixed-case address whose EIP-55 checksum is wrong, but only when the
+  // adapter first uses it; the boot should catch the typo instead.
+  describe('ANCHOR_REGISTRY_ADDRESS checksum', () => {
+    const CHECKSUMMED = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+    const BAD_CHECKSUM = '0x5FbDB2315678afecb367f032d93F642f64180AA3';
+
+    it.each([
+      ['checksummed', CHECKSUMMED],
+      ['all lowercase', CHECKSUMMED.toLowerCase()],
+    ])('accepts an %s address', (_, address) => {
+      expect(
+        validate({ ...AMOY, ANCHOR_REGISTRY_ADDRESS: address }).error,
+      ).toBeUndefined();
+    });
+
+    it('rejects a bad checksum without echoing the address', () => {
+      const message = validate({
+        ...AMOY,
+        ANCHOR_REGISTRY_ADDRESS: BAD_CHECKSUM,
+      }).error?.message;
+
+      expect(message).toContain('ANCHOR_REGISTRY_ADDRESS');
+      expect(message).toContain('checksum');
+      expect(message).not.toContain(BAD_CHECKSUM);
+      expect(message).not.toContain(BAD_CHECKSUM.toLowerCase().slice(2));
+    });
+  });
+
   it('never echoes a malformed private key into the boot error', () => {
     const key = 'ab'.repeat(32); // the right length, but missing its 0x prefix
 
@@ -100,8 +128,25 @@ describe('env validation — anchoring', () => {
     ['ANCHOR_CONFIRMATIONS', '0'],
     ['ANCHOR_MIN_PRIORITY_FEE_GWEI', '-1'],
     ['ANCHOR_TX_TIMEOUT_MS', 'soon'],
+    ['ANCHOR_REGISTRY_DEPLOY_BLOCK', '-1'],
+    ['ANCHOR_REGISTRY_DEPLOY_BLOCK', '12.5'],
   ])('rejects %s=%s', (key, value) => {
     expect(validate({ ...AMOY, [key]: value }).error?.message).toContain(key);
+  });
+
+  // Only a retry that finds its root already on-chain uses it, to look the transaction up.
+  it('keeps ANCHOR_REGISTRY_DEPLOY_BLOCK optional, and reads an empty value as unset', () => {
+    expect(validate(AMOY).value.ANCHOR_REGISTRY_DEPLOY_BLOCK).toBeUndefined();
+    const { error, value } = validate({
+      ...AMOY,
+      ANCHOR_REGISTRY_DEPLOY_BLOCK: '',
+    });
+    expect(error).toBeUndefined();
+    expect(value.ANCHOR_REGISTRY_DEPLOY_BLOCK).toBeUndefined();
+    expect(
+      validate({ ...AMOY, ANCHOR_REGISTRY_DEPLOY_BLOCK: '27000000' }).value
+        .ANCHOR_REGISTRY_DEPLOY_BLOCK,
+    ).toBe(27000000);
   });
 });
 

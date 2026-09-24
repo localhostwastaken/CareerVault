@@ -23,12 +23,23 @@ export interface RootStatus {
   blockNumber?: number;
 }
 
+export interface AnchorTx {
+  txHash: string;
+  blockNumber: number;
+}
+
 export abstract class BlockchainService {
   abstract anchorRoot(
     rootHashHex: string,
     documentCount: number,
   ): Promise<AnchorReceipt>;
   abstract verifyRoot(rootHashHex: string): Promise<RootStatus>;
+  /**
+   * Best effort, never throws: the transaction that anchored a root this process finds
+   * on-chain but did not send (it restarted mid-wait, or a send timed out after going out).
+   * Null when it can't be found. Only the batch asks; verification never needs it.
+   */
+  abstract findAnchorTx(rootHashHex: string): Promise<AnchorTx | null>;
   abstract revokeDocument(documentHashHex: string): Promise<AnchorReceipt>;
   abstract isRevoked(
     documentHashHex: string,

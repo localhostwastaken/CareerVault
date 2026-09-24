@@ -84,11 +84,16 @@ export class MerkleService {
 
       // Anchor on-chain only if this exact root isn't already anchored. This makes the
       // batch safe to retry after a partial failure without spending a second tx; on that
-      // path the chain's own answer is recorded, including the transaction that landed
-      // when this process is the one that sent it.
+      // path the chain's own answer is recorded, including the transaction that landed:
+      // remembered if this process sent it, otherwise looked up from its event.
       const existing = await this.blockchain.verifyRoot(rootHash);
       const anchor: Partial<AnchorReceipt> = existing.exists
-        ? existing
+        ? {
+            ...existing,
+            ...(existing.txHash
+              ? {}
+              : await this.blockchain.findAnchorTx(rootHash)),
+          }
         : await this.blockchain.anchorRoot(rootHash, docs.length);
 
       await this.prisma.$transaction(async (tx) => {
