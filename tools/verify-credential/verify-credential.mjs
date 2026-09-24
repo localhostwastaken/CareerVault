@@ -1,18 +1,31 @@
 #!/usr/bin/env node
 // CareerVault offline credential verifier.
 //
-// A downloaded credential (`GET /api/v1/documents/:id/credential`) claims to be verifiable
-// without trusting CareerVault's server: the salt, both signatures, the issuer's public key
-// and the Merkle proof travel inside the file itself. This script is that claim made
-// executable — an independent re-implementation of the five checks described in the
-// credential's own `schemes` + `verificationInstructions` fields. It imports NOTHING from
-// server/ on purpose: a third party (an examiner, an employer) would write exactly this.
+// A downloaded credential (`GET /api/v1/documents/:id/credential`) packages the salt, both
+// signatures, the issuer's public key, and a Merkle proof, so it can be checked without
+// calling CareerVault's API. This script is an independent re-implementation of that check
+// — it imports NOTHING from `server/`, so a third party (an examiner, an employer) could
+// have written it from the credential alone.
+//
+// What exit 0 PROVES: the credentialSubject bytes are exactly what was hashed (Integrity);
+// both the manager and HR signed a role-bound statement over that hash, verifiably, under
+// the key embedded in the file (the two signature checks); that hash is included in the
+// anchored Merkle tree (Merkle); and, once a chain is public, that the Merkle root exists in
+// CareerVault's OWN AnchorRegistry — not just some contract the file happens to name (see
+// the Registry check and `KNOWN_REGISTRIES` below).
+//
+// What it does NOT prove: that `issuer.publicKeyPem` belongs to the named organization.
+// Nothing in the file, or on chain, binds a key to a legal identity — anyone can build a
+// credential with their own key and any `issuer.name` they like, and every check above will
+// still pass. Closing that gap needs an OUT-OF-BAND step: compare the printed key
+// fingerprint against CareerVault's public verify page or the organization directly. The
+// final summary line restates this every run.
 //
 // Usage:
-//   node verify-credential.mjs <credential.json> [--rpc <url>] [--explain]
+//   node verify-credential.mjs <credential.json> [--rpc <url>] [--registry <address>] [--explain]
 //   node verify-credential.mjs --selftest
 import { readFileSync } from 'node:fs';
-import { createHash, verify as cryptoVerify } from 'node:crypto';
+import { createHash, createPublicKey, verify as cryptoVerify } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import canonicalize from 'canonicalize';
@@ -46,6 +59,12 @@ const verifyStatement = (publicKeyPem, statementHex, signatureB64) =>
     Buffer.from(signatureB64, 'base64'),
   );
 
+// SHA-256 of the key's SPKI DER encoding — a stable fingerprint to compare, out of band,
+// against what CareerVault's public verify page (or the organization) says the key is.
+// Nothing in-band can confirm this binding; see the header comment.
+const keyFingerprint = (publicKeyPem) =>
+  sha256Hex(createPublicKey(publicKeyPem).export({ type: 'spki', format: 'der' }));
+
 // Fold a Merkle proof up to a root: sha256(min(a,b) || max(a,b)), pairs sorted BYTEWISE
 // (position is not trusted). Leaves are not re-hashed, so folding starts from the raw leaf
 // bytes; zero steps means the leaf IS the root (single-leaf tree).
@@ -67,6 +86,31 @@ const ANCHOR_REGISTRY_ABI = [
   'event RootAnchored(bytes32 indexed rootHash, uint256 documentCount, uint256 anchoredAt, address indexed anchoredBy)',
 ];
 const DEFAULT_RPC = { 80002: 'https://rpc-amoy.polygon.technology' };
+const EXPLORER_BASE = { 80002: 'https://amoy.polygonscan.com' };
+
+// CareerVault's OFFICIAL AnchorRegistry deployments, pinned HERE rather than trusted from
+// the credential file. WHY this is the fix for forgeability: only CareerVault's authorized
+// anchor wallet can write to ITS OWN registry, so pinning the address is what actually rules
+// out a forger who deploys a look-alike AnchorRegistry and points anchor.contractAddress at
+// it — verifyRoot() on ANY contract truthfully answers "yes" for whatever that contract was
+// itself told to anchor. `--registry <address>` pins/overrides this for any chain (e.g. a
+// local Hardhat deployment, which has no fixed address to hardcode here).
+const KNOWN_REGISTRIES = {
+  // Filled in once CareerVault's Amoy AnchorRegistry is deployed. `null` means "not deployed
+  // yet", which prints as unpinned (⚠), not mismatched (✗) — there is nothing to mismatch.
+  80002: null,
+};
+
+// Pure (no I/O): the pin a credential's anchor should be checked against, and whether it
+// matches. Shared by checkOnChain (to decide what to print/fail) and the final summary.
+function registryPinStatus(anchor, registryOverride) {
+  if (!anchor || anchor.chainId === null || !anchor.contractAddress) return 'na';
+  const pin = registryOverride ?? KNOWN_REGISTRIES[anchor.chainId] ?? null;
+  if (!pin) return 'unpinned';
+  return pin.toLowerCase() === anchor.contractAddress.toLowerCase()
+    ? 'matched'
+    : 'mismatched';
+}
 
 // ---- Reporting: every check prints exactly one ✓ / ✗ / ⚠ line + detail ----
 
@@ -118,16 +162,31 @@ function checkMerkle(cred, explain) {
     : report('fail', 'Merkle', `computed ${root}, anchor says ${anchor.merkleRoot}`);
 }
 
-// 5. On-chain: the anchored root (and this document's revocation flag) as the contract itself
-// reports them — the one check that does not just trust bytes inside the credential file.
-async function checkOnChain(cred, rpcOverride, explain) {
+// 5. On-chain: proves the root exists in CareerVault's OWN registry — not just "a" contract
+// — because Registry compares anchor.contractAddress against KNOWN_REGISTRIES/--registry,
+// which THIS SCRIPT pins, never the credential file. That pin, not verifyRoot's answer, is
+// what makes a forged anchor.contractAddress detectable (see KNOWN_REGISTRIES above).
+async function checkOnChain(cred, { rpc, registry }, explain) {
   const { proof, anchor } = cred;
   if (!anchor) return report('warn', 'On-chain', 'skipped — no anchor to check');
   if (anchor.chainId === null)
     return report('warn', 'On-chain', 'anchored on the local simulator — no public chain to check');
   if (!anchor.contractAddress) return report('fail', 'On-chain', 'anchor.contractAddress missing');
 
-  const rpcUrl = rpcOverride ?? DEFAULT_RPC[anchor.chainId];
+  const pinStatus = registryPinStatus(anchor, registry);
+  if (pinStatus === 'mismatched') {
+    const pin = registry ?? KNOWN_REGISTRIES[anchor.chainId];
+    return report('fail', 'Registry', `${anchor.contractAddress} is not CareerVault's registry (pinned: ${pin})`);
+  }
+  report(
+    pinStatus === 'matched' ? 'pass' : 'warn',
+    'Registry',
+    pinStatus === 'matched'
+      ? `${anchor.contractAddress} matches CareerVault's pinned registry for ${anchor.network}`
+      : `not pinned for chain ${anchor.chainId} — pass --registry <address> to check`,
+  );
+
+  const rpcUrl = rpc ?? DEFAULT_RPC[anchor.chainId];
   if (!rpcUrl) return report('fail', 'On-chain', `no default RPC for chainId ${anchor.chainId}; pass --rpc`);
 
   let provider;
@@ -140,7 +199,17 @@ async function checkOnChain(cred, rpcOverride, explain) {
     say(explain, `verifyRoot(${rootBytes32}) -> exists=${exists}`);
     if (!exists) return report('fail', 'On-chain root', 'root not found on-chain');
     const anchoredAt = new Date(Number(record.anchoredAt) * 1000).toISOString();
-    report('pass', 'On-chain root', `exists on ${anchor.network}, anchored ${anchoredAt}${anchor.explorerTxUrl ? ` (${anchor.explorerTxUrl})` : ''}`);
+    // Built from a hardcoded (chainId -> explorer) map + the on-chain txHash, NEVER from
+    // the credential's own anchor.explorerTxUrl: a forged file could point that anywhere.
+    const link = EXPLORER_BASE[anchor.chainId] && anchor.txHash
+      ? `${EXPLORER_BASE[anchor.chainId]}/tx/${anchor.txHash}`
+      : null;
+    report(
+      'pass',
+      'On-chain root',
+      `exists on ${anchor.network}, anchored ${anchoredAt}, anchored by ${record.anchoredBy}` +
+        (link ? ` (${link})` : ''),
+    );
 
     const [revoked, revokedAt] = await contract.isRevoked(`0x${proof.documentHash}`);
     report(
@@ -169,16 +238,46 @@ async function checkOnChain(cred, rpcOverride, explain) {
   }
 }
 
-async function verifyCredential(cred, { rpc, explain }) {
-  console.log(`Verifying ${cred.documentType} ${cred.id} issued by ${cred.issuer?.name}\n`);
+// One sentence stating exactly what this run proved (or that it failed) — see the header
+// comment for the full explanation this restates. `registryPinStatus` (not the check
+// functions' return values) drives the wording, since it is pure and needs no re-run.
+function printSummary(cred, exitCode, pinStatus) {
+  if (exitCode !== 0) {
+    console.log('\n✗ Verification FAILED — see the ✗ line(s) above.');
+    return;
+  }
+  const anchoredClaim =
+    pinStatus === 'matched'
+      ? "that its Merkle root exists in CareerVault's pinned AnchorRegistry"
+      : pinStatus === 'unpinned'
+        ? 'that its Merkle root exists on-chain at the address the file names (NOT confirmed to be CareerVault\'s registry — unpinned for this chain, see the Registry line)'
+        : 'nothing about anchoring — this document is NOT independently anchored (no public chain to check)';
+  console.log(
+    `\n✓ Exit 0 proves: content integrity, both role-bound signatures under the embedded key, ` +
+      `Merkle inclusion, and ${anchoredClaim}. It does NOT prove issuer.publicKeyPem belongs ` +
+      `to "${cred.issuer?.name}" — compare the printed key fingerprint against CareerVault's ` +
+      `public verify page or the organization, out of band.`,
+  );
+}
+
+async function verifyCredential(cred, { rpc, registry, explain }) {
+  const { issuer, anchor } = cred;
+  console.log(`Verifying ${cred.documentType} ${cred.id}`);
+  console.log(`Claims issuer: ${issuer?.name}`);
+  if (issuer?.publicKeyPem)
+    console.log(`  issuer key fingerprint (SHA-256 of SPKI DER): ${keyFingerprint(issuer.publicKeyPem)}`);
+  console.log();
+
   const results = [
     checkIntegrity(cred, explain),
     checkSignature(cred, 'Manager signature', 'MANAGER', cred.proof.signerMemberId, cred.proof.managerSignature, explain),
     checkSignature(cred, 'HR signature', 'HR', cred.proof.approverMemberId, cred.proof.hrSignature, explain),
     checkMerkle(cred, explain),
-    await checkOnChain(cred, rpc, explain),
+    await checkOnChain(cred, { rpc, registry }, explain),
   ];
-  return results.includes('fail') ? 1 : 0;
+  const exitCode = results.includes('fail') ? 1 : 0;
+  printSummary(cred, exitCode, registryPinStatus(anchor, registry));
+  return exitCode;
 }
 
 // ---- --selftest: recompute every tools/verify-credential/test-vectors.json entry independently ----
@@ -193,7 +292,16 @@ function selftest() {
 
   for (const { literal, expected } of vectors.rfc8785.numbers)
     check(`RFC 8785 number ${literal}`, canonicalizeJson(Number(literal)), expected);
-  check('RFC 8785 key sorting', canonicalizeJson(vectors.rfc8785.keySorting.input), vectors.rfc8785.keySorting.expected);
+  check(
+    'RFC 8785 §3.2.3 key sorting (UTF-16 code unit order)',
+    canonicalizeJson(vectors.rfc8785.keySortingRfc.input),
+    vectors.rfc8785.keySortingRfc.expected,
+  );
+  check(
+    'key sorting (canonicalize README example, ASCII-only)',
+    canonicalizeJson(vectors.rfc8785.keySortingReadmeExample.input),
+    vectors.rfc8785.keySortingReadmeExample.expected,
+  );
 
   for (const [i, c] of vectors.pipeline.documentHash.entries())
     check(`documentHash[${i}]`, hashDocument(c.content, c.salt), c.expected);
@@ -206,12 +314,13 @@ function selftest() {
 
 // ---- CLI ----
 function parseArgs(argv) {
-  const out = { selftest: false, explain: false, rpc: null, file: null };
+  const out = { selftest: false, explain: false, rpc: null, registry: null, file: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--selftest') out.selftest = true;
     else if (a === '--explain') out.explain = true;
     else if (a === '--rpc') out.rpc = argv[++i];
+    else if (a === '--registry') out.registry = argv[++i];
     else if (!out.file) out.file = a;
   }
   return out;
@@ -221,7 +330,7 @@ async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.selftest) return selftest();
   if (!opts.file) {
-    console.error('Usage: node verify-credential.mjs <credential.json> [--rpc <url>] [--explain]');
+    console.error('Usage: node verify-credential.mjs <credential.json> [--rpc <url>] [--registry <address>] [--explain]');
     console.error('       node verify-credential.mjs --selftest');
     return 1;
   }
