@@ -171,7 +171,9 @@ It does five things:
    `--registry`; the Amoy pin is filled in at deployment);
 5. calls `verifyRoot`/`isRevoked` and confirms the anchoring transaction's `RootAnchored` log.
 
-That proves integrity, the two signatures, Merkle inclusion and on-chain anchoring. It does **not**
+That proves integrity, the two signatures, Merkle inclusion and on-chain anchoring. A revoked
+credential fails with exit 1: when the file's own `revocation` block says so, or when the pinned
+registry does. It does **not**
 prove that the embedded issuer key belongs to the named organisation. The verifier prints the key's
 SHA-256 SPKI fingerprint so you can check it out of band. Read its final summary line, not just the
 exit code.

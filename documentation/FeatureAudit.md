@@ -200,7 +200,8 @@ No account required.
 - integrity and both RS256 statements;
 - Merkle inclusion;
 - the registry pin (`KNOWN_REGISTRIES` / `--registry`);
-- `verifyRoot`, `isRevoked` and the `RootAnchored` receipt on-chain.
+- `verifyRoot`, `isRevoked` and the `RootAnchored` receipt on-chain;
+- revocation: a credential whose own revocation block is filled in, or that the pinned registry records as revoked, fails with exit 1. A revocation at an unpinned address, or a missing transaction hash, only warns.
 
 `--selftest` replays the shared known-answer vectors. It doesn't prove that the issuer key belongs to the named organisation; it prints the key fingerprint for an out-of-band check.
 
