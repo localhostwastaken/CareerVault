@@ -4,6 +4,24 @@
 > **Last Updated:** 2026-03-25
 > **One-liner:** A career document verification platform that combines a traditional database with blockchain anchoring for tamper-proof, verifiable experience letters, recommendations, and salary proofs.
 
+> **Implementation status (September 2026, LY final hardening).** This investor edition (March 2026) describes the *target* architecture.
+>
+> **Implemented today:**
+> - PostgreSQL (Supabase), with application-level envelope encryption of document fields and PDFs (R10);
+> - custodial RSA-2048 org keys, generated and held by the server and wrapped under a KMS master key;
+> - Merkle anchoring on the **Polygon Amoy testnet** (the contract deploy is pending);
+> - public and offline verification.
+>
+> **Roadmap (not implemented):**
+> - AWS KMS/HSM key custody;
+> - AWS S3 (PDFs are stored on the server disk, encrypted by the app);
+> - AWS SES (Gmail SMTP is wired);
+> - live Stripe billing (a mock driver today);
+> - Redis/BullMQ queues;
+> - the IPFS and GitHub Merkle-root mirrors.
+>
+> The diagrams show the target. Statements that differ from the code are annotated inline. The code-level spec is [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.md).
+
 ---
 
 ## Table of Contents
@@ -86,8 +104,8 @@ graph BT
 
 CareerVault lets companies **issue cryptographically signed career documents** (experience letters, salary proofs, recommendation letters) to employees. These documents are:
 
-- **Digitally signed** by both the issuing manager and an HR approver using cloud-based keys (AWS KMS).
-- **Hashed and anchored on the Polygon blockchain** nightly, creating an immutable proof-of-existence.
+- **Digitally signed** by both the issuing manager and an HR approver using the organisation's custodial key. Today that is a server-held RSA-2048 key wrapped under a KMS master key; AWS KMS is **roadmap**. Both approvals are signed with the one org key.
+- **Hashed and anchored on the Polygon blockchain** nightly (on the Amoy testnet today), creating an immutable proof-of-existence.
 - **Verifiable by anyone** (recruiters, background-check firms) through a simple link -- no account needed.
 
 Think of it as a **digital notary for career documents**, where the "notary stamp" lives on a public blockchain.
@@ -141,7 +159,7 @@ flowchart TD
 1. An employee requests an experience letter from their company on CareerVault.
 2. Their manager gets an email with a secure one-time link, fills in the letter content, and digitally signs it.
 3. HR reviews the content against company records, approves it, and adds a second digital signature.
-4. A professional PDF is generated and stored securely (AWS S3).
+4. A professional PDF is generated and stored securely. Today it sits on the server's disk, encrypted by the application; AWS S3 is roadmap.
 5. Every night at midnight, all newly issued documents are grouped into a **Merkle tree** (a cryptographic data structure), and the tree's "root hash" is recorded on the Polygon blockchain -- creating an immutable timestamp.
 6. The employee generates a shareable link (free for premium users, small fee otherwise) and sends it to a recruiter.
 7. The recruiter opens the link and instantly sees a **verification report**: is the content untampered? Are the signatures valid? Is it on the blockchain? Has it been revoked or expired?
@@ -186,7 +204,7 @@ graph TB
 | Speed & cost | All reads/writes go through PostgreSQL (milliseconds, free). Blockchain is only used for the daily anchor (one transaction/day, ~$0.01 on Polygon). |
 | User experience | Users interact with a normal web app. No wallets, no gas fees, no seed phrases. |
 | Trust & tamper-proofing | The nightly blockchain anchor means that even if our database were compromised, anyone can independently verify a document against the public blockchain record. |
-| Resilience | Merkle roots are published in **three places**: Polygon blockchain, IPFS, and a public GitHub repo. Even if two fail, the proof survives. |
+| Resilience | Merkle roots are published in **three places**: Polygon blockchain, IPFS, and a public GitHub repo. Even if two fail, the proof survives. **Roadmap:** only the Polygon anchor is implemented; the IPFS and GitHub mirrors aren't built. Even so, a holder's downloaded credential plus the chain already verify without CareerVault. |
 
 ---
 
@@ -236,18 +254,18 @@ graph TB
     Doc --> S3
 ```
 
-| Component | Technology | Purpose |
-|---|---|---|
-| Backend API | **NestJS** (Node.js/TypeScript) | REST API, business logic, cron jobs |
-| Database | **PostgreSQL** | All application data (13 tables) |
-| Cache & Queues | **Redis + BullMQ** | Rate limiting, session cache, async job processing (bulk issuance, Merkle batching) |
-| File Storage | **AWS S3** | PDF document storage |
-| Key Management | **AWS KMS** | RSA 2048-bit key pairs per organization, used for digital signatures |
-| Payments | **Stripe** | Subscriptions and one-time payments |
-| Email | **AWS SES** | Magic links, notifications |
-| Blockchain | **Polygon PoS** | Low-cost Merkle root anchoring (~$0.01/tx) |
-| Decentralized Storage | **IPFS** | Backup of Merkle tree data |
-| Transparency | **GitHub** | Public repo of daily Merkle roots for independent audit |
+| Component | Technology | Purpose | Status (Sep 2026) |
+|---|---|---|---|
+| Backend API | **NestJS** (Node.js/TypeScript) | REST API, business logic, cron jobs | Implemented |
+| Database | **PostgreSQL** | All application data (13 tables) | Implemented (Supabase + pgvector; R10 field encryption) |
+| Cache & Queues | **Redis + BullMQ** | Rate limiting, session cache, async job processing (bulk issuance, Merkle batching) | Roadmap (in-process today) |
+| File Storage | **AWS S3** | PDF document storage | Roadmap (server disk, encrypted by the app) |
+| Key Management | **AWS KMS** | RSA 2048-bit key pairs per organization, used for digital signatures | Roadmap (local RSA-2048 keys wrapped under a KMS master key) |
+| Payments | **Stripe** | Subscriptions and one-time payments | Roadmap (mock driver) |
+| Email | **AWS SES** | Magic links, notifications | Roadmap (Gmail SMTP / console) |
+| Blockchain | **Polygon PoS** | Low-cost Merkle root anchoring (~$0.01/tx) | Implemented on the Amoy testnet (contract deploy pending) |
+| Decentralized Storage | **IPFS** | Backup of Merkle tree data | Roadmap |
+| Transparency | **GitHub** | Public repo of daily Merkle roots for independent audit | Roadmap |
 
 ---
 
@@ -276,7 +294,7 @@ erDiagram
 | **organizations** | Companies using CareerVault | name, domain, DNS verification status, KMS key reference, subscription tier |
 | **organization_members** | Who has what role at which company | user, org, role (ADMIN / MANAGER / HR), active status |
 | **documents** | The core asset -- career documents | type, status, content (JSON-LD), hash, dual signatures, expiry, revocation info |
-| **merkle_roots** | Daily blockchain anchoring batches | root hash, Polygon tx hash, IPFS CID, GitHub commit, document count |
+| **merkle_roots** | Daily blockchain anchoring batches | root hash, Polygon tx hash and block, chain id, contract address, document count. The IPFS CID and GitHub commit columns exist but are never filled; the mirrors are roadmap. |
 | **document_merkle_proofs** | Individual proof that a document was in a batch | proof path (array of hashes), leaf index |
 | **shared_links** | Shareable URLs for documents | token, view count, max views, expiry, payment reference |
 | **subscriptions** | Recurring billing (Holder Premium, Verifier API) | tier, Stripe subscription ID, billing period |
@@ -350,9 +368,11 @@ flowchart LR
 | 3. **HR Signature** | Verifies HR's co-signature | HR never approved this document |
 | 4. **Merkle Proof** | Recomputes the Merkle root from the document's proof path | Document wasn't part of the claimed batch |
 | 5. **On-Chain Anchor** | Queries the Polygon smart contract to confirm the Merkle root exists | Blockchain record doesn't match |
-| 6. **Revocation & Expiry** | Checks both database and on-chain revocation status; checks expiry date | Document has been withdrawn or has expired |
+| 6. **Revocation & Expiry** | Checks the database revocation status (authoritative) and the expiry date; the on-chain revocation flag is shown as a note | Document has been withdrawn or has expired |
 
 The recruiter sees a clear **Verification Report** with pass/fail for each step -- no technical knowledge required.
+
+> **As implemented (Sep 2026):** the server's six checks are 1. document on record, 2. content integrity, 3. manager signature, 4. HR signature, 5. blockchain anchor (Merkle proof checked locally, then the root on-chain), 6. revocation and expiry. An unreachable chain reads as `VERIFIED_PENDING_ANCHOR`, not as a failure. An independent offline verifier (`tools/verify-credential`) repeats the checks without CareerVault. See [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.md) §1.3–1.4.
 
 ---
 
@@ -382,29 +402,37 @@ The recruiter sees a clear **Verification Report** with pass/fail for each step 
 
 | Layer | Mechanism |
 |---|---|
-| Document integrity | SHA-256 hash of canonicalized content (JCS/RFC 8785) + random salt |
-| Digital signatures | RSA 2048-bit via AWS KMS (keys never leave AWS hardware security modules) |
-| Dual-signature model | Every document requires both a manager signature and an HR co-signature |
-| Blockchain anchoring | Merkle roots on Polygon -- publicly verifiable, immutable |
-| Key rotation | Organizations can rotate KMS keys; old keys remain valid for previously signed documents |
+| Document integrity | SHA-256 hash of canonicalized content (JCS/RFC 8785) + a 256-bit random salt |
+| Digital signatures | RSA-2048 / RS256. Each org's private key is generated and used by the server, and stored as a file AES-256-GCM-wrapped under a KMS master key (`KMS_MASTER_KEY`). **Roadmap:** AWS KMS/HSM custody, where keys would never leave the HSM. |
+| Dual-signature model | Every document requires both a manager signature and an HR co-signature. Each is over a distinct role-bound statement. Both are made with the organisation's single key: separation of duties is enforced by the application and recorded in the signed statements (per-member keys: roadmap). |
+| Blockchain anchoring | Merkle roots on the **Polygon Amoy testnet** (`AnchorRegistry` at `<AMOY_REGISTRY_ADDRESS>` after deployment) -- publicly verifiable, immutable. Mainnet is a deploy plus a configuration change. |
+| Key rotation | Each document records the public key it was signed under, so replacing an org key never invalidates issued documents; the server re-keys automatically if key material is lost. There is no admin "rotate key" action yet, and master-key (KEK) rotation tooling is **roadmap**. |
+| Field encryption (R10) | Sensitive document fields, version history and PDFs are envelope-encrypted by the application (AES-256-GCM, per-row data keys, field-bound AAD), so the database, its backups and a live SQL console hold ciphertext. |
 
 ### Privacy & GDPR
 
-CareerVault implements **full GDPR Right to be Forgotten** compliance:
+Account deletion (`DELETE /users/me`) implements the Right to be Forgotten as follows (status as of September 2026):
 
-1. All PDFs deleted from cloud storage
-2. All shareable links deactivated
-3. **Salt removed from documents** -- this is the key mechanism: without the salt, the on-chain hash becomes a "dead hash" that can never be linked back to any person or content
-4. All personal data (name, email, phone) replaced with anonymized placeholders
-5. The deletion itself is logged for legal defensibility (7-year compliance retention)
+1. **Roadmap:** stored PDFs are **not yet deleted** on erasure. They remain on the server's disk, encrypted at rest by the application.
+2. All shareable links deactivated.
+3. **Salt removed from all of the holder's documents.** This is the key mechanism: without the salt, the on-chain hash becomes a "dead hash" that can never be linked back to any person or content.
+4. The user's name, email and phone are replaced with anonymized placeholders.
+   - Drafts and every version snapshot are scrubbed.
+   - AI/discovery data, messages, notifications and sessions are deleted, and verifier API keys are revoked.
+   - **Issued documents' content is retained** (encrypted) as the issuer's record.
+5. **Roadmap:** the erasure itself is **not yet written to the audit log**.
 
-**The blockchain hash remains** (it's immutable), but it becomes **cryptographically meaningless** without the salt -- satisfying GDPR requirements.
+**The blockchain hash remains** (it's immutable), but without the salt no one can recompute it or link it to any content. That is the basis of our GDPR position. The retention of issued content (point 4) is the part that still needs a legal answer, and scrubbing it is roadmap.
 
 ### Audit Trail
 
-- **7-year retention** for critical events: document issuance, revocation, verification, blockchain anchoring, GDPR deletions, key rotations
-- **90-day retention** for operational events: logins, profile updates, draft edits, link views
-- Every action records: who did it, what changed (before/after snapshots), IP address, timestamp
+- **COMPLIANCE tier (7-year policy; never auto-purged):**
+  - audited today: document signing, issuance and revocation; every public verification (hash lookups and share-link views); bulk issuance; org signing-key replacement;
+  - **not yet audited:** blockchain anchoring, GDPR deletions.
+- **STANDARD tier (auto-purged after 90 days):**
+  - audited today: document rejection only;
+  - **not yet audited:** logins, profile updates, draft edits.
+- **What each row records:** the actor, the action, the entity, the new values (`new_value`) and a timestamp. Before-snapshots (`old_value`), IP address and user agent have columns but **aren't populated yet**.
 
 ### Organization Verification
 
@@ -414,7 +442,7 @@ Companies must **prove domain ownership** via DNS TXT record before they can iss
 
 ## 15. Smart Contract (On-Chain)
 
-The `AnchorRegistry` smart contract on Polygon is intentionally minimal:
+The `AnchorRegistry` smart contract on Polygon is intentionally minimal. It targets the Amoy testnet, at `<AMOY_REGISTRY_ADDRESS>` once the pending deploy runs, and only authorized anchor wallets can write to it:
 
 | Function | What It Does |
 |---|---|
@@ -423,7 +451,7 @@ The `AnchorRegistry` smart contract on Polygon is intentionally minimal:
 | `verifyRoot(hash)` | Returns whether a Merkle root exists and when it was anchored |
 | `isRevoked(hash)` | Returns whether a document hash has been revoked |
 
-**Gas costs are negligible** (~$0.01 per daily anchor on Polygon PoS), regardless of how many documents are in the batch (thanks to Merkle trees -- 1,000 documents still produce a single 32-byte root hash).
+**Gas costs are negligible** (~$0.01 per daily anchor on Polygon PoS; measured at ~137.5k gas per `anchorRoot`), regardless of how many documents are in the batch (thanks to Merkle trees -- 1,000 documents still produce a single 32-byte root hash).
 
 The contract also supports batch operations (`batchAnchorRoots`, `batchRevokeDocuments`) for efficiency and emits events (`RootAnchored`, `DocumentRevoked`) for transparency.
 
@@ -434,10 +462,10 @@ The contract also supports batch operations (`batchAnchorRoots`, `batchRevokeDoc
 | Decision | What We Chose | Why |
 |---|---|---|
 | **Web 2.5, not full Web3** | SQL database + blockchain anchoring | Users don't need wallets or crypto knowledge; blockchain provides trust without the UX friction |
-| **Custodial keys** | Platform manages signing keys via AWS KMS | Organizations don't manage their own keys; lowers onboarding barrier |
+| **Custodial keys** | Platform manages signing keys (today: server-held keys wrapped under a KMS master key; AWS KMS is roadmap) | Organizations don't manage their own keys; lowers onboarding barrier |
 | **Merkle tree batching** | One blockchain transaction per day for all documents | Cost-efficient (~$0.01/day vs. $0.01 per document); same security guarantee |
-| **Triple redundancy** | Polygon + IPFS + GitHub | If any two systems fail, proof can be reconstructed from the third |
-| **Dual signatures** | Manager signs + HR co-signs | Two-person integrity; prevents any single individual from issuing fraudulent documents |
+| **Triple redundancy** | Polygon + IPFS + GitHub (**roadmap:** only Polygon is implemented) | If any two systems fail, proof can be reconstructed from the third |
+| **Dual signatures** | Manager signs + HR co-signs | Two-person integrity on the interactive path: the application enforces two different people. Both signatures use the organisation's single key, and bulk issuance lets one HR member issue directly. |
 | **Salt-based GDPR** | Random salt mixed into hash; delete salt = dead hash | Achieves GDPR compliance without modifying the immutable blockchain |
 | **No dispute mediation** | Organization has absolute authority over their documents | Simplifies the system; mirrors real-world employer authority |
 | **Magic links for external managers** | 15-minute passwordless links | Professors writing recommendation letters don't need to create an account |
@@ -452,6 +480,6 @@ CareerVault is a **career document verification platform** that combines the sim
 
 - **Simple for users** -- no crypto wallets, no blockchain knowledge required
 - **Trustworthy for verifiers** -- six-layer verification with on-chain proof
-- **Compliant for enterprises** -- GDPR-ready with full audit trails
+- **Compliant for enterprises** -- salt-based GDPR erasure and a compliance audit trail for the document lifecycle (full erasure and wider audit coverage are roadmap; see §14)
 - **Cost-efficient to operate** -- one blockchain transaction per day, regardless of volume
 - **Revenue-generating from day one** -- multiple monetization streams across all user types

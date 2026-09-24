@@ -5,6 +5,17 @@
 > **Status:** Production Specification (Locked)
 > **Classification:** Internal — Engineering & Architecture
 
+> **Implementation status (September 2026, LY final hardening).** This is the original March 2026 target specification. Where the code differs on **encryption, key management, anchoring and GDPR**, it is marked **Implemented** or **Roadmap** inline. Other sections (frontend framework, deployment details, rate limiting, queues, CI) remain the target design and were not re-audited in this pass. The main differences:
+>
+> - **Deployment.** Render (API) + Supabase (Postgres) + Vercel (React/Vite client), not the AWS topology in §2.2.
+> - **Keys.** Custodial RSA-2048 org keys are generated and held by the server (`LocalKms`), stored AES-256-GCM-wrapped under `KMS_MASTER_KEY`. AWS KMS and HashiCorp Vault are **Roadmap**.
+> - **Encryption.** R10 application envelope encryption covers the sensitive document fields and PDFs (AES-256-GCM, `KMS_MASTER_KEY` → HKDF field KEK → a data key per row) and is **Implemented**. At rest, the database is encrypted by Supabase (provider AES-256).
+> - **Contract.** `AnchorRegistry` (`anchorRoot(bytes32, uint256)`, `revokeDocument`, `verifyRoot`, `isRevoked`) supersedes the `MerkleRootRegistry` sketched in §2.4. It targets the **Polygon Amoy testnet** (deploy pending).
+> - **Hash.** `SHA-256(JCS(credentialSubject) ‖ salt)`, never an unsalted hash of the JSON-LD payload.
+> - **Not built.** Redis/BullMQ, S3, SES, live Stripe, the GitHub/IPFS mirrors and the PDF-embedded proof are **Roadmap** or superseded.
+>
+> The byte-exact spec is in [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.md).
+
 ---
 
 ## Table of Contents
@@ -49,6 +60,8 @@ CareerVault operates on a **Web 2.5 hybrid architecture**: the platform's core l
 
 Every issued document gets a Merkle proof embedded directly into its PDF metadata. Daily Merkle roots are published to both the Polygon blockchain and mirrored to GitHub/IPFS. If CareerVault ceases to exist, **any developer can verify a document's authenticity with a 10-line script** by re-hashing the document, reconstructing the Merkle path from the embedded proof, and checking the root against the public on-chain record.
 
+> **As implemented (Sep 2026):** the offline proof is the downloadable **credential file** (`GET /api/v1/documents/:id/credential`). It carries the subject, salt, both signatures, the issuer key and the Merkle proof. `tools/verify-credential` checks it without CareerVault. The PDF carries only the document hash and, once anchored, the Merkle root and tx hash, never the proof or salt. Only the Polygon anchor is implemented; the GitHub/IPFS mirrors are **Roadmap**.
+
 ### Value Proposition by Actor
 
 | Actor | Value |
@@ -92,14 +105,14 @@ flowchart TB
         MERKLE["Merkle Engine<br/>Batching, Proof Generation"]
         NOTIFY["Notification Service<br/>Email + In-App"]
         PAY["Payment Service<br/>Stripe Integration"]
-        KMS_SVC["Key Management Service<br/>AWS KMS / HashiCorp Vault"]
+        KMS_SVC["Key Management Service<br/>AWS KMS / HashiCorp Vault<br/>(Implemented: LocalKms · Roadmap: AWS KMS, Vault)"]
         AUDIT["Audit Service<br/>Logging, Compliance"]
     end
 
     subgraph Data["Data Layer"]
-        PG["PostgreSQL 16<br/>(Encrypted at Rest)"]
-        REDIS["Redis 7<br/>(Cache + Job Queue)"]
-        S3["AWS S3<br/>(PDF Storage, Encrypted)"]
+        PG["PostgreSQL 16<br/>(Encrypted at Rest)<br/>(Implemented: Supabase AES-256 + R10 app encryption)"]
+        REDIS["Redis 7<br/>(Cache + Job Queue)<br/>(Roadmap)"]
+        S3["AWS S3<br/>(PDF Storage, Encrypted)<br/>(Roadmap · today: app-encrypted PDFs on disk)"]
     end
 
     subgraph External["External Integrations"]
@@ -107,11 +120,11 @@ flowchart TB
         DNS["DNS Provider<br/>(TXT Record Verification)"]
         SES["AWS SES<br/>(Transactional Email)"]
         STRIPE["Stripe<br/>(Payments)"]
-        IPFS_GH["IPFS / GitHub<br/>(Merkle Root Mirror)"]
+        IPFS_GH["IPFS / GitHub<br/>(Merkle Root Mirror)<br/>(Roadmap)"]
     end
 
     subgraph Blockchain["Web 3.0 Layer"]
-        SC["Solidity Smart Contract<br/>(MerkleRootRegistry)"]
+        SC["Solidity Smart Contract<br/>(AnchorRegistry, Implemented;<br/>supersedes MerkleRootRegistry)"]
         POLYGON
     end
 
@@ -136,7 +149,7 @@ flowchart TB
     MERKLE --> REDIS
     NOTIFY --> SES
     PAY --> STRIPE
-    KMS_SVC -->|"Envelope Encryption"| PG
+    KMS_SVC -->|"Envelope Encryption (R10, Implemented)"| PG
 
     MERKLE -->|"Daily Cron: Anchor Root"| SC
     SC --> POLYGON
@@ -175,13 +188,20 @@ flowchart TB
 - **Notification Service:** Dispatches email (via SES) and in-app notifications for document lifecycle events: issuance requests, approvals, rejections, revocations, share link access, and payment confirmations.
 - **Payment Service:** Integrates with Stripe for holder subscriptions ($5/mo), per-link one-time payments, and verifier API billing. Manages webhook processing for payment status updates.
 - **Key Management Service:** Wraps AWS KMS and/or HashiCorp Vault. The platform holds custodial keys — users never manage keys directly. Keys are used to digitally sign documents only when an authenticated user explicitly clicks "Approve." All key operations are audit-logged. Envelope encryption: data keys are encrypted by KMS master keys.
+  - **Implemented:** `LocalKms` holds each org's RSA-2048 key, AES-256-GCM-wrapped under `KMS_MASTER_KEY`. It signs a role statement when the manager signs and when HR approves. It also mints and unwraps the R10 data keys (`generateDataKey`/`decryptDataKey`, mirroring AWS KMS).
+  - Signing events are audit-logged (`DOCUMENT_SIGNED` / `DOCUMENT_ISSUED`); individual key operations are not.
+  - **Roadmap:** AWS KMS and HashiCorp Vault.
 - **Audit Service:** Writes structured audit logs for all significant actions. Issuance logs retained for 7 years. System logs (IPs, logins, API calls) retained for 90 days. Feeds into CloudWatch for monitoring.
 
 **Data Layer:**
 
 - **PostgreSQL 16:** Primary data store. Stores users, organizations, organization_members (the join table implementing the unified identity model), documents, Merkle tree data, audit logs, payments, notifications. Encrypted at rest via AWS RDS encryption (AES-256).
-- **Redis 7:** Multi-purpose — session cache, rate limiter state, BullMQ job queue backing store, magic link token store, and general application cache.
+  - **Implemented:** Supabase Postgres, encrypted at rest by the provider (AES-256). On top of that, **R10 application envelope encryption**: `documents.{content_json, salt, manager_signature, hr_signature, revocation_reason_text}` and `document_versions.{content_json, change_summary}` are stored as `cvenc:v1:` envelopes.
+  - **Roadmap:** AWS RDS.
+- **Redis 7:** Multi-purpose — session cache, rate limiter state, BullMQ job queue backing store, magic link token store, and general application cache. **Roadmap:** today rate limiting is in-memory and magic links live in Postgres.
 - **AWS S3:** Stores generated PDFs. Server-side encryption (SSE-S3 or SSE-KMS). Lifecycle policies for GDPR deletion. Versioning disabled (deletion means deletion).
+  - **Roadmap.**
+  - **Implemented:** PDFs are stored on the server's disk and encrypted by the application (`EncryptedStorageService`, AES-256-GCM). They are not yet deleted on GDPR erasure.
 
 **External Integrations:**
 
@@ -194,6 +214,8 @@ flowchart TB
 ---
 
 ### 2.2 Deployment Architecture
+
+> **Status: Roadmap.** The deployed system runs on Render (API, one Docker container with a persistent disk), Supabase (Postgres) and Vercel (client). The AWS topology below is the target.
 
 ```mermaid
 flowchart TB
@@ -295,15 +317,19 @@ flowchart TB
 
 **Data Layer:**
 
-- **Amazon RDS PostgreSQL 16:** Multi-AZ deployment for high availability. Encrypted at rest (AES-256 via KMS). Automated daily backups with 7-day retention. Point-in-time recovery enabled. Instance type: db.r6g.large (starter), vertically scalable. Read replicas added when read traffic exceeds 70% of primary capacity.
-- **Amazon ElastiCache Redis 7:** Cluster mode for horizontal scaling. Used for: session storage, BullMQ job queue, rate limiter counters, magic link tokens, and application-level cache (org settings, user profiles). Encrypted in transit and at rest.
-- **Amazon S3:** Dedicated bucket for PDF storage. SSE-KMS encryption. Bucket policy restricts access to the ECS task role only. No public access. CORS disabled. Lifecycle rules support GDPR deletion workflows.
+- **Amazon RDS PostgreSQL 16** (**Roadmap**; today Supabase, provider AES-256 at rest + R10 app encryption): Multi-AZ deployment for high availability. Encrypted at rest (AES-256 via KMS). Automated daily backups with 7-day retention. Point-in-time recovery enabled. Instance type: db.r6g.large (starter), vertically scalable. Read replicas added when read traffic exceeds 70% of primary capacity.
+- **Amazon ElastiCache Redis 7** (**Roadmap**): Cluster mode for horizontal scaling. Used for: session storage, BullMQ job queue, rate limiter counters, magic link tokens, and application-level cache (org settings, user profiles). Encrypted in transit and at rest.
+- **Amazon S3** (**Roadmap**; today app-encrypted PDFs on the Render disk): Dedicated bucket for PDF storage. SSE-KMS encryption. Bucket policy restricts access to the ECS task role only. No public access. CORS disabled. Lifecycle rules support GDPR deletion workflows.
 
 **Security Services:**
 
 - **AWS KMS:** Manages master encryption keys. Used for RDS encryption, S3 encryption, and envelope encryption of sensitive fields in PostgreSQL (e.g., document signing key material). Automatic annual key rotation.
-- **AWS Secrets Manager:** Stores database credentials, Stripe API keys, SES credentials, Polygon RPC API keys, and other secrets. Automatic rotation for database credentials every 30 days.
+  - **Roadmap.**
+  - **Implemented today:** the master key is `KMS_MASTER_KEY`, a Render secret. It wraps the org signing keys and derives the field-encryption KEK. There is no automatic rotation, and KEK rotation tooling is roadmap.
+- **AWS Secrets Manager:** Stores database credentials, Stripe API keys, SES credentials, Polygon RPC API keys, and other secrets. Automatic rotation for database credentials every 30 days. **Roadmap:** today secrets are Render environment secrets.
 - **HashiCorp Vault:** Manages the custodial document signing keys. Keys are generated in Vault, never exported. Signing operations happen inside Vault via its Transit secrets engine. Audit log captures every key usage.
+  - **Roadmap.**
+  - **Implemented today:** keys are generated and used by the server (`LocalKms`) and stored wrapped under the master key.
 
 **Observability:**
 
@@ -364,17 +390,17 @@ flowchart TB
 
     subgraph KeyMgmt["Key Management & Signing"]
         direction TB
-        KMS2["AWS KMS<br/>(Master Keys)"]
-        VAULT2["HashiCorp Vault<br/>(Transit Engine)"]
+        KMS2["AWS KMS<br/>(Master Keys)<br/>Roadmap · today KMS_MASTER_KEY + LocalKms"]
+        VAULT2["HashiCorp Vault<br/>(Transit Engine)<br/>Roadmap · today LocalKms RS256"]
 
-        KMS2 -->|"Envelope Encryption"| DATA_KEY["Data Encryption Key<br/>(Encrypts sensitive DB fields)"]
+        KMS2 -->|"Envelope Encryption"| DATA_KEY["Data Encryption Key<br/>(Encrypts sensitive DB fields)<br/>Implemented (R10): one DEK per row"]
         VAULT2 -->|"Sign Operation"| DOC_SIGN["Document Signature<br/>(Only on authenticated<br/>user click of Approve)"]
     end
 
     subgraph EncryptedStorage["Encrypted Storage"]
-        PG2["PostgreSQL<br/>• RDS Encryption (AES-256)<br/>• Sensitive fields: envelope-encrypted<br/>• Salted hashes for PII lookups"]
-        S32["S3 PDFs<br/>• SSE-KMS Encryption<br/>• Bucket Policy: No Public Access<br/>• Pre-signed URLs (15-min expiry)"]
-        REDIS2["Redis<br/>• Encryption in Transit (TLS)<br/>• Encryption at Rest<br/>• VPC-only Access"]
+        PG2["PostgreSQL<br/>• RDS Encryption (AES-256) · today Supabase AES-256<br/>• Sensitive fields: envelope-encrypted · Implemented (R10)<br/>• Salted hashes for PII lookups · Roadmap"]
+        S32["S3 PDFs<br/>• SSE-KMS Encryption<br/>• Bucket Policy: No Public Access<br/>• Pre-signed URLs (15-min expiry)<br/>Roadmap · today app-encrypted PDFs on disk"]
+        REDIS2["Redis<br/>• Encryption in Transit (TLS)<br/>• Encryption at Rest<br/>• VPC-only Access<br/>Roadmap"]
     end
 
     CLIENT -->|HTTPS Only| WAF2
@@ -436,15 +462,30 @@ Two authentication flows coexist:
 The platform uses a **custodial key model** — users never generate, store, or manage cryptographic keys. This is a deliberate decision: the target audience (HR managers, employees) should not need to understand key management.
 
 - **AWS KMS** manages master encryption keys for envelope encryption. Sensitive database fields (e.g., salary figures in document payloads) are encrypted with a data encryption key (DEK), which is itself encrypted by the KMS master key. The encrypted DEK is stored alongside the ciphertext. Decryption requires a KMS API call, which is audit-logged.
+  - **Implemented (R10), with a local KMS:** `KMS_MASTER_KEY` → HKDF-SHA256 field KEK → a fresh DEK per written row → AES-256-GCM per field, with AAD `careervault|<field>|v1`. The wrapped DEK travels inside each `cvenc:v1:` envelope.
+  - DEK unwraps are cached and **not** audit-logged.
+  - **Roadmap:** AWS KMS as the master-key holder.
 - **HashiCorp Vault Transit Engine** handles document signing. When an authenticated user (Manager or HR) clicks "Approve," the backend sends the JCS-canonicalized JSON-LD payload to Vault's Transit engine, which signs it with the organization's signing key. The signature is stored with the document and embedded in the PDF. Keys never leave Vault. Key rotation is automatic (new key version created periodically; old versions retained for verification).
+  - **Roadmap.**
+  - **Implemented today:** `LocalKms` signs, with the org's server-held RSA-2048 key (RS256). It signs a role statement, `SHA-256(JCS({v:1, documentHash, role, memberId}))`, not the JSON-LD payload: the manager at sign, HR at approve.
+  - Signatures are stored with the document and shipped in the credential file, **not** embedded in the PDF.
+  - There is no automatic key rotation. Each document pins the public key it was signed under.
 
 **Encrypted Storage:**
 
 - **PostgreSQL:** AWS RDS encryption at rest (AES-256, KMS-managed key). Sensitive fields additionally envelope-encrypted at the application layer. PII fields used for lookups (e.g., email) are stored as salted hashes alongside the encrypted value.
+  - **Implemented:** provider encryption at rest (Supabase, AES-256), plus application envelope encryption of the R10 document fields.
+  - **Roadmap:** RDS, and the salted-hash (blind index) lookup for email. Email and names are plaintext today.
 - **S3 PDFs:** SSE-KMS encryption. Bucket policy enforces zero public access. Application generates pre-signed URLs with 15-minute expiry for authorized downloads. Pre-signed URL generation requires a valid JWT and role check.
-- **Redis:** TLS encryption in transit. Encryption at rest via ElastiCache encryption. Access restricted to the VPC security group — no public endpoint.
+  - **Roadmap.**
+  - **Implemented today:** PDFs are stored on the server's disk, AES-256-GCM-encrypted by the application, and downloaded only through an authenticated API route.
+- **Redis:** TLS encryption in transit. Encryption at rest via ElastiCache encryption. Access restricted to the VPC security group — no public endpoint. **Roadmap** (Redis isn't used yet).
 
 **Key Rotation Schedule:**
+
+> **Status: Roadmap.** No automatic rotation is implemented today.
+> - `KMS_MASTER_KEY` is treated as permanent until KEK rotation tooling exists. The envelope format already supports re-wrapping DEKs without re-encrypting data.
+> - Org signing keys are replaced only when their key material is lost. Old documents keep verifying because each one pins its signing public key.
 
 | Key Type | Rotation Period | Method |
 |---|---|---|
@@ -479,17 +520,17 @@ flowchart LR
 
     subgraph Blockchain_Int["Blockchain Anchoring"]
         RPC["Polygon RPC<br/>(Alchemy Primary /<br/>Infura Fallback)"]
-        CONTRACT["MerkleRootRegistry<br/>Solidity Contract"]
+        CONTRACT["AnchorRegistry<br/>Solidity Contract<br/>(Implemented; supersedes MerkleRootRegistry)"]
     end
 
     subgraph Resilience_Int["Resilience Mirror"]
-        GH["GitHub Repository<br/>(Daily Merkle Roots)"]
-        IPFS2["IPFS<br/>(Pinned Merkle Roots)"]
+        GH["GitHub Repository<br/>(Daily Merkle Roots)<br/>Roadmap"]
+        IPFS2["IPFS<br/>(Pinned Merkle Roots)<br/>Roadmap"]
     end
 
     subgraph Storage_Int["Document Storage"]
-        S3_INT["AWS S3<br/>(PDF Bucket)"]
-        KMS_INT["AWS KMS<br/>(Encryption Keys)"]
+        S3_INT["AWS S3<br/>(PDF Bucket)<br/>Roadmap · today app-encrypted disk"]
+        KMS_INT["AWS KMS<br/>(Encryption Keys)<br/>Roadmap · today LocalKms, same API"]
     end
 
     API -->|"TXT Record Lookup<br/>(dns.resolveTxt)"| DNS2
@@ -501,7 +542,7 @@ flowchart LR
     API -->|"PutObject (PDF)<br/>GetObject (Pre-signed URL)<br/>DeleteObject (GDPR)"| S3_INT
     API -->|"Encrypt / Decrypt<br/>GenerateDataKey"| KMS_INT
 
-    WORKER2 -->|"eth_sendRawTransaction<br/>(storeRoot(date, root))"| RPC
+    WORKER2 -->|"eth_sendRawTransaction<br/>(anchorRoot(root, count))"| RPC
     RPC --> CONTRACT
     WORKER2 -->|"Commit JSON file<br/>(roots/{date}.json)"| GH
     WORKER2 -->|"Pin JSON<br/>(CID for root)"| IPFS2
@@ -546,6 +587,18 @@ SES is configured with DKIM signing, SPF records, and a custom MAIL FROM domain.
 - **Webhook Processing:** Stripe sends webhook events to `POST /webhooks/stripe`. The endpoint verifies the Stripe signature header before processing. Key events: `payment_intent.succeeded`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`.
 
 **Blockchain Anchoring (Polygon PoS):**
+
+> **Superseded (as implemented, Sep 2026).** The steps and the `MerkleRootRegistry` contract below are the original sketch. The implemented pipeline differs:
+>
+> - **Trigger.** A `@nestjs/schedule` cron at midnight Asia/Kolkata, gated by `WORKER`, or an admin's "Anchor now". There is no BullMQ.
+> - **Selection.** It picks `ISSUED` documents that have no proof yet.
+> - **Leaf.** The leaf is the existing **salted** `documentHash = SHA-256(JCS(credentialSubject) ‖ salt)`, not an unsalted hash of the JSON-LD payload.
+> - **Tree.** SHA-256 over sorted pairs; the odd node is promoted; leaves are not re-hashed.
+> - **Anchor call.** `AnchorRegistry.anchorRoot(bytes32 root, uint256 count)` (`contracts/contracts/AnchorRegistry.sol`) on **Polygon Amoy**, through `PolygonAnchorService`. It uses a single configured RPC, a 30 gwei tip floor and 2 confirmations.
+> - **Contract.** It also records revocations (`revokeDocument`/`isRevoked`), and only authorized anchors can write.
+> - **Mirrors.** The GitHub/IPFS mirror is **Roadmap**.
+>
+> See [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.md) §1.2.
 
 The midnight cron job (BullMQ scheduled job) performs:
 
@@ -636,19 +689,21 @@ This triple-redundancy (Polygon + GitHub + IPFS) ensures that Merkle roots are r
 
 | Technology | Version | Purpose | Why This Over Alternatives |
 |---|---|---|---|
-| **Polygon PoS** | Mainnet | Public blockchain for Merkle root anchoring | ~$0.01 per transaction (vs $5-50 on Ethereum mainnet). EVM-compatible (same Solidity tooling). 2-second block times for fast confirmation. Chosen over Ethereum L1 (too expensive for daily anchors), Arbitrum/Optimism (lower brand recognition for verification trust), and Solana (non-EVM, different tooling). |
-| **Solidity** | 0.8+ | Smart contract language | The MerkleRootRegistry contract is minimal (~20 lines). Solidity 0.8+ has built-in overflow checks. Mature auditing toolchain (Slither, Mythril). |
+| **Polygon PoS** | Mainnet (target; **implemented on the Amoy testnet**, chain 80002, deploy pending) | Public blockchain for Merkle root anchoring | ~$0.01 per transaction (vs $5-50 on Ethereum mainnet). EVM-compatible (same Solidity tooling). 2-second block times for fast confirmation. Chosen over Ethereum L1 (too expensive for daily anchors), Arbitrum/Optimism (lower brand recognition for verification trust), and Solana (non-EVM, different tooling). |
+| **Solidity** | 0.8+ | Smart contract language | The MerkleRootRegistry contract is minimal (~20 lines). Solidity 0.8+ has built-in overflow checks. Mature auditing toolchain (Slither, Mythril). **Implemented:** `AnchorRegistry` (Solidity 0.8.24) supersedes it: `anchorRoot`/`batchAnchorRoots`, `revokeDocument`, `verifyRoot`, `isRevoked`, owner-managed authorized anchors. |
 | **ethers.js** | v6 | Blockchain interaction library | TypeScript-native. Cleaner API than web3.js. Better tree-shaking for smaller bundles. Provider abstraction supports Alchemy/Infura failover. |
 | **merkletreejs** | Latest | Merkle tree construction | Well-tested library for building Merkle trees and generating proofs. Supports SHA-256 with sorted pairs (deterministic). |
 
 ### Cloud Infrastructure (AWS)
 
+> **Status: Roadmap.** Deployed today on Render + Supabase + Vercel; see §2.2.
+
 | Service | Purpose | Configuration |
 |---|---|---|
 | **ECS Fargate** | Container orchestration | Serverless containers — no EC2 management. Auto-scaling based on CPU/memory. |
 | **RDS** | Managed PostgreSQL | Multi-AZ, encrypted, automated backups, point-in-time recovery. |
-| **S3** | PDF and static asset storage | SSE-KMS encryption, versioning disabled, lifecycle policies for GDPR deletion. |
-| **KMS** | Encryption key management | Automatic key rotation. Envelope encryption for sensitive DB fields. |
+| **S3** | PDF and static asset storage | SSE-KMS encryption, versioning disabled, lifecycle policies for GDPR deletion. **Roadmap:** today PDFs are app-encrypted on the Render disk. |
+| **KMS** | Encryption key management | Automatic key rotation. Envelope encryption for sensitive DB fields. **Roadmap:** today a local KMS (`KMS_MASTER_KEY`, a Render secret) runs the implemented R10 envelope encryption; there is no automatic rotation. |
 | **SES** | Transactional email | DKIM, SPF, custom MAIL FROM. Bounce/complaint monitoring. |
 | **CloudFront** | CDN | Edge caching for static assets. Security headers via CloudFront Functions. |
 | **CloudWatch** | Logging and monitoring | Structured JSON logs, custom metrics, alarms. |
@@ -671,7 +726,7 @@ This triple-redundancy (Polygon + GitHub + IPFS) ensures that Merkle roots are r
 | Technology | Purpose | Why This Over Alternatives |
 |---|---|---|
 | **Puppeteer** | PDF rendering from HTML templates | Full Chrome rendering engine — supports complex layouts, custom fonts, and precise positioning. Merkle proof metadata is embedded in PDF properties via `pdf-lib` post-processing. Chosen over `@react-pdf/renderer` (limited layout capabilities, harder to match corporate letter styles) and `wkhtmltopdf` (deprecated, inconsistent rendering). |
-| **pdf-lib** | PDF metadata embedding | Injects Merkle proof, document hash, batch date, and verification URL into PDF metadata fields. Lightweight, no external dependencies. |
+| **pdf-lib** | PDF metadata embedding | Injects Merkle proof, document hash, batch date, and verification URL into PDF metadata fields. Lightweight, no external dependencies. **As implemented:** only the Merkle root and anchor tx hash are stamped into the metadata, never the proof or salt. The offline proof is the credential file. |
 
 ### Cryptography
 
@@ -679,8 +734,9 @@ This triple-redundancy (Polygon + GitHub + IPFS) ensures that Merkle roots are r
 |---|---|---|
 | **SHA-256** | Document hashing | Industry-standard, collision-resistant. Used for Merkle leaf computation. Node.js `crypto` module — no external dependency. |
 | **JCS (RFC 8785)** | JSON canonicalization | Deterministic JSON serialization before hashing. Ensures the same logical document always produces the same hash regardless of key ordering. Library: `canonicalize` npm package. |
-| **AES-256** | Encryption at rest | Via AWS KMS envelope encryption. Data keys encrypted by KMS master key. |
-| **RS256** | JWT signing | RSA-based JWT signatures. Key pair managed in AWS Secrets Manager. |
+| **AES-256** | Encryption at rest | Via AWS KMS envelope encryption. Data keys encrypted by KMS master key. **Implemented** as AES-256-GCM envelope encryption (R10): `KMS_MASTER_KEY` → HKDF-SHA256 field KEK → a fresh data key per written row; per-field AAD; PDFs too. **Roadmap:** AWS KMS as the master-key holder. |
+| **RSA-2048 / RS256** | Document signing | **Implemented:** per-org keys held by the server (`LocalKms`), wrapped under `KMS_MASTER_KEY`. The manager and HR each sign a role statement `SHA-256(JCS({v:1, documentHash, role, memberId}))` with the same org key. |
+| **RS256** | JWT signing | RSA-based JWT signatures. Key pair managed in AWS Secrets Manager. **Roadmap:** today the key pair comes from environment secrets, or dev key files. |
 
 ### Payments
 
@@ -1892,7 +1948,7 @@ The Webhook Dispatcher handler is a placeholder for V2, where organizations and 
 | **PostgreSQL** | RDS automated daily snapshots + continuous WAL archiving | 7 days (snapshots), 7 days (PITR) | 5 minutes (PITR) | 30 minutes |
 | **S3 PDFs** | Cross-region replication to backup bucket | Lifecycle-matched to source | 15 minutes (replication lag) | Immediate (switch bucket) |
 | **Redis** | ElastiCache daily snapshots | 3 days | 24 hours (acceptable: Redis is a cache) | 10 minutes |
-| **Merkle Roots** | Triple-stored: Polygon (permanent), GitHub (permanent), IPFS (permanent) | Permanent | 0 (immutable) | 0 (always available) |
+| **Merkle Roots** | Triple-stored: Polygon (permanent), GitHub (permanent), IPFS (permanent). **Implemented:** Polygon (Amoy testnet) plus the `merkle_roots` table; the GitHub/IPFS mirrors are Roadmap. | Permanent | 0 (immutable) | 0 (always available) |
 | **Secrets** | Secrets Manager versioning | 30 days | Immediate | Immediate |
 
 ### Disaster Recovery
@@ -1921,14 +1977,22 @@ The Webhook Dispatcher handler is a placeholder for V2, where organizations and 
   4. Comparing the root against the on-chain value at `MerkleRootRegistry.roots(date)`.
 - **This is the core resilience guarantee of CareerVault.**
 
+> **As implemented (Sep 2026):** the guarantee holds, through a different artefact.
+> - The PDF carries no JSON-LD, proof or salt.
+> - The holder's downloaded **credential file** carries the `credentialSubject`, salt, both signatures, the issuer key and the Merkle proof.
+> - The leaf is `SHA-256(JCS(credentialSubject) ‖ salt)`.
+> - The root is checked with `AnchorRegistry.verifyRoot(bytes32)` on Polygon Amoy.
+> - `tools/verify-credential` does all of this with no CareerVault code or server (`--rpc` for any Amoy RPC; `--registry` pins the contract).
+> - The GitHub/IPFS copies are Roadmap.
+
 ### Data Retention & Compliance
 
 | Data Category | Retention Period | Deletion Method | Legal Basis |
 |---|---|---|---|
 | **Issuance Audit Logs** | 7 years | Automatic purge after retention period | Legal compliance, dispute resolution |
 | **System Logs (IPs, Logins)** | 90 days | Automatic purge via CloudWatch log group retention | Operational necessity |
-| **User Profile Data** | Until GDPR deletion request | Full wipe: user row, S3 PDFs, share links, salt | User consent |
-| **Document Data** | Until GDPR deletion or org-initiated purge | Full wipe from SQL and S3. On-chain hash becomes dead. | User consent + contractual |
+| **User Profile Data** | Until GDPR deletion request | Full wipe: user row, S3 PDFs, share links, salt. **As implemented:** the user row is anonymized (tombstoned, not deleted), share links are deactivated and the salt is nulled. PDF deletion is Roadmap. | User consent |
+| **Document Data** | Until GDPR deletion or org-initiated purge | Full wipe from SQL and S3. On-chain hash becomes dead. **As implemented:** drafts and every version snapshot are scrubbed, and the salt is nulled on all the holder's documents, so the on-chain hash is dead. Issued documents' content is retained (encrypted) as the issuer's record. Org-initiated purge and PDF deletion are Roadmap. | User consent + contractual |
 | **Payment Records** | 7 years | Retained in Stripe (Stripe's retention policy) | Tax/legal compliance |
 | **Merkle Roots (on-chain)** | Permanent (immutable) | Cannot be deleted from Polygon | Legitimate interest (verification integrity) |
 
@@ -1936,16 +2000,16 @@ The Webhook Dispatcher handler is a placeholder for V2, where organizations and 
 
 | Requirement | Implementation | Status |
 |---|---|---|
-| **Encryption at Rest** | RDS (AES-256), S3 (SSE-KMS), Redis (ElastiCache encryption) | Planned for V1 |
-| **Encryption in Transit** | TLS 1.3 everywhere, HSTS headers | Planned for V1 |
-| **GDPR Right to Erasure** | Full wipe endpoint. User row, PDFs, share links, salt deleted. On-chain hash = dead. | Planned for V1 |
-| **GDPR Data Portability** | Export endpoint: download all documents as ZIP | Planned for V1 |
+| **Encryption at Rest** | RDS (AES-256), S3 (SSE-KMS), Redis (ElastiCache encryption) | **Implemented differently (Sep 2026):** Supabase provider AES-256, plus R10 application envelope encryption of the sensitive document fields and PDFs (AES-256-GCM). RDS, S3 and ElastiCache are Roadmap. |
+| **Encryption in Transit** | TLS 1.3 everywhere, HSTS headers | **Partial:** HTTPS on Vercel and Render; HSTS via `helmet`. Pinning Supabase's CA (`sslmode=verify-full`) for the API↔DB leg is a pending deployment step. |
+| **GDPR Right to Erasure** | Full wipe endpoint. User row, PDFs, share links, salt deleted. On-chain hash = dead. | **Partial:** `DELETE /users/me` nulls the salt (dead hash), scrubs drafts and version snapshots, anonymizes PII, and revokes links, keys and sessions. Issued content is retained (encrypted); PDF deletion and an erasure audit row are Roadmap. |
+| **GDPR Data Portability** | Export endpoint: download all documents as ZIP | **Roadmap.** The per-document credential file (`GET /documents/:id/credential`) is implemented. |
 | **Password Security** | bcrypt (cost 12), minimum 8 characters, no password reuse check (V1) | Planned for V1 |
 | **Rate Limiting** | Redis sliding window, per-endpoint limits | Planned for V1 |
 | **Input Validation** | class-validator on all DTOs, Prisma parameterized queries | Planned for V1 |
 | **RBAC** | NestJS guards, organization-scoped queries | Planned for V1 |
-| **Audit Trail** | All significant actions logged with actor, target, timestamp, IP | Planned for V1 |
-| **Key Management** | AWS KMS + HashiCorp Vault, no keys in code or environment variables | Planned for V1 |
+| **Audit Trail** | All significant actions logged with actor, target, timestamp, IP | **Partial:** document lifecycle and public verifications are logged, with actor, target, details and timestamp. IP isn't recorded yet, and anchoring and GDPR erasure aren't audited. |
+| **Key Management** | AWS KMS + HashiCorp Vault, no keys in code or environment variables | **Implemented differently:** `LocalKms`, with org keys wrapped under `KMS_MASTER_KEY`. The master key **is** an environment secret (Render). AWS KMS and Vault are Roadmap. |
 | **Dependency Scanning** | GitHub Dependabot, `npm audit` in CI | Planned for V1 |
 | **SAST** | ESLint security plugins, SonarQube (V2) | Partial V1 |
 
