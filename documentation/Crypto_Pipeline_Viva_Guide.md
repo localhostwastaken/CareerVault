@@ -105,12 +105,12 @@ Signing happens in `DocumentService.sign`, [document.service.ts:148-253](../serv
   - The tip is `max(the RPC's suggested tip, ANCHOR_MIN_PRIORITY_FEE_GWEI = 30 gwei)`.
   - `maxFeePerGas` is `(maxFeePerGas − maxPriorityFeePerGas)` from the RPC, i.e. the base-fee headroom, plus that tip.
   - Both fields are always set ([anchor-chain.util.ts:50-64](../server/src/services/blockchain/anchor-chain.util.ts#L50-L64); defaults at [env.validation.ts:165-170](../server/src/config/env.validation.ts#L165-L170)).
-  - Why: ethers falls back to a 1 gwei tip on Amoy, and Polygon PoS nodes reject tips below 25 gwei.
+  - Why: ethers falls back to a 1 gwei tip on Amoy, and Polygon PoS nodes reject tips below 25 gwei (Polygon PoS policy at the time of writing; our floor is configurable).
 - **One write at a time.** A promise chain serializes writes: one wallet, one nonce sequence. ethers' `NonceManager` is deliberately avoided, because a failed gas estimate would leave a permanent nonce gap ([polygon-anchor.service.ts:21-27](../server/src/services/blockchain/polygon-anchor.service.ts#L21-L27), [polygon-anchor.service.ts:129-162](../server/src/services/blockchain/polygon-anchor.service.ts#L129-L162)).
 - **Confirmation loop.**
   - `waitForConfirmations` polls `getTransactionReceipt` every 3 s ([polygon-anchor.service.ts:32-34](../server/src/services/blockchain/polygon-anchor.service.ts#L32-L34)). It returns once `head − receiptBlock + 1 ≥ ANCHOR_CONFIRMATIONS` (default 2), and gives up after `ANCHOR_TX_TIMEOUT_MS` (default 120 s). A failed poll is retried, not thrown ([anchor-chain.util.ts:72-100](../server/src/services/blockchain/anchor-chain.util.ts#L72-L100)).
   - A reverted receipt throws ([polygon-anchor.service.ts:149](../server/src/services/blockchain/polygon-anchor.service.ts#L149)).
-  - The adapter remembers every transaction it sent. If a retry finds the root already on-chain, it records the transaction that actually landed ([polygon-anchor.service.ts:179-189](../server/src/services/blockchain/polygon-anchor.service.ts#L179-L189)).
+  - The adapter remembers every `anchorRoot` transaction it sent ([polygon-anchor.service.ts:129-140](../server/src/services/blockchain/polygon-anchor.service.ts#L129-L140)). If a retry finds the root already on-chain, it records the transaction that actually landed ([polygon-anchor.service.ts:179-189](../server/src/services/blockchain/polygon-anchor.service.ts#L179-L189)).
 - **Bounded RPC calls.** Every RPC request times out after 10 s ([anchor-chain.util.ts:23-25](../server/src/services/blockchain/anchor-chain.util.ts#L23-L25)).
 
 **Step 9: store the per-document proof.** A single DB transaction ([merkle.service.ts:89-125](../server/src/modules/merkle/merkle.service.ts#L89-L125)):
@@ -122,12 +122,12 @@ Signing happens in `DocumentService.sign`, [document.service.ts:148-253](../serv
 
 ### 1.3 The server's six checks (`GET /api/v1/verify/hash/:hash`)
 
-Every check recomputes from scratch. No stored "is valid" flag is trusted ([verification.service.ts:56-58](../server/src/modules/verification/verification.service.ts#L56-L58)).
+Every check recomputes from scratch. No stored "is valid" flag is trusted ([verification.service.ts:56-58](../server/src/modules/verification/verification.service.ts#L56-L58)). One stored value *is* trusted: the document's pinned `signingPublicKeyPem`, a plaintext column ([verification.service.ts:328-329](../server/src/modules/verification/verification.service.ts#L328-L329)). See Q14 for what that means for a tampered database.
 
 | # | Check (`key`) | What it recomputes | Code |
 |---|---|---|---|
 | 1 | Document on record (`exists`) | Status is `ISSUED`, `ANCHORED`, `REVOKED` or `EXPIRED`. A rejected draft's stale hash doesn't pass. | [verification.service.ts:128-139](../server/src/modules/verification/verification.service.ts#L128-L139) |
-| 2 | Content integrity (`integrity`) | `hashDocument(contentJson, salt) === documentHash`. It fails with "Original content is unavailable" once GDPR erasure has deleted the salt. | [verification.service.ts:141-155](../server/src/modules/verification/verification.service.ts#L141-L155) |
+| 2 | Content integrity (`integrity`) | `hashDocument(contentJson, salt) === documentHash`. It fails with "Original content is unavailable" once GDPR erasure has deleted the salt. The allow-listed content is still returned (Q22). | [verification.service.ts:141-155](../server/src/modules/verification/verification.service.ts#L141-L155) |
 | 3 | Issuer signature (`issuerSignature`) | RS256 over the MANAGER statement, rebuilt from the stored `signerMemberId`. Checked against the document's pinned `signingPublicKeyPem`, falling back to the org key. | [verification.service.ts:157-172](../server/src/modules/verification/verification.service.ts#L157-L172), [verification.service.ts:316-341](../server/src/modules/verification/verification.service.ts#L316-L341) |
 | 4 | Approver signature (`approverSignature`) | The same, with role `HR` and `approverMemberId`. | [verification.service.ts:173-186](../server/src/modules/verification/verification.service.ts#L173-L186) |
 | 5 | Blockchain anchor (`anchor`) | First, the Merkle proof must fold to the stored root, checked locally; a bad proof is `fail`. Then `verifyRoot(root)` on-chain: the root must exist, otherwise `fail`. No proof yet, or an unreachable chain, is `pending`. | [anchor-check.ts:42-82](../server/src/modules/verification/anchor-check.ts#L42-L82) |
@@ -257,12 +257,12 @@ The mentor's checklist is **JCS → 32-byte salt → SHA-256 → Merkle root →
 | # | Mentor's step | What the code does | Code | Say it like this |
 |---|---|---|---|---|
 | 1 | JCS on the JSON-LD payload | JCS (RFC 8785, `canonicalize@3.0.0`) over the **normalized `credentialSubject`** only. Before that, the server validates it per type, injects `schemaVersion` and `issueDate`, drops null and empty values (`normalizeSubject`), and stamps the signer's own name. The JSON-LD wrapper (`@context`, `issuer`, `proof`, `anchor`) is **not** hashed. | [content-validation.ts:59-116](../server/src/modules/document/content-validation.ts#L59-L116), [crypto.util.ts:20-26](../server/src/common/utils/crypto.util.ts#L20-L26), [crypto.util.ts:47-70](../server/src/common/utils/crypto.util.ts#L47-L70) | "We canonicalize the signed claims, so logically equal payloads always produce identical bytes." |
-| 2 | Append a 32-byte salt | `randomBytes(32)` gives **64 lowercase hex chars**, appended to the JCS string **as UTF-8 text**. A fresh salt per document, generated at signing. | [crypto.util.ts:16-18](../server/src/common/utils/crypto.util.ts#L16-L18) | "A 256-bit salt stops dictionary attacks on low-entropy fields. Deleting it makes the anchored hash permanently unlinkable to the person." |
+| 2 | Append a 32-byte salt | `randomBytes(32)` gives **64 lowercase hex chars**, appended to the JCS string **as UTF-8 text**. A fresh salt per document, generated at signing. | [crypto.util.ts:16-18](../server/src/common/utils/crypto.util.ts#L16-L18) | "A 256-bit salt stops dictionary attacks on low-entropy fields. Deleting it means nobody can recompute or prove the hash from content. Full unlinkability also needs the issued content removed, which is roadmap (Q22)." |
 | 3 | SHA-256 | `documentHash = SHA-256(JCS ‖ saltHex)`, lowercase hex (R4). It stays plaintext in the DB: it's the public lookup key and the Merkle leaf. | [crypto.util.ts:28-32](../server/src/common/utils/crypto.util.ts#L28-L32) | "The hash is a salted one-way commitment: it proves the content without revealing it." |
 | 4 | Merkle root | Built **at batch time** (midnight IST cron or "Anchor now") over every issued, not-yet-anchored hash. Leaves are the raw 32-byte hashes, not re-hashed. Nodes are SHA-256 of **sorted** pairs. An odd node is **promoted, not duplicated**. | [merkle.util.ts:14-17](../server/src/common/utils/merkle.util.ts#L14-L17), [merkle.service.ts:61-78](../server/src/modules/merkle/merkle.service.ts#L61-L78) | "Sorted pairs mean a proof needs no left/right flags. Promotion avoids Bitcoin's duplicate-leaf ambiguity. An internal node can't pose as a document, because the verifier recomputes the leaf from content and salt." |
 | 5 | RSA-2048 sign the leaf | Signing happens **at issuance, before batching**, and never over the leaf or root. RS256 (RSASSA-PKCS1-v1_5 + SHA-256) over `SHA-256(JCS({v:1, documentHash, role, memberId}))`. The manager signs at `sign`, HR at `approve`, **both with the organisation's one custodial RSA-2048 key**. The root is authorized differently: the anchor wallet's own transaction signature, plus the contract's `onlyAuthorized` check. | [crypto.util.ts:81-87](../server/src/common/utils/crypto.util.ts#L81-L87), [local-kms.service.ts:87-96](../server/src/services/key-management/local-kms.service.ts#L87-L96), [document.service.ts:195-201](../server/src/modules/document/document.service.ts#L195-L201), [document.service.ts:307-312](../server/src/modules/document/document.service.ts#L307-L312) | "PKCS#1 v1.5 is deterministic, so two signatures over the bare hash would be byte-identical and prove nothing. Each approval is its own role-bound signed statement. Both are made with the organisation's single key: RBAC enforces who may sign, and the statements record it immutably." |
 | (6) | Anchor | `anchorRoot(bytes32 root, count)` on the `AnchorRegistry` on Polygon Amoy (chain 80002). Verification calls `verifyRoot(root)`. | [polygon-anchor.service.ts:83-92](../server/src/services/blockchain/polygon-anchor.service.ts#L83-L92), [AnchorRegistry.sol:79-85](../contracts/contracts/AnchorRegistry.sol#L79-L85) | "32 bytes per batch on-chain, no PII. Anyone can check it without asking us." |
-| (7) | Verify | Six server checks (1.3) and the independent offline verifier (1.4). Neither trusts a stored "valid" flag. | [verification.service.ts:124-241](../server/src/modules/verification/verification.service.ts#L124-L241), [verify-credential.mjs:301-328](../tools/verify-credential/verify-credential.mjs#L301-L328) | "Verification recomputes everything from the document and the chain. Nothing is taken on our word." |
+| (7) | Verify | Six server checks (1.3) and the independent offline verifier (1.4). Neither trusts a stored "valid" flag. The server does take the signing key from its own DB (Q14). The offline verifier leaves the key ↔ organisation binding to an out-of-band check (Q20). | [verification.service.ts:124-241](../server/src/modules/verification/verification.service.ts#L124-L241), [verify-credential.mjs:301-328](../tools/verify-credential/verify-credential.mjs#L301-L328) | "Verification recomputes everything from the document and the chain. The one thing it takes on trust is which key belongs to the organisation." |
 
 > **Correction to the approved plan's step-5 wording.** The plan's original line said "role-bound statements make the dual approval cryptographic". Say the version above instead. Two distinct statements are signed, but **with one org key**, so separation of duties is *enforced* by the application and *recorded* by the signatures. Two keys don't *prove* it. See limitation L1 in section 8.
 
@@ -297,7 +297,7 @@ flowchart TD
     MK["KMS_MASTER_KEY<br/>32 random bytes, base64 Render secret"]
     ORG["Org RSA-2048 private key files<br/>AES-256-GCM wrapped, on the Render disk"]
     KEK["Field KEK<br/>HKDF-SHA256 of the master key"]
-    DEK["Data key (DEK)<br/>32 random bytes, one per written row or PDF"]
+    DEK["Data key (DEK)<br/>32 random bytes, one per row payload or PDF"]
     ENV["cvenc:v1 envelope<br/>in the DB column or the PDF file"]
     MK -->|"wraps directly"| ORG
     MK -->|"derives"| KEK
@@ -313,8 +313,8 @@ flowchart TD
 | DEK | `generateDataKey()` makes 32 random bytes, wrapped with AES-256-GCM under the KEK: a 12-byte IV and AAD `careervault\|dek\|v1`. `wrapped = base64url(iv ‖ ct ‖ tag)`. `decryptDataKey` refuses a `keyId` it doesn't hold, which names the wrong-master-key fault. | [local-kms.service.ts:113-148](../server/src/services/key-management/local-kms.service.ts#L113-L148) |
 | Field value | AES-256-GCM under the DEK, with a **fresh 12-byte IV per field** and **AAD `careervault\|<field>\|v1`**. A 16-byte tag is appended. | [field-cipher.ts:23-24](../server/src/services/key-management/field-cipher.ts#L23-L24), [field-cipher.ts:93-125](../server/src/services/key-management/field-cipher.ts#L93-L125) |
 
-- **One DEK per written row.** Each `encrypt()` call makes one KMS call, however many fields that row seals ([field-cipher.ts:65-74](../server/src/services/key-management/field-cipher.ts#L65-L74), [field-encryption.extension.ts:127-150](../server/src/prisma/encryption/field-encryption.extension.ts#L127-L150)).
-- **Mirrors AWS KMS.** `generateDataKey` and `decryptDataKey` copy AWS KMS `GenerateDataKey`/`Decrypt`, so moving to AWS KMS changes the driver and nothing in the stored envelopes ([key-management.service.ts:78-83](../server/src/services/key-management/key-management.service.ts#L78-L83)). Today only the `local` driver exists ([key-management.module.ts:16-20](../server/src/services/key-management/key-management.module.ts#L16-L20)).
+- **One data key per row payload.** Each `encrypt()` call makes one KMS call, however many fields that payload seals ([field-cipher.ts:65-74](../server/src/services/key-management/field-cipher.ts#L65-L74), [field-encryption.extension.ts:127-150](../server/src/prisma/encryption/field-encryption.extension.ts#L127-L150)). A `create`/`update` payload gets its own key, and so does each entry of a `createMany`. An `updateMany` seals its single payload once, so every row it matches gets the *same* envelope. GDPR erasure's version scrub is an example ([user.service.ts:89-92](../server/src/modules/user/user.service.ts#L89-L92)).
+- **Mirrors AWS KMS.** `generateDataKey` and `decryptDataKey` copy AWS KMS `GenerateDataKey`/`Decrypt`, so moving to AWS KMS changes the driver and **not the envelope format** ([key-management.service.ts:78-83](../server/src/services/key-management/key-management.service.ts#L78-L83)). The DEKs already stored are wrapped under the local KEK, though, so a switch must re-wrap them under AWS KMS. That's the same procedure as a master-key rotation (Q26). Today only the `local` driver exists ([key-management.module.ts:16-20](../server/src/services/key-management/key-management.module.ts#L16-L20)).
 
 **Envelope format** ([field-cipher.ts:5-17](../server/src/services/key-management/field-cipher.ts#L5-L17)):
 
@@ -372,14 +372,14 @@ The envelope is self-contained: everything needed to open it except the master k
 | Decision | Alternative | Why we chose it | Code |
 |---|---|---|---|
 | **JCS (RFC 8785)** | `JSON.stringify` | `JSON.stringify` keeps insertion order and prints numbers however the engine holds them. The same logical document built by two code paths (interactive vs. bulk) would hash differently. JCS fixes key order (UTF-16 code units), number form and escaping. `canonicalize@3.0.0` comes from Samuel Erdtman's repository (`erdtman/canonicalize`); he co-authored RFC 8785. Our vectors include the RFC's own §3.2.3 example. | [crypto.util.ts:20-26](../server/src/common/utils/crypto.util.ts#L20-L26) |
-| **256-bit random salt** | No salt, or a short one | The hash is public: it's on the PDF and at `/verify/hash`. Without a salt, low-entropy content (a template plus a few fields) can be brute-forced from it. 2^256 guesses is infeasible. Deleting the salt also unlinks the anchored hash (GDPR). | [crypto.util.ts:16-18](../server/src/common/utils/crypto.util.ts#L16-L18) |
+| **256-bit random salt** | No salt, or a short one | The hash is public: it's on the PDF and at `/verify/hash`. Without a salt, low-entropy content (a template plus a few fields) can be brute-forced from it. 2^256 guesses is infeasible. Deleting the salt also means nobody can recompute or prove the hash from content. That's the GDPR lever; full unlinkability still needs the issued-content scrub (Q22). | [crypto.util.ts:16-18](../server/src/common/utils/crypto.util.ts#L16-L18) |
 | **SHA-256** | MD5/SHA-1 (broken); Keccak | Standard (FIPS 180-4), 128-bit collision resistance, native in Node. It's the same hash used inside RS256, HKDF and our Merkle tree. The contract never hashes; it only stores `bytes32`. | [crypto.util.ts:28-36](../server/src/common/utils/crypto.util.ts#L28-L36) |
 | **Sorted-pair Merkle, raw leaves, odd node promoted** | Positional proofs; duplicate-last-node (Bitcoin) | Proofs need no trusted left/right flag. Promotion avoids the duplicate-leaf ambiguity (the CVE-2012-2459 class). Raw leaves keep "leaf = the public document hash". Leaf and node domains are separated by leaf recomputation (Q8). | [merkle.util.ts:14-17](../server/src/common/utils/merkle.util.ts#L14-L17) |
 | **RS256 over role statements** | RS256 over the bare hash | PKCS#1 v1.5 is deterministic: two signatures over the same bytes with the same key are identical. Signing distinct `{documentHash, role, memberId}` statements gives two different, verifiable records of *which role, which member*. | [crypto.util.ts:81-87](../server/src/common/utils/crypto.util.ts#L81-L87) |
-| **RSA-2048 / RS256** | ECDSA, Ed25519 | RS256 is the JWS/JWT default, deterministic (no per-signature nonce to get wrong), and supported by AWS KMS asymmetric keys, so the KMS swap stays a driver change. | [local-kms.service.ts:59-96](../server/src/services/key-management/local-kms.service.ts#L59-L96) |
+| **RSA-2048 / RS256** | ECDSA, Ed25519 | RS256 is the JWS/JWT default, deterministic (no per-signature nonce to get wrong), and supported by AWS KMS asymmetric keys, so new org keys could live in AWS KMS behind the same interface. Documents already issued keep verifying, because each pins its own signing public key. | [local-kms.service.ts:59-96](../server/src/services/key-management/local-kms.service.ts#L59-L96) |
 | **Polygon PoS, Amoy testnet** | Ethereum mainnet; a private chain | Polygon PoS is an EVM chain: standard tooling, public explorers, low fees, ~2 s blocks ([polygon-anchor.service.ts:33](../server/src/services/blockchain/polygon-anchor.service.ts#L33)). A private chain would only be "our database with extra steps". Amoy (80002) is Polygon's official testnet, with free faucet POL and the same bytecode and code path as mainnet (137 is already mapped). | [chain-explorer.ts:5-15](../server/src/services/blockchain/chain-explorer.ts#L5-L15) |
-| **Envelope encryption** | Encrypt every value directly with the master key | The master key never touches bulk data; it only wraps small DEKs. Rotating it means re-wrapping DEKs, not re-encrypting data. It mirrors AWS KMS `GenerateDataKey`/`Decrypt`, so a KMS/HSM swap is a driver change. HKDF gives key separation between signing-key wrapping and field encryption. | [local-kms.service.ts:113-148](../server/src/services/key-management/local-kms.service.ts#L113-L148), [key-management.service.ts:78-83](../server/src/services/key-management/key-management.service.ts#L78-L83) |
-| **AES-256-GCM + AAD** | AES-CBC (+ HMAC); GCM without AAD | Authenticated encryption: any bit flipped in the stored value fails the 16-byte tag, so tampering is loud (`FieldDecryptionError`), never silent. The AAD binds each ciphertext to its field, so a value moved to another field fails. A fresh random 96-bit IV per value, under a fresh key per row. | [field-cipher.ts:93-125](../server/src/services/key-management/field-cipher.ts#L93-L125) |
+| **Envelope encryption** | Encrypt every value directly with the master key | The master key never touches bulk data; it only wraps small DEKs. Rotating it means re-wrapping DEKs, not re-encrypting data. It mirrors AWS KMS `GenerateDataKey`/`Decrypt`, so a KMS/HSM swap keeps the envelope format; the stored DEKs are re-wrapped once, like a rotation. HKDF gives key separation between signing-key wrapping and field encryption. | [local-kms.service.ts:113-148](../server/src/services/key-management/local-kms.service.ts#L113-L148), [key-management.service.ts:78-83](../server/src/services/key-management/key-management.service.ts#L78-L83) |
+| **AES-256-GCM + AAD** | AES-CBC (+ HMAC); GCM without AAD | Authenticated encryption: any bit flipped in the stored value fails the 16-byte tag, so tampering is loud (`FieldDecryptionError`), never silent. The AAD binds each ciphertext to its field, so a value moved to another field fails. A fresh random 96-bit IV per value, under a fresh key per row payload. | [field-cipher.ts:93-125](../server/src/services/key-management/field-cipher.ts#L93-L125) |
 | **Batch anchoring** | One transaction per document | Constant cost per batch (one `anchorRoot`), proofs of at most `⌈log2 N⌉` hashes, and no individual document hash published by the batch. | [merkle.service.ts:52-150](../server/src/modules/merkle/merkle.service.ts#L52-L150) |
 
 ---
@@ -390,8 +390,8 @@ The envelope is self-contained: everything needed to open it except the master k
 |---|---|---|
 | Supabase AES-256 at rest | Stolen or decommissioned provider disks; leaked provider backups | Anyone who can query: a leaked `DATABASE_URL`, the SQL console, `pg_dump`, the Data API |
 | TLS | Eavesdropping on the wire (browser↔API, API↔RPC; API↔DB only once `sslmode` is enforced, see 4.2) | Anything at either endpoint |
-| R10 envelope encryption | DB dumps, backups, SQL consoles, a leaked `DATABASE_URL`, the Supabase Data API, and a curious DBA, **for the R10 fields and PDFs**. Edits to ciphertext (GCM tag). | The app server itself (it holds the master key); plaintext columns (email, names, hash, embeddings, audit/notification text) |
-| Hash + RS256 statements | Any edit to content, salt, hash or member ids in the DB (Q14) | A party holding the org private key: it can sign *new* statements |
+| R10 envelope encryption | DB dumps, backups, SQL consoles, a leaked `DATABASE_URL`, the Supabase Data API, and a curious DBA, **for the R10 fields and PDFs**. Edits to ciphertext (GCM tag). | The app server itself (it holds the master key); plaintext columns (email, names, hash, embeddings, audit/notification text); plaintext written straight into an encrypted column, which reads back as legacy plaintext (L13) |
+| Hash + RS256 statements | Edits to an existing document's content, salt, hash or member ids while its pinned signing key is left intact (Q14) | A party holding the org private key: it can sign *new* statements. **A DB writer who replaces the pinned `signingPublicKeyPem`** and plants a self-consistent plaintext row signed with their own key: it verifies as pending, and the next batch anchors it (Q14, L13). |
 | Merkle + anchoring | Back-dating a document, or rewriting one after its batch is anchored. Anchors are append-only (`Root exists`) and publicly timestamped. Deleting our DB rows can't erase the evidence either: the root stays on-chain and the holder's credential still verifies. | Forging a *new* document (it can be anchored in the next batch). Proving the content is true. |
 | Offline verifier + registry pin | CareerVault going offline; a forged look-alike registry (Q20) | The key ↔ organisation binding (checked online or out of band) |
 
@@ -405,6 +405,14 @@ The envelope is self-contained: everything needed to open it except the master k
 - The controls are organisational: domain verification binds an org to its domain (only with `DNS_DRIVER=real`; the demo runs `local`, see L3), revocation, and the COMPLIANCE audit trail.
 - CareerVault is also **custodial**: the platform operator holds the org keys. Anchoring prevents rewriting history; it doesn't prevent a malicious operator issuing new documents.
 
+**Adversary 3: someone with write access to the database only** (a leaked `DATABASE_URL`, not the app server).
+- **What they can do.** They can't read R10 fields or forge the org's signatures. But verification trusts the pinned public key stored in the row ([verification.service.ts:328-329](../server/src/modules/verification/verification.service.ts#L328-L329)), and the R10 extension returns non-envelope values unchanged ([field-encryption.extension.ts:275-295](../server/src/prisma/encryption/field-encryption.extension.ts#L275-L295)). So they can plant a **self-consistent forged document**: plaintext content and salt, a matching hash, their own public key and their own signatures. It verifies as `VERIFIED_PENDING_ANCHOR`, and the next batch anchors it, because the batch picks any `ISSUED` row without a proof ([merkle.service.ts:61-70](../server/src/modules/merkle/merkle.service.ts#L61-L70)).
+- **What exposes it.**
+  - `npm run db:audit-encryption` reports the planted values as plaintext.
+  - The issuer-key fingerprint in the credential differs from the organisation's real key.
+- **What they can't do.** Alter an already-anchored document, or a credential a holder already downloaded.
+- **Fix (roadmap, a pending code change).** Fail closed when an encrypted field holds plaintext, and check the pinned key against the org's key history.
+
 ---
 
 ## 7. Examiner Q&A
@@ -414,8 +422,8 @@ Validate and normalize the subject. Canonicalize it with JCS. Append a fresh 64-
 
 **Q2. Is this zero-knowledge?**
 **No. There are no zero-knowledge proofs anywhere in the system.** It is privacy-preserving *verification* plus *encryption*:
-- the public hash lookup discloses only an allow-list of fields ([public-fields.ts:10-60](../server/src/modules/document/public-fields.ts#L10-L60));
-- only a salted hash and a Merkle root are ever public;
+- the public hash lookup discloses only an allow-list of fields ([public-fields.ts:10-60](../server/src/modules/document/public-fields.ts#L10-L60)). For a revoked document it also returns the revocation reason, as HR typed it ([verification.service.ts:209-211](../server/src/modules/verification/verification.service.ts#L209-L211), [verification.service.ts:267-273](../server/src/modules/verification/verification.service.ts#L267-L273));
+- the chain holds only Merkle roots and revoked document hashes; each document hash is public anyway, since it's printed on the PDF;
 - the database fields are encrypted.
 
 A verifier who checks the hash must see the full `credentialSubject` and the salt. Avoid the term "zero-knowledge".
@@ -424,7 +432,7 @@ A verifier who checks the hash must see the full `credentialSubject` and the sal
 No. `JSON.stringify` is order-sensitive and engine-dependent, and a hash is only useful if every party produces the same bytes. JCS is a published standard (RFC 8785). Our verifier, written separately, reproduces the server's bytes, and `--selftest` proves it on the RFC's own vectors.
 
 **Q4. What does the salt do, and why 32 bytes?**
-The hash is public, so without a salt anyone could guess a salary letter's few variable fields and test each guess against it. 256 random bits make guessing infeasible. The salt is also the GDPR lever: delete it and nobody, including us, can ever link the anchored hash back to content.
+The hash is public, so without a salt anyone could guess a salary letter's few variable fields and test each guess against it. 256 random bits make guessing infeasible. The salt is also the GDPR lever: delete it and nobody can recompute or prove the hash from content. It isn't full unlinkability today, though; see Q22.
 
 **Q5. Why do the manager and HR sign "statements" instead of the hash?**
 RS256 (PKCS#1 v1.5) is deterministic. The same key over the same hash gives byte-identical signatures, which would make "two signatures" one fact recorded twice. Each statement binds the hash to a role and a membership id, so the signatures differ and each records who approved in which capacity ([crypto.util.ts:81-87](../server/src/common/utils/crypto.util.ts#L81-L87)).
@@ -456,7 +464,7 @@ Sorted pairs make a proof a plain list of sibling hashes. The verifier orders ea
 
 **Q11. What does one anchor cost?**
 `anchorRoot` uses about **137,520 gas** for the first anchor on a fresh registry, measured by `REPORT_GAS=true npx hardhat test` in `contracts/`. Deploying the registry uses about 702,424 gas.
-- At our 30 gwei tip floor that is roughly 137,520 × 30 gwei ≈ **0.0041 POL**, plus the (small) base fee, **per batch, regardless of how many documents it covers**.
+- At our 30 gwei tip floor that is roughly 137,520 × 30 gwei ≈ **0.0041 POL**, plus the variable base fee, **per batch, regardless of how many documents it covers**.
 - On Amoy it is test POL with no monetary value.
 
 **Q12. Why batch instead of anchoring each document?**
@@ -476,6 +484,10 @@ Sorted pairs make a proof a plain list of sibling hashes. The verifier orders ea
 - **Editing an envelope** fails its GCM tag, so the read throws `FieldDecryptionError`.
 - **Replacing the content** makes the recomputed hash stop matching `documentHash`, so integrity fails.
 - **Changing the hash too** breaks both RS256 signatures, since each statement contains the hash. The org private key isn't in the DB; it's a wrapped file on the server disk.
+- **But the pinned public key is itself a DB column** ([verification.service.ts:328-329](../server/src/modules/verification/verification.service.ts#L328-L329)), and R10 reads legacy plaintext as-is ([field-encryption.extension.ts:275-295](../server/src/prisma/encryption/field-encryption.extension.ts#L275-L295)). So a DB writer can plant a forged document signed with **their own** key. It verifies as pending, and the next batch would anchor it.
+  - **What exposes it:** `db:audit-encryption` flags the plaintext values, and the issuer-key fingerprint differs from the organisation's key.
+  - **What they can't do:** alter an already-anchored document, or a credential a holder already downloaded.
+  - Details are in adversary 3 (§6) and L13.
 - **Once anchored**, the stored hash must also still fold to the on-chain root, which nobody can change.
 - **Flipping a revoked document back to active in the DB:** the verdict follows the DB (R7), but the on-chain revocation flag still shows, as a note on the public page and as ⚠ in the offline verifier.
 
@@ -509,7 +521,10 @@ Not one that shows as anchored in *our* registry.
 - **Only our wallet can write to it** (`onlyAuthorized`), so a forged root can't be anchored there.
 - **A real root doesn't help.** A proof can't fold a forged hash onto a real root without a SHA-256 preimage.
 - **What is *not* proven offline is the key ↔ organisation binding.** That's the classic trust-anchor (PKI) problem: anyone can put any `issuer.name` next to their own key. So the verifier prints the issuer key's SHA-256 SPKI fingerprint and the on-chain `anchoredBy` address, for an out-of-band comparison with CareerVault or the organisation, or via `/verify/hash/<hash>`.
-- **The exact Task 7 result.** A from-scratch forgery can never get a ✓ Registry line or an "anchored" summary on a pinned chain. If it claims `anchor: null` or the local simulator, it can still exit 0, but the summary says explicitly that there is no on-chain evidence ([verify-credential.mjs:278-293](../tools/verify-credential/verify-credential.mjs#L278-L293)). **That's why a verifier must read the summary, not just the exit code.**
+- **The exact Task 7 result.** A from-scratch forgery can never get a *passing* run with an "anchored" summary on a pinned chain.
+  - If it names our registry, it gets ✓ Registry, but then ✗ On-chain root and exit 1.
+  - If it names any other contract, it gets ✗ Registry ([verify-credential.mjs:190-215](../tools/verify-credential/verify-credential.mjs#L190-L215)).
+  - If it claims `anchor: null` or the local simulator, it can still exit 0, but the summary says explicitly that there is no on-chain evidence ([verify-credential.mjs:278-293](../tools/verify-credential/verify-credential.mjs#L278-L293)). **That's why a verifier must read the summary, not just the exit code.**
 - **Until the deploy step fills `KNOWN_REGISTRIES[80002]`** (now `null`, [verify-credential.mjs:106-110](../tools/verify-credential/verify-credential.mjs#L106-L110)), Amoy is unpinned. Pass `--registry <AMOY_REGISTRY_ADDRESS>`.
 
 **Q21. How long is RSA-2048 safe?**
@@ -524,9 +539,15 @@ Not one that shows as anchored in *our* registry.
 - revokes API keys and deactivates share links;
 - anonymizes the user row.
 
-Without the salt, the anchored hash can never be linked to content again. The chain only ever held that hash inside a root.
+**Nulling the salt means nobody can recompute or prove the hash from content.** The chain only ever held that hash, inside a root.
 
-Honestly, **issued documents' content is retained** (encrypted) as the issuer's record. Stored PDFs are not deleted, and the erasure writes no audit row. Scrubbing issued content and deleting PDFs is roadmap. Also, a credential the holder already downloaded still contains the salt; that's the holder's own copy.
+**Today, though, that is not unlinkability.**
+- Issued (`ISSUED`/`ANCHORED`) documents keep their content in the same row as the plaintext hash ([user.service.ts:78-92](../server/src/modules/user/user.service.ts#L78-L92)).
+- The public hash lookup returns the allow-listed content for any issued document, even with the salt gone ([verification.service.ts:243-264](../server/src/modules/verification/verification.service.ts#L243-L264)). That content includes the person's name: `employeeName` on an experience letter, `candidateName` on a recommendation ([public-fields.ts:10-60](../server/src/modules/document/public-fields.ts#L10-L60)).
+- The hash is printed on the PDF footer. So anyone holding an erased person's PDF can still get their name from `/verify/hash/<hash>`.
+- Full unlinkability needs the roadmap issued-content scrub, or at least withholding content from the public lookup when the salt is null (a pending code change).
+
+Also honest: issued content is retained (encrypted) as the issuer's record, stored PDFs are not deleted, and the erasure writes no audit row. All of that is roadmap. A credential the holder already downloaded still contains the salt; that's the holder's own copy.
 
 **Q23. Everything else is encrypted. Why is `documentHash` plaintext?**
 It's the **public lookup key** (`/verify/hash/:hash`, an equality query ciphertext can't serve) and the **Merkle leaf**, and it's printed on the PDF. It's a salted one-way value, and the salt that could open it *is* encrypted.
@@ -543,7 +564,7 @@ Disk encryption is transparent to every logged-in session, so it never protects 
 
 **Q27. What if the master key leaks, or is lost?**
 - **Leaked:** everything R10 protects, and every org signing key, is exposed. See adversary 1.
-- **Lost:** every encrypted field, PDF and org key is unreadable. That's why it's backed up offline. The loader refuses a corrupt key file rather than silently generating a new one ([master-key.ts:24-35](../server/src/services/key-management/master-key.ts#L24-L35)). A wrong key fails loudly with a named key-id mismatch.
+- **Lost:** every encrypted field, PDF and org key is unreadable. That's why it **must** be backed up offline, and the team should confirm a backup exists. The loader refuses a corrupt key file rather than silently generating a new one ([master-key.ts:24-35](../server/src/services/key-management/master-key.ts#L24-L35)). A wrong key fails loudly with a named key-id mismatch.
 
 **Q28. How do you prove there is no plaintext left in the database?**
 `npm run db:audit-encryption` reads each R10 column the way a dump sees it, and every stored PDF off disk. It prints counts only and must end in `PASS: every value is encrypted or null.` It exits 1 otherwise ([audit-encryption.ts:180-199](../server/prisma/audit-encryption.ts#L180-L199)). The e2e suite asserts the same with raw SQL.
@@ -566,9 +587,10 @@ In one transaction, the DB status becomes `REVOKED` and share links are deactiva
 | L7 | **The `issuer` block (org name) is outside the hashed `credentialSubject`.** Attribution rests on the signing key, whose binding to the org is checked online (`/verify/hash`) or out of band (fingerprint). | Issuer DID / key registry: roadmap |
 | L8 | **`KNOWN_REGISTRIES[80002]` is `null`** until the Amoy deploy. Until then the offline verifier needs `--registry`. | Filled at deploy (section 10) |
 | L9 | **The DB-leg TLS pinning and the Supabase Data API shutdown aren't done yet** (4.2). | Pending, human-gated |
-| L10 | **GDPR erasure keeps issued content (encrypted) and PDFs**, and writes no erasure audit row (Q22). | Roadmap |
+| L10 | **GDPR erasure keeps issued content (encrypted) and PDFs.** After erasure, the public hash lookup still returns allow-listed fields, including the name, so the hash is **not yet unlinkable**. No erasure audit row is written (Q22). | Roadmap. Withholding content when the salt is null is a pending code change. |
 | L11 | **There's no master-key rotation tooling.** The design supports it (Q26). | Roadmap |
 | L12 | **The AAD binds the field, not the row.** Row integrity rests on the hash and signatures (4.3). | By design |
+| L13 | **A DB writer can plant a forged document.** Verification trusts the plaintext `signingPublicKeyPem` column, and R10 reads plaintext in encrypted columns as legacy data. So someone with DB write access can plant a self-consistent row signed with their own key. It verifies as pending, and the next batch anchors it. `db:audit-encryption` and the issuer-key fingerprint expose it (Q14, adversary 3). | Roadmap: fail closed on plaintext in encrypted fields (a pending code change) |
 
 ---
 
@@ -577,16 +599,25 @@ In one transaction, the DB status becomes `REVOKED` and share links are deactiva
 ### 9.1 Pre-flight (T−60 min)
 
 1. `cd tools/verify-credential && npm install && node verify-credential.mjs --selftest`: 14 ✓ lines, exit 0.
-2. Render logs show the anchor self-check:
+2. **Reset and re-seed Supabase under Render's master key.** This is destructive, user-approved and human-gated.
+   - Reset the Supabase schema, then run `npm run db:seed` from a shell that exports Supabase's `DATABASE_URL` and **Render's** `KMS_MASTER_KEY`. Rows sealed under any other key are undecryptable on Render ([seed.ts:27-30](../server/prisma/seed.ts#L27-L30)).
+   - Without the reset, pre-R10 rows are still plaintext, and step 11 of the click path would show plaintext.
+   - Then clear the stale Render-disk artefacts: pre-R10 plaintext PDFs, orphaned `kms/*.key` files and `chain/ledger.json`.
+3. **Rehearse once** (request → sign → approve → Anchor now, then revoke one), so the demo DB holds 2–3 anchored documents and 1 revoked one. The seed itself creates only requested and draft documents.
+4. Render logs show the anchor self-check:
    - `Self-check OK — RPC chainId 80002, ANCHOR_CHAIN_ID 80002`;
    - contract code present;
    - wallet authorized;
    - balance at or above 0.05 POL (it warns below that, [anchor-self-check.ts:6](../server/src/services/blockchain/anchor-self-check.ts#L6)).
-3. PolygonScan shows the registry at `<AMOY_REGISTRY_ADDRESS>` as **verified source**.
-4. `cd server && npm run db:audit-encryption`, run against Supabase with **Render's** `KMS_MASTER_KEY` exported in that shell. It must print `PASS`.
-5. Confirm Render has `BLOCKCHAIN_DRIVER=amoy` and `DEMO_MASTER_PASSWORD_ENABLED` unset. The flag defaults to false ([env.validation.ts:96](../server/src/config/env.validation.ts#L96)); the seeded accounts have real passwords.
-6. Confirm the DB TLS setting (4.2) and screenshot Supabase's encryption and SSL settings.
-7. Bookmark a confirmed anchor transaction and the contract page, and keep a credential downloaded for an already-anchored document. These are the fallbacks.
+5. PolygonScan shows the registry at `<AMOY_REGISTRY_ADDRESS>` as **verified source**.
+6. **Run `cd server && npm run db:audit-encryption` from the laptop,** against Supabase, with Render's `KMS_MASTER_KEY` exported. It must print `PASS`.
+   - Its **database** section audits Supabase.
+   - Its **storage** section scans the *laptop's* `STORAGE_LOCAL_DIR/objects` ([audit-encryption.ts:91-94](../server/prisma/audit-encryption.ts#L91-L94)), not Render's disk. Point `STORAGE_LOCAL_DIR` at an empty directory for this run, so local PDFs sealed under a different key don't show up as undecryptable.
+   - Render's own PDFs are only covered by a run on Render itself, e.g. from its shell if the plan provides one.
+7. Confirm Render has `BLOCKCHAIN_DRIVER=amoy` and `DEMO_MASTER_PASSWORD_ENABLED` unset. The flag defaults to false ([env.validation.ts:96](../server/src/config/env.validation.ts#L96)); the seeded accounts have real passwords.
+8. Confirm the DB TLS setting (4.2) and screenshot Supabase's encryption and SSL settings.
+9. **Prepare the laptop fallback.** Reset the local DB and empty the local `storage/objects` together, then re-seed. The laptop's rows and PDFs must be sealed under the master key the laptop runs with. Otherwise the local audit shows undecryptable values, and old local PDFs won't open.
+10. Bookmark a confirmed anchor transaction and the contract page, and keep a credential downloaded for an already-anchored document. These are the fallbacks.
 
 ### 9.2 Click path (deployed stack)
 
