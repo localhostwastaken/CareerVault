@@ -83,6 +83,13 @@ The browser suite starts its own API and client on 9901/5273 against a separate
 `careervault_e2e` database, so it can run while the dev stack is up and never touches your
 data — see [`e2e/README.md`](e2e/README.md).
 
+## Deploying
+The deployed stack is Render (API), Vercel (client), Supabase (Postgres) and Polygon Amoy (the
+`AnchorRegistry`). Deploying this branch takes a contract deploy, a Supabase reset and Render
+settings, in that order. [`documentation/Deploy_Runbook.md`](documentation/Deploy_Runbook.md)
+lists the steps with the exact commands, expected output, go/no-go checks and rollback notes.
+Merging to `main` auto-deploys, so it is a step in that runbook, not before it.
+
 ## Verification & offline proof
 A document's authenticity is proven from its **Verifiable Credential**, a standalone JSON-LD payload fetched from `GET /api/v1/documents/:id/credential`. That file embeds everything a third party needs to verify **offline, without CareerVault online**: the
 canonical `credentialSubject`, the `proof.salt` and `proof.documentHash` (R4: `SHA-256( JCS(content) ++ salt )`), both RS256 co-signatures, the issuer's public key, and the Merkle proof once anchored.

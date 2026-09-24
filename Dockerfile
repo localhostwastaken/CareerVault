@@ -40,6 +40,11 @@ RUN npm ci --omit=dev && npm install --no-save prisma@7
 COPY --from=server-build /build/server/dist ./dist
 COPY --from=server-build /build/server/src/generated ./src/generated
 
+# CA certificates for TLS to the database (server/certs/README.md). The directory holds only
+# a README until the Supabase CA is committed, and the copy works either way. After the
+# dependency install, so a certificate change doesn't invalidate that layer.
+COPY server/certs ./certs
+
 # Storage directory (local adapter; mount a Render disk here for persistence)
 RUN mkdir -p /app/server/storage
 
