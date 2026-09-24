@@ -19,27 +19,47 @@ could have written this file from the credential alone.
   the signed statement, the folded Merkle root, …).
 - `--rpc <url>` overrides the RPC endpoint used for the on-chain check. Required for any
   chain id without a built-in default (e.g. a local Hardhat node at chain id `31337`).
-- `--registry <address>` pins the address that counts as CareerVault's official
+- `--registry <address>` pins the address that counts as the credential's official
   `AnchorRegistry` for this run — see "Registry pinning" below. Required for any chain id not
-  already in `KNOWN_REGISTRIES` (every chain except a deployed Amoy).
+  already in `KNOWN_REGISTRIES` (every chain except a deployed Amoy). Must be a syntactically
+  valid `0x` address (`ethers.isAddress`); a missing, empty, or invalid value is a **usage
+  error** (exit `2`), not "no override" — silently falling back to "unpinned" here would let
+  a broken wrapper script quietly defeat the one check that makes a forged
+  `anchor.contractAddress` detectable.
 - `--selftest` recomputes every vector in `test-vectors.json` with this script's own
   functions and exits 1 if any diverge from the stored expected value. No credential file or
   network access needed.
 
 ## What exit 0 proves — and does not
 
-A `✓` on every line (On-chain's ⚠ aside — see below) means: the `credentialSubject` bytes are
-exactly what was hashed; both the manager and HR signed a role-bound statement over that
-hash, verifiably, under the key embedded in the file; that hash is included in the anchored
-Merkle tree; and, once a chain is public, that the Merkle root exists in **CareerVault's own**
-`AnchorRegistry` — not just some contract the file happens to name.
+A fully anchored, fully pinned credential printing `✓` on every line means: the
+`credentialSubject` bytes are exactly what was hashed; both role-bound signatures verify
+under the embedded issuer key (they are **one** org key used for two distinct, role-bound
+statements — not one key per signer); that hash is included in the anchored Merkle tree; and
+— **only** because the registry was pinned, either built in or via `--registry` — that the
+Merkle root exists in that specific `AnchorRegistry`, not just some contract the file happens
+to name. Exit 0 is also reached, with fewer `✓`s, in two narrower cases the final summary line
+spells out every time:
 
-It does **not** prove that `issuer.publicKeyPem` belongs to the named organization. Nothing
-in the file, or on chain, binds a key to a legal identity — anyone can build a credential
-with their own key and any `issuer.name` they like, and every check will still pass. Closing
-that gap needs an **out-of-band** step: compare the key fingerprint this script prints
-against CareerVault's public verify page or the organization directly. The final summary
-line restates exactly what that run proved, every time.
+- **Not yet anchored** (`anchor: null` — true of every issued document until the next
+  anchoring batch runs; see `credential.builder.ts`): only Integrity and the two signatures
+  are checked. There is no Merkle proof and no on-chain evidence at all yet — the summary
+  says so explicitly, with a `⚠`, not a `✓`.
+- **Anchored but unpinned, or on the local simulator**: Merkle inclusion is proven, but
+  nothing ties the root to a *specific, known* registry (unpinned chain) or to any public
+  chain at all (`anchor.chainId: null`, CareerVault's local simulator).
+
+It does **not**, ever, prove that `issuer.publicKeyPem` belongs to the named organization.
+Nothing in the file, or on chain, binds a key to a legal identity — anyone can build a
+credential with their own key and any `issuer.name` they like, and every check will still
+pass. Closing that gap needs an **out-of-band** step: get the issuer key fingerprint from the
+organization directly, or look up `proof.documentHash` on CareerVault's public verify page
+(`/verify/hash/<documentHash>`) and confirm it names the same organization and verdict. The
+final summary line restates exactly this, every run, with the real `documentHash` filled in.
+
+If the on-chain revocation check finds the document revoked, the summary says so too — that
+alone does not fail verification (R7: the database is authoritative, the chain is secondary),
+but it is never left out of the final sentence silently.
 
 ## What it checks, in order
 
@@ -49,27 +69,32 @@ line restates exactly what that run proved, every time.
    `SHA-256(JCS({v:1, documentHash, role:'MANAGER', memberId: proof.signerMemberId}))` and
    verifies `proof.managerSignature` (RS256) over it with `issuer.publicKeyPem`.
 3. **HR signature** — same, with role `HR` and `proof.approverMemberId` /
-   `proof.hrSignature`.
+   `proof.hrSignature`. (2 and 3 verify under the same single embedded key — see above.)
 4. **Merkle** — folds `anchor.proofPath` from `proof.documentHash` up to a root
    (`sha256(min(a,b) ‖ max(a,b))`, pairs sorted bytewise, position not trusted) and compares
    it to `anchor.merkleRoot`. No anchor yet → ⚠ pending.
 5. **Registry** — compares `anchor.contractAddress` against a pin **this script holds**
-   (`KNOWN_REGISTRIES`, or `--registry`), never against anything from the file. See "Registry
-   pinning" below. No pin available for the chain → ⚠, not ✗ (there is nothing to mismatch
-   yet).
+   (`KNOWN_REGISTRIES`, or `--registry`), never against anything from the file, and prints
+   only the numeric `chainId` (plus a name from this script's own small lookup table, if it
+   has one) — never the file's own `anchor.network`, which a forged file could set to
+   anything, including misleading trust language next to a `✓`. No pin available for the
+   chain → ⚠, not ✗ (there is nothing to mismatch yet); pin mismatched → ✗, and the on-chain
+   calls below are skipped entirely.
 6. **On-chain** — calls `AnchorRegistry.verifyRoot` and `.isRevoked` on `anchor.chainId` via
-   `anchor.contractAddress`, and confirms `anchor.txHash`'s receipt contains a matching
-   `RootAnchored` log. Also prints the fingerprint of `issuer.publicKeyPem` and the
-   registry's own `anchoredBy` address, for out-of-band comparison, and builds any explorer
-   link itself from a hardcoded `(chainId → base URL)` map plus the on-chain `txHash` — it
-   never prints the credential's own `anchor.explorerTxUrl`, which a forged file could point
-   anywhere. A `null` chainId (CareerVault's local simulator) has no public chain to check,
-   and prints ⚠ instead of attempting one.
+   `anchor.contractAddress`, and confirms a receipt exists for the file's `anchor.txHash`
+   containing a matching `RootAnchored` log — this receipt check is what actually confirms
+   `txHash` is real; nothing before it does. Also prints the registry's own `anchoredBy`
+   address (the issuer key fingerprint is printed earlier, in the headline — not here), and
+   builds any explorer link itself from a hardcoded `(chainId → base URL)` map plus that same
+   file-supplied `txHash` — it never prints the credential's own `anchor.explorerTxUrl`,
+   which a forged file could point anywhere. A `null` chainId (CareerVault's local simulator)
+   has no public chain to check, and prints ⚠ instead of attempting one.
 
 Each check prints one line: `✓` pass, `✗` fail, or `⚠` informational (pending, unpinned,
 revoked, or nothing independently checkable — none of these fail the run). The process exits
-`0` only if nothing printed `✗`, otherwise `1`. A final summary line restates, in one
-sentence, exactly what that exit code does and does not prove.
+`0` only if nothing printed `✗`, `1` if something did, and `2` for a usage error (e.g. a bad
+`--registry`). A final summary line restates, in one sentence, exactly what that outcome does
+and does not prove for this specific credential.
 
 ## Registry pinning
 
@@ -87,10 +112,12 @@ CareerVault's authorized anchor wallet can write to CareerVault's **own** regist
   Amoy-anchored credential prints ⚠ **Registry** ("not pinned"), not ✗.
 - `--registry <address>` pins (or overrides) the address for any chain in a single run — this
   is how a local Hardhat deployment (chain id `31337`, a fresh address every time a node is
-  started) gets checked; see below.
+  started) gets checked; see below. A run pinned this way says so: "matches **the registry
+  you pinned with --registry**", not "CareerVault's pinned registry" — this script has no way
+  to independently know an operator-supplied address is actually CareerVault's.
 - If a pin exists for the credential's chain and `anchor.contractAddress` does not match it
   (case-insensitive), **Registry** prints ✗ and the on-chain calls are skipped entirely —
-  querying a contract already known not to be CareerVault's would only produce misleading ✓
+  querying a contract already known not to be the pinned one would only produce misleading ✓
   lines.
 
 ## test-vectors.json
@@ -115,9 +142,10 @@ It holds:
   statementHash` vectors;
 - a Merkle root + one proof each for 1-, 3-, and 4-leaf trees.
 
-Non-ASCII vector values are stored `\u`-escaped (not as raw UTF-8 bytes) so the file stays
-pure ASCII and unambiguous on any terminal or editor — this matters most for `keySortingRfc`,
-where a silently "normalized" combining character or surrogate pair would invalidate the test.
+Every value in this file is stored `\u`-escaped where it would otherwise contain non-ASCII
+bytes (not as raw UTF-8) so the file is pure ASCII and unambiguous on any terminal or editor
+— this matters most for `keySortingRfc`, where a silently "normalized" combining character or
+surrogate pair would invalidate the test.
 
 Signatures are intentionally **not** in this file — RSA key generation isn't deterministic,
 so there is no fixed signature to pin. Signature verification is instead exercised by running
@@ -135,14 +163,18 @@ Every check should print ✓ except **On-chain**, which prints ⚠ for a local-s
 (`anchor.chainId: null` — there is no public chain to check it against), and the summary line
 says this document is NOT independently anchored.
 
-To see a failure, copy the file, change any `credentialSubject` field, and run it again:
-**Integrity** prints ✗ and the process exits 1.
+Two other states worth trying:
+
+- A document that has been requested/signed/approved but not yet anchored (before
+  `/merkle/run` has run for it) has `anchor: null` in its credential. Integrity and the two
+  signatures still print ✓; Merkle and On-chain print ⚠ pending/skipped; the summary says
+  "NOT YET ANCHORED" and does not claim Merkle inclusion.
+- To see a failure, copy a real credential file, change any `credentialSubject` field, and
+  run it again: **Integrity** prints ✗ and the process exits 1.
 
 ## Proving the on-chain + registry checks against a real chain
 
-This was run against a real local Hardhat node (never a public network) as part of this
-tool's own fix-round validation — see `../../.superpowers/sdd/ly-final-hardening-tasks/task-7-report.md`
-for the full transcript. To reproduce:
+Run against a real local Hardhat node (never a public network):
 
     # terminal 1 — a local chain (chainId 31337); leave it running
     cd contracts && npx hardhat node

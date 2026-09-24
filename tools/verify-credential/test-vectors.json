@@ -1,5 +1,5 @@
 {
-  "description": "Known-answer vectors shared by server/src/common/utils/*.spec.ts and tools/verify-credential (--selftest). Generated once from the server's own crypto.util.ts / merkle.util.ts; both implementations must reproduce every value here. Do not hand-edit — regenerate from those utils if the algorithms ever change.",
+  "description": "Known-answer vectors shared by server/src/common/utils/*.spec.ts and tools/verify-credential (--selftest). Generated once from the server's own crypto.util.ts / merkle.util.ts; both implementations must reproduce every value here. Do not hand-edit -- regenerate from those utils if the algorithms ever change. This file is kept pure ASCII (non-ASCII vector values are \\u-escaped) so it is unambiguous on any terminal or editor.",
   "rfc8785": {
     "numbers": [
       {
@@ -81,7 +81,7 @@
               3
             ]
           },
-          "unicode": "café",
+          "unicode": "caf\u00e9",
           "flag": false,
           "zero": 0
         },
