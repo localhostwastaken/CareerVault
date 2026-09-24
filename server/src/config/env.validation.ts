@@ -131,11 +131,10 @@ export const envValidationSchema = Joi.object({
   // with this; when it is unset the dev fallback keeps a generated key in
   // STORAGE_LOCAL_DIR/kms/master.key, so on a container without durable storage each deploy
   // silently orphans every key it wrote — which is precisely how manager signing started
-  // failing with an unexplained 500. Failing to boot is the honest
-  // outcome: an unsigned deploy is worse than no deploy. It is no longer only signing keys at
-  // stake either (R10): this same master key derives the field-encryption KEK, so losing it
-  // also makes every encrypted DB column and every stored PDF permanently unreadable. Back it
-  // up offline.
+  // failing with an unexplained 500. Failing to boot is the honest outcome: an unsigned
+  // deploy is worse than no deploy. It is no longer only signing keys at stake either (R10):
+  // this same master key derives the field-encryption KEK, so losing it also makes every
+  // encrypted DB column and every stored PDF permanently unreadable. Back it up offline.
   KMS_MASTER_KEY: Joi.string()
     .custom((value: string) => {
       if (value && value.trim()) {
