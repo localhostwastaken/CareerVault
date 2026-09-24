@@ -155,7 +155,7 @@ It takes the credential file a holder downloads from `GET /api/v1/documents/:id/
 | On-chain receipt | The file's `txHash` must have a receipt containing a `RootAnchored` log for this root **from this contract**. | [verify-credential.mjs:238-252](../tools/verify-credential/verify-credential.mjs#L238-L252) |
 | Summary | One sentence saying exactly what this run proved and what it didn't. | [verify-credential.mjs:262-299](../tools/verify-credential/verify-credential.mjs#L262-L299) |
 
-The exit code is `0` if no line printed ✗ and `1` if one did ([verify-credential.mjs:324](../tools/verify-credential/verify-credential.mjs#L324)). A usage error, such as a missing or invalid `--registry`, exits `2` ([verify-credential.mjs:377-397](../tools/verify-credential/verify-credential.mjs#L377-L397)). `--selftest` recomputes every known-answer vector with the verifier's own code ([verify-credential.mjs:331-360](../tools/verify-credential/verify-credential.mjs#L331-L360)). **Always read the summary line, not just the exit code** (see Q20).
+The exit code is `0` if no line printed ✗ and `1` if one did ([verify-credential.mjs:324](../tools/verify-credential/verify-credential.mjs#L324)). A missing or invalid `--registry` value is a usage error and exits `2`. A missing credential-file argument prints the usage and exits `1` ([verify-credential.mjs:377-397](../tools/verify-credential/verify-credential.mjs#L377-L397), [verify-credential.mjs:399-403](../tools/verify-credential/verify-credential.mjs#L399-L403)). `--selftest` recomputes every known-answer vector with the verifier's own code ([verify-credential.mjs:331-360](../tools/verify-credential/verify-credential.mjs#L331-L360)). **Always read the summary line, not just the exit code** (see Q20).
 
 ---
 
