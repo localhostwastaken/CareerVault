@@ -569,20 +569,32 @@ describe('field-encryption extension (R10)', () => {
     const OTHER = 'fedcba9876543210';
 
     it.each([
-      ['a failed envelope', new FieldDecryptionError('salt'), true],
-      ['refused plaintext', new PlaintextFieldError('salt'), true],
-      [
-        'a data key that fails to unwrap under our key id',
-        new DataKeyUnavailableError(KEY, KEY, 'failed authentication'),
-        true,
-      ],
-      [
-        'a data key wrapped under another key id',
-        new DataKeyUnavailableError(OTHER, KEY, 'different master key'),
-        false,
-      ],
-      ['any other error', new Error('connection reset'), false],
-    ])('treats %s as unreadable: %s', (_, error, unreadable) => {
+      {
+        kind: 'a failed envelope',
+        error: new FieldDecryptionError('salt'),
+        unreadable: true,
+      },
+      {
+        kind: 'refused plaintext',
+        error: new PlaintextFieldError('salt'),
+        unreadable: true,
+      },
+      {
+        kind: 'a data key that fails to unwrap under our key id',
+        error: new DataKeyUnavailableError(KEY, KEY, 'failed authentication'),
+        unreadable: true,
+      },
+      {
+        kind: 'a data key wrapped under another key id',
+        error: new DataKeyUnavailableError(OTHER, KEY, 'different master key'),
+        unreadable: false,
+      },
+      {
+        kind: 'any other error',
+        error: new Error('connection reset'),
+        unreadable: false,
+      },
+    ])('reads $kind as unreadable: $unreadable', ({ error, unreadable }) => {
       expect(isFieldReadError(error)).toBe(unreadable);
     });
 

@@ -78,9 +78,9 @@ describe('HttpExceptionFilter', () => {
   });
 
   it.each([
-    ['NotFoundException', new NotFoundException('Not found'), 404, 'NOT_FOUND'],
-    ['GoneException', new GoneException('Erased'), 410, 'GONE'],
-  ])('passes a %s through as %i %s', (_, exception, statusCode, code) => {
+    ['NotFoundException', 404, 'NOT_FOUND', new NotFoundException('Not found')],
+    ['GoneException', 410, 'GONE', new GoneException('Erased')],
+  ])('passes a %s through as %i %s', (_, statusCode, code, exception) => {
     const { status, body } = send(exception);
 
     expect(status).toBe(statusCode);
