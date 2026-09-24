@@ -1,0 +1,15 @@
+{
+  "name": "verify-credential",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone, offline verifier for a CareerVault downloaded credential (.jsonld). Imports nothing from server/ — this IS the executable spec.",
+  "scripts": {
+    "verify": "node verify-credential.mjs",
+    "selftest": "node verify-credential.mjs --selftest"
+  },
+  "dependencies": {
+    "canonicalize": "^3.0.0",
+    "ethers": "^6.16.0"
+  }
+}
