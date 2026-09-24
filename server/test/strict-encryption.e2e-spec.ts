@@ -200,8 +200,7 @@ describe('strict field encryption and the batch integrity gate (e2e)', () => {
       await prisma.document.deleteMany({
         where: { organization: { domain: DOMAIN } },
       });
-      if (rootHash)
-        await prisma.merkleRoot.deleteMany({ where: { rootHash } });
+      if (rootHash) await prisma.merkleRoot.deleteMany({ where: { rootHash } });
       await prisma.organization.deleteMany({ where: { domain: DOMAIN } });
       await prisma.user.deleteMany({ where: { email: { contains: SLUG } } });
     }
@@ -222,12 +221,29 @@ describe('strict field encryption and the batch integrity gate (e2e)', () => {
     expect((error as Error).message).not.toContain(plantedSalt);
   });
 
-  it('fails the public lookup of the planted hash closed, disclosing nothing', async () => {
+  it('fails the public lookup of the planted hash closed, as INVALID, disclosing nothing', async () => {
     const res = await request(http)
       .get(api(`/verify/hash/${plantedHash}`))
-      .expect(500);
+      .expect(200);
+    const result = data<{
+      verdict: string;
+      document: unknown;
+      checks: { key: string; status: string; detail: string }[];
+    }>(res);
 
+    expect(result.verdict).toBe('INVALID');
+    expect(result.document).toBeNull();
+    expect(result.checks).toEqual([
+      {
+        key: 'integrity',
+        label: 'Content integrity',
+        status: 'fail',
+        detail:
+          'The stored content failed integrity checks and cannot be verified.',
+      },
+    ]);
     expect(res.text).not.toContain(PLANTED_NAME);
+    expect(res.text).not.toContain(plantedSalt);
   });
 
   it('anchors the genuine document and skips the planted one', async () => {

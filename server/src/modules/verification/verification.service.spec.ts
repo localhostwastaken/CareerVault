@@ -4,6 +4,8 @@ import {
   merkleProofFor,
   merkleRootHex,
 } from '../../common/utils/merkle.util.js';
+import { PlaintextFieldError } from '../../prisma/encryption/field-encryption.extension.js';
+import { FieldDecryptionError } from '../../services/key-management/field-cipher.js';
 import { VerificationService } from './verification.service.js';
 
 /**
@@ -17,47 +19,61 @@ const SALT = 'a'.repeat(64);
 const HASH = hashDocument(CONTENT, SALT);
 const TREE = buildMerkleTree([HASH, 'bb'.repeat(32)]);
 
+const liveDoc = (overrides: Record<string, unknown> = {}) => ({
+  id: 'doc-1',
+  type: 'EXPERIENCE_LETTER',
+  status: 'ANCHORED',
+  holderId: 'holder-1',
+  contentJson: CONTENT,
+  salt: SALT,
+  documentHash: HASH,
+  version: 1,
+  issuedAt: new Date('2026-09-01T00:00:00.000Z'),
+  expiresAt: null,
+  revokedAt: null,
+  revocationReasonCode: null,
+  revocationReasonText: null,
+  signerMemberId: 'member-manager',
+  approverMemberId: 'member-hr',
+  managerSignature: 'manager-signature',
+  hrSignature: 'hr-signature',
+  signingPublicKeyPem: 'PUBLIC KEY',
+  organization: { name: 'Acme Inc', publicKeyPem: 'PUBLIC KEY' },
+  holder: { fullName: 'Jane Doe' },
+  merkleProof: {
+    proofPath: merkleProofFor(TREE, HASH),
+    merkleRoot: {
+      rootHash: merkleRootHex(TREE),
+      polygonTxHash: '0xanchor',
+      polygonBlockNumber: 42n,
+      chainId: 80002,
+      contractAddress: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+      anchoredAt: new Date('2026-09-02T00:00:00.000Z'),
+    },
+  },
+  ...overrides,
+});
+
+type FindFirst = (args: {
+  where: { documentHash: string };
+  select?: object;
+}) => Promise<unknown>;
+
 function verificationService(
   blockchain: object,
   overrides: Record<string, unknown> = {},
+  findFirst?: FindFirst,
+  audits: unknown[] = [],
 ) {
-  const doc = {
-    id: 'doc-1',
-    type: 'EXPERIENCE_LETTER',
-    status: 'ANCHORED',
-    holderId: 'holder-1',
-    contentJson: CONTENT,
-    salt: SALT,
-    documentHash: HASH,
-    version: 1,
-    issuedAt: new Date('2026-09-01T00:00:00.000Z'),
-    expiresAt: null,
-    revokedAt: null,
-    revocationReasonCode: null,
-    revocationReasonText: null,
-    signerMemberId: 'member-manager',
-    approverMemberId: 'member-hr',
-    managerSignature: 'manager-signature',
-    hrSignature: 'hr-signature',
-    signingPublicKeyPem: 'PUBLIC KEY',
-    organization: { name: 'Acme Inc', publicKeyPem: 'PUBLIC KEY' },
-    holder: { fullName: 'Jane Doe' },
-    merkleProof: {
-      proofPath: merkleProofFor(TREE, HASH),
-      merkleRoot: {
-        rootHash: merkleRootHex(TREE),
-        polygonTxHash: '0xanchor',
-        polygonBlockNumber: 42n,
-        chainId: 80002,
-        contractAddress: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
-        anchoredAt: new Date('2026-09-02T00:00:00.000Z'),
+  const doc = liveDoc(overrides);
+  const prisma = {
+    document: { findFirst: findFirst ?? (() => Promise.resolve(doc)) },
+    auditLog: {
+      create: (args: unknown) => {
+        audits.push(args);
+        return Promise.resolve({});
       },
     },
-    ...overrides,
-  };
-  const prisma = {
-    document: { findFirst: () => Promise.resolve(doc) },
-    auditLog: { create: () => Promise.resolve({}) },
   };
   const kms = { verify: () => Promise.resolve(true) };
   return new VerificationService(
@@ -201,5 +217,89 @@ describe('VerificationService for a document whose holder was erased', () => {
     expect(result.document?.content).toMatchObject({
       employeeName: 'Jane Doe',
     });
+  });
+});
+
+/**
+ * A row whose sealed fields won't open, or that strict mode refuses as plaintext, was
+ * written around the app. Its public lookup fails closed as INVALID, disclosing nothing, and
+ * one such hash must not take down a whole bulk request with it.
+ */
+describe('VerificationService for a record whose stored fields cannot be read', () => {
+  const chainUp = {
+    verifyRoot: () => Promise.resolve({ exists: true }),
+    isRevoked: () => Promise.resolve({ revoked: false }),
+  };
+  const PLANTED = 'cd'.repeat(32);
+  const UNREADABLE = {
+    key: 'integrity',
+    label: 'Content integrity',
+    status: 'fail',
+    detail:
+      'The stored content failed integrity checks and cannot be verified.',
+  };
+
+  // The full read of the planted row throws; an id-only read touches no encrypted field.
+  const lookup =
+    (error: Error, live?: FindFirst): FindFirst =>
+    (args) =>
+      args.where.documentHash !== PLANTED && live
+        ? live(args)
+        : args.select
+          ? Promise.resolve({ id: 'planted-1' })
+          : Promise.reject(error);
+
+  it.each([
+    ['planted plaintext', new PlaintextFieldError('contentJson')],
+    ['an envelope that fails authentication', new FieldDecryptionError('salt')],
+  ])('reports %s as INVALID and audits it', async (_, error) => {
+    const audits: unknown[] = [];
+    const service = verificationService(chainUp, {}, lookup(error), audits);
+
+    const result = await service.verifyByHash(PLANTED);
+
+    expect(result).toEqual({
+      verdict: 'INVALID',
+      anchored: false,
+      erased: false,
+      document: null,
+      anchor: null,
+      revocation: null,
+      checks: [UNREADABLE],
+    });
+    expect(audits).toMatchObject([
+      {
+        data: {
+          action: 'DOCUMENT_CHECK_FAILED',
+          entityId: 'planted-1',
+          newValue: { verdict: 'INVALID' },
+        },
+      },
+    ]);
+  });
+
+  it('keeps a bulk request answering when one of its hashes is planted', async () => {
+    const service = verificationService(
+      chainUp,
+      {},
+      lookup(new PlaintextFieldError('salt'), () => Promise.resolve(liveDoc())),
+    );
+
+    const results = await service.verifyBulk([PLANTED, HASH]);
+
+    expect(results.map((r) => [r.hash, r.result.verdict])).toEqual([
+      [PLANTED, 'INVALID'],
+      [HASH, 'VERIFIED'],
+    ]);
+  });
+
+  it('still fails loudly on any other error', async () => {
+    const service = verificationService(chainUp, {}, () =>
+      Promise.reject(new Error('connection reset')),
+    );
+
+    await expect(service.verifyByHash(PLANTED)).rejects.toThrow(
+      'connection reset',
+    );
   });
 });

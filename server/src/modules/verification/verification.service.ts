@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { isFieldReadError } from '../../prisma/encryption/field-encryption.extension.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { KeyManagementService } from '../../services/key-management/key-management.service.js';
 import { BlockchainService } from '../../services/blockchain/blockchain.service.js';
@@ -59,6 +60,8 @@ type VerifiableDocument = Prisma.DocumentGetPayload<{
 // DB-authoritative revocation per R7) — never trusts a stored "is valid" flag.
 @Injectable()
 export class VerificationService {
+  private readonly logger = new Logger(VerificationService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly kms: KeyManagementService,
@@ -68,10 +71,17 @@ export class VerificationService {
 
   async verifyByHash(hash: string) {
     if (!/^[0-9a-f]{64}$/i.test(hash)) return this.notFound();
-    const doc = await this.prisma.document.findFirst({
-      where: { documentHash: hash.toLowerCase() },
-      include: INCLUDE,
-    });
+    const documentHash = hash.toLowerCase();
+    let doc: VerifiableDocument | null;
+    try {
+      doc = await this.prisma.document.findFirst({
+        where: { documentHash },
+        include: INCLUDE,
+      });
+    } catch (error) {
+      if (!isFieldReadError(error)) throw error;
+      return this.unreadable(documentHash, error);
+    }
     return doc ? this.present(doc, 'public') : this.notFound();
   }
 
@@ -377,6 +387,35 @@ export class VerificationService {
     } catch {
       // Audit failure is non-fatal to verification.
     }
+  }
+
+  // Sealed fields that won't open, or plaintext that strict mode refuses, mean the row was
+  // written around the app. Fail closed as INVALID, disclosing nothing, and record it: one
+  // such row must not turn a lookup, or a whole bulk request, into a 500.
+  private async unreadable(documentHash: string, error: Error) {
+    const row = await this.prisma.document.findFirst({
+      where: { documentHash },
+      select: { id: true },
+    });
+    if (row) {
+      this.logger.error(
+        `Public verification of document ${row.id} failed closed: ${error.message}`,
+      );
+      await this.writeAuditLog(row.id, 'INVALID');
+    }
+    return {
+      ...this.notFound(),
+      verdict: 'INVALID' as Verdict,
+      checks: [
+        {
+          key: 'integrity',
+          label: 'Content integrity',
+          status: 'fail' as CheckStatus,
+          detail:
+            'The stored content failed integrity checks and cannot be verified.',
+        },
+      ],
+    };
   }
 
   private notFound() {
