@@ -27,6 +27,7 @@ function merkleService(
   stored: [string, Stored][] = [valid('doc-0'), valid('doc-1')],
 ) {
   const created: Record<string, unknown>[] = [];
+  const selections: { where: Record<string, unknown> }[] = [];
   const proofs: string[] = [];
   const anchored: string[] = [];
   const tx = {
@@ -53,15 +54,17 @@ function merkleService(
   const prisma = {
     document: {
       // Every candidate claims the hash its genuine content would have.
-      findMany: () =>
-        Promise.resolve(
+      findMany: (args: { where: Record<string, unknown> }) => {
+        selections.push(args);
+        return Promise.resolve(
           stored.map(([id], i) => ({
             id,
             documentHash: hashDocument(contentOf(id), SALT),
             holderId: `holder-${i}`,
             type: 'EXPERIENCE_LETTER',
           })),
-        ),
+        );
+      },
       findUnique: ({ where }: { where: { id: string } }) => {
         const row = rows.get(where.id);
         return row instanceof Error
@@ -81,7 +84,7 @@ function merkleService(
     notifications as never,
     pdf as never,
   );
-  return { service, created, proofs, anchored };
+  return { service, created, proofs, anchored, selections };
 }
 
 describe('MerkleService', () => {
@@ -194,6 +197,23 @@ describe('MerkleService', () => {
     expect(created[0]).toMatchObject({ documentCount: 1 });
     expect(proofs).toEqual(['genuine']);
     expect(anchored).toEqual(['genuine']);
+  });
+
+  // Erasure nulls the salt for good, so such a document can never pass the gate. Selecting it
+  // would log a false integrity alarm on every batch, forever.
+  it('never selects an erased document as a candidate', async () => {
+    const { service, selections } = merkleService({
+      verifyRoot: () => Promise.resolve({ exists: false }),
+      anchorRoot: () => Promise.resolve({ txHash: '0xanchor' }),
+    });
+
+    await service.runBatch('org-1');
+
+    expect(selections[0].where).toMatchObject({
+      status: 'ISSUED',
+      salt: { not: null },
+      organizationId: 'org-1',
+    });
   });
 
   it('sends nothing on-chain when no candidate passes the gate', async () => {

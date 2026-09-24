@@ -64,6 +64,8 @@ export class MerkleService {
         where: {
           status: 'ISSUED',
           documentHash: { not: null },
+          // An erased document has lost its salt for good; the gate could only reject it.
+          salt: { not: null },
           merkleProof: { is: null },
           ...(organizationId ? { organizationId } : {}),
         },
