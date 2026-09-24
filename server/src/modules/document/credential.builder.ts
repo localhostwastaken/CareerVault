@@ -1,9 +1,10 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, GoneException } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client.js';
 import {
   explorerTxUrl,
   networkName,
 } from '../../services/blockchain/chain-explorer.js';
+import { isErased } from '../verification/is-erased.js';
 
 // Self-sovereign verification bundle (GDPR / salt-portability).
 //
@@ -39,6 +40,13 @@ export type CredentialDocument = Prisma.DocumentGetPayload<{
 }>;
 
 export function buildCredential(doc: CredentialDocument): VerifiableCredential {
+  // GDPR erasure keeps the hash of a signed document but deletes what proves it, and the
+  // issuer asking for it should hear that, not that it was never issued.
+  if (doc.documentHash && isErased(doc)) {
+    throw new GoneException(
+      'The holder of this document exercised their right to erasure, so its content and salt no longer exist and no credential can be built.',
+    );
+  }
   // The salt+hash only exist once a manager has signed; a draft has nothing to prove.
   if (!doc.salt || !doc.documentHash) {
     throw new ConflictException(

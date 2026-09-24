@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, GoneException } from '@nestjs/common';
 import {
   buildCredential,
   type CredentialDocument,
@@ -155,6 +155,23 @@ describe('buildCredential', () => {
 
     expect(credential.issuer.publicKeyPem).toBe(CURRENT_ORG_KEY);
   });
+
+  // GDPR erasure keeps the hash but deletes the salt and scrubs the content, so an issuer
+  // downloading the credential must learn why it is gone, not that it was never issued.
+  it.each([
+    ['salt deleted and content scrubbed', { salt: null, contentJson: {} }],
+    ['content scrubbed', { contentJson: {} }],
+  ])(
+    'refuses an erased document (%s) as 410 Gone, naming erasure',
+    (_, erased) => {
+      const doc = Object.assign(baseDoc(), erased);
+
+      expect(() => buildCredential(doc)).toThrow(GoneException);
+      expect(() => buildCredential(doc)).toThrow(
+        'The holder of this document exercised their right to erasure, so its content and salt no longer exist and no credential can be built.',
+      );
+    },
+  );
 
   it('refuses to build a credential before the document has a salt and hash', () => {
     const doc = baseDoc();

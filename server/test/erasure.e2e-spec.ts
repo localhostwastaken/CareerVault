@@ -9,8 +9,9 @@ import { PrismaService } from '../src/prisma/prisma.service.js';
 
 // GDPR Art. 17 end to end: an issued, anchored document whose holder erases their account
 // keeps only its hash, signatures and Merkle proof. Its public lookup then returns no
-// content and says the holder exercised their right to erasure, its PDF is gone, and the
-// erasure itself is on the audit trail without any PII.
+// content and says the holder exercised their right to erasure, its credential can no longer
+// be downloaded and says why, its PDF and version notes are gone, and the erasure itself is
+// on the audit trail without any PII.
 
 const SLUG = `${Date.now().toString(36)}er`;
 const DOMAIN = `e2e-erase-${SLUG}.test`;
@@ -66,11 +67,21 @@ describe('GDPR erasure (e2e)', () => {
 
   const verify = async () =>
     data<VerifyResult>(
-      await request(http).get(api(`/verify/hash/${documentHash}`)).expect(200),
+      await request(http)
+        .get(api(`/verify/hash/${documentHash}`))
+        .expect(200),
     );
 
   const pdfPath = () =>
     join(storageDir, 'objects', 'documents', `${documentId}.pdf`);
+
+  const changeSummaries = async () =>
+    (
+      await prisma.documentVersion.findMany({
+        where: { documentId },
+        select: { changeSummary: true },
+      })
+    ).map((v) => v.changeSummary);
 
   beforeAll(async () => {
     // process.env wins over .env: a disposable key store and PDF directory, and no cron, so
@@ -143,7 +154,7 @@ describe('GDPR erasure (e2e)', () => {
     ).expect(200);
     const approved = await post(
       `/documents/${documentId}/approve`,
-      {},
+      { notes: `Confirmed with ${HOLDER_NAME}` },
       hr.token,
     ).expect(200);
     documentHash = data<{ documentHash: string }>(approved).documentHash;
@@ -166,8 +177,7 @@ describe('GDPR erasure (e2e)', () => {
       await prisma.document.deleteMany({
         where: { organization: { domain: DOMAIN } },
       });
-      if (rootHash)
-        await prisma.merkleRoot.deleteMany({ where: { rootHash } });
+      if (rootHash) await prisma.merkleRoot.deleteMany({ where: { rootHash } });
       await prisma.organization.deleteMany({ where: { domain: DOMAIN } });
       await prisma.user.deleteMany({
         where: { OR: [{ email: { contains: SLUG } }, { id: { in: ids } }] },
@@ -184,6 +194,9 @@ describe('GDPR erasure (e2e)', () => {
     expect(result.erased).toBe(false);
     expect(result.document?.content.employeeName).toBe(HOLDER_NAME);
     expect(existsSync(pdfPath())).toBe(true);
+    expect(await changeSummaries()).toContain(
+      `Approved by HR: Confirmed with ${HOLDER_NAME}`,
+    );
   });
 
   describe('after the holder erases their account', () => {
@@ -238,6 +251,31 @@ describe('GDPR erasure (e2e)', () => {
 
     it('deletes the stored PDF', () => {
       expect(existsSync(pdfPath())).toBe(false);
+    });
+
+    it('drops the free-text change summary of every version', async () => {
+      const summaries = await changeSummaries();
+
+      expect(summaries.length).toBeGreaterThan(0);
+      expect(summaries.every((summary) => summary === null)).toBe(true);
+    });
+
+    it('answers a credential download by the issuer with 410 Gone, saying why', async () => {
+      const res = await request(http)
+        .get(api(`/documents/${documentId}/credential`))
+        .set('Authorization', `Bearer ${hr.token}`)
+        .expect(410);
+
+      expect(res.body).toMatchObject({
+        success: false,
+        error: {
+          code: 'GONE',
+          message: expect.stringContaining(
+            'exercised their right to erasure',
+          ) as string,
+        },
+      });
+      expect(res.text).not.toContain(HOLDER_NAME);
     });
 
     it('records the erasure on the audit trail without PII', async () => {

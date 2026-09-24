@@ -106,7 +106,8 @@ describe('UserService.deleteAccount (GDPR erasure)', () => {
     expect(calls('documentMerkleProof', 'deleteMany')).toEqual([]);
   });
 
-  it('still scrubs every version snapshot', async () => {
+  // A version's change summary is free text (HR's approval note) that can name the holder.
+  it('still scrubs every version snapshot and its change summary', async () => {
     const { service, calls } = userService();
 
     await service.deleteAccount(USER);
@@ -117,7 +118,7 @@ describe('UserService.deleteAccount (GDPR erasure)', () => {
         op: 'updateMany',
         args: {
           where: { document: { holderId: USER } },
-          data: { contentJson: {} },
+          data: { contentJson: {}, changeSummary: null },
         },
       },
     ]);

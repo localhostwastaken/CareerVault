@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { GoneException, NotFoundException } from '@nestjs/common';
 import {
   DataKeyUnavailableError,
   SigningKeyUnavailableError,
@@ -77,12 +77,15 @@ describe('HttpExceptionFilter', () => {
     expect(body).toMatchObject({ error: { code: 'SIGNING_KEY_UNAVAILABLE' } });
   });
 
-  it('passes an HttpException through', () => {
-    const { status, body } = send(new NotFoundException('Document not found'));
+  it.each([
+    ['NotFoundException', new NotFoundException('Not found'), 404, 'NOT_FOUND'],
+    ['GoneException', new GoneException('Erased'), 410, 'GONE'],
+  ])('passes a %s through as %i %s', (_, exception, statusCode, code) => {
+    const { status, body } = send(exception);
 
-    expect(status).toBe(404);
+    expect(status).toBe(statusCode);
     expect(body).toMatchObject({
-      error: { code: 'NOT_FOUND', message: 'Document not found' },
+      error: { code, message: exception.message, statusCode },
     });
   });
 });

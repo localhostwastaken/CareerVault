@@ -89,6 +89,7 @@ function codeFromStatus(status: number): string {
     403: 'FORBIDDEN',
     404: 'NOT_FOUND',
     409: 'CONFLICT',
+    410: 'GONE',
     422: 'UNPROCESSABLE_ENTITY',
     429: 'RATE_LIMITED',
   };

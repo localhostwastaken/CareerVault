@@ -47,7 +47,8 @@ export class UserService {
   //
   // Also in the one transaction, so erasure is all-or-nothing:
   //  - documentVersion.contentJson: sign/updateDraft/approve each snapshot the full
-  //    content into a version row, so every snapshot is scrubbed too.
+  //    content into a version row, so every snapshot is scrubbed too, and its free-text
+  //    changeSummary, which can name the holder, is dropped.
   //  - verifierApiKey: a key is a live credential bound to the erased identity. Revoking
   //    here mirrors the cancel-revokes-keys rule (R6) so no credential outlives its owner.
   //  - sharedLink: public links resolve by urlToken with no session, so they would keep
@@ -102,7 +103,7 @@ export class UserService {
       }),
       this.prisma.documentVersion.updateMany({
         where: { document: { holderId: userId } },
-        data: { contentJson: {} as Prisma.InputJsonValue },
+        data: { contentJson: {} as Prisma.InputJsonValue, changeSummary: null },
       }),
       this.prisma.verifierApiKey.updateMany({
         where: { userId, status: 'ACTIVE' },
