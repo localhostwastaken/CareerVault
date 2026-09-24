@@ -45,7 +45,13 @@ export function VerificationReport({ result }: { result: VerificationResult }) {
           issuer.
         </Notice>
       )}
-      {result.verdict === 'INVALID' && (
+      {result.erased && (
+        <Notice tone="neutral" title="The holder erased this credential">
+          They exercised their right to erasure, so the original content no longer exists and nothing can be checked
+          against this hash. Only the hash and its anchor remain.
+        </Notice>
+      )}
+      {result.verdict === 'INVALID' && !result.erased && (
         <Notice tone="revoked" title="This credential could not be verified">
           One or more authenticity checks failed — the content may have been altered. Don't rely on it; contact the
           issuing organization directly.

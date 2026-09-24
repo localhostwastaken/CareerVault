@@ -37,6 +37,8 @@ export interface VerificationDocument {
 export interface VerificationResult {
   verdict: Verdict
   anchored: boolean
+  // The holder exercised GDPR erasure: only the hash and its anchor remain, so `document` is null.
+  erased: boolean
   document: VerificationDocument | null
   anchor: VerificationAnchor | null
   revocation: { revokedAt: string | null; code: string | null; reason: string | null } | null
