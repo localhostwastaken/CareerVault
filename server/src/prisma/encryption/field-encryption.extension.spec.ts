@@ -375,6 +375,19 @@ describe('field-encryption extension (R10)', () => {
       expect(result).toEqual(legacy);
     });
 
+    it('never opens an envelope-looking value inside a plain Json column', async () => {
+      const row = {
+        action: 'DOCUMENT_REJECTED',
+        newValue: { salt: `${ENVELOPE_PREFIX}typed-into-a-reason` },
+      };
+
+      const { result } = await run('AuditLog', 'findUnique', {}, () =>
+        structuredClone(row),
+      );
+
+      expect(result).toEqual(row);
+    });
+
     it('lets a decryption failure propagate unchanged', async () => {
       // A salt envelope moved into another column fails authentication (AAD mismatch).
       const { salt } = await seal({ salt: 'c0ffee' });
@@ -443,6 +456,27 @@ describe('field-encryption extension (R10)', () => {
         managerSignature: null,
         hrSignature: null,
       });
+    });
+
+    // An AI-extracted skill can be named anything, SaltStack included.
+    it('never walks into a plain Json column, so a key named salt there is not a field', async () => {
+      const skills = {
+        id: 's1',
+        skillsJson: ['SaltStack'],
+        confidenceScores: { salt: 0.9, hrSignature: 0.4 },
+        industriesJson: null,
+      };
+
+      await expect(read(skills, 'ExtractedSkill')).resolves.toEqual(skills);
+    });
+
+    it('still refuses plaintext in a Document nested beside a plain Json column', async () => {
+      await expect(
+        read(
+          { proofPath: [{ salt: 1 }], document: { salt: 'c0ffee' } },
+          'DocumentMerkleProof',
+        ),
+      ).rejects.toBeInstanceOf(PlaintextFieldError);
     });
 
     it('leaves models without encrypted fields alone', async () => {

@@ -1,8 +1,7 @@
 import type { Logger } from '@nestjs/common';
 import { hashDocument } from '../../common/utils/crypto.util.js';
-import { PlaintextFieldError } from '../../prisma/encryption/field-encryption.extension.js';
+import { isFieldReadError } from '../../prisma/encryption/field-encryption.extension.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
-import { FieldDecryptionError } from '../../services/key-management/field-cipher.js';
 
 // Batch-time integrity gate (R4 hash, R10 field encryption). Every root the batch anchors is
 // sent by CareerVault's own wallet, so a candidate joins the tree only if its encrypted
@@ -63,10 +62,9 @@ async function failureOf(
   }
 }
 
-// These two name the field only. Any other error is reduced to its class name, since a
-// message such as a JSON parse error's can quote the text it failed on.
+// Any error but a field read error is reduced to its class name, since a message such as a
+// JSON parse error's can quote the text it failed on.
 function describe(error: unknown): string {
-  if (error instanceof PlaintextFieldError) return error.message;
-  if (error instanceof FieldDecryptionError) return error.message;
+  if (isFieldReadError(error)) return error.message;
   return error instanceof Error ? error.name : 'unknown error';
 }

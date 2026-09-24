@@ -8,6 +8,7 @@ import {
   ENCRYPTED_FIELD_NAMES,
   ENCRYPTED_FIELDS,
   JSON_FIELDS,
+  PLAIN_JSON_FIELD_NAMES,
 } from './encrypted-fields.js';
 
 // R10 field encryption, applied where every query passes: the columns in ENCRYPTED_FIELDS
@@ -38,6 +39,16 @@ export class PlaintextFieldError extends Error {
     );
     this.name = 'PlaintextFieldError';
   }
+}
+
+/** A stored field that can't be read as R10 data; both kinds name the field, never its value. */
+export function isFieldReadError(
+  error: unknown,
+): error is PlaintextFieldError | FieldDecryptionError {
+  return (
+    error instanceof PlaintextFieldError ||
+    error instanceof FieldDecryptionError
+  );
 }
 
 export interface QueryCall {
@@ -299,6 +310,7 @@ function isNullTest(value: unknown): boolean {
 
 // Encrypted values are leaves: decrypted Json is caller data (it may hold a `salt` key of
 // its own), and legacy plaintext is returned exactly as stored unless `strict` refuses it.
+// A plain Json column is caller data too, so its value is never entered at all.
 async function openResult(
   cipher: FieldCipher,
   result: unknown,
@@ -313,6 +325,7 @@ async function openResult(
     }
     if (!isRecord(node)) return;
     for (const [key, value] of Object.entries(node)) {
+      if (PLAIN_JSON_FIELD_NAMES.has(key)) continue;
       if (!ENCRYPTED_FIELD_NAMES.has(key)) visit(value);
       else if (isEnvelope(value))
         pending.push(
