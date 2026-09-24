@@ -2,7 +2,7 @@
 
 These rules are binding for all work in `server/`. They exist to keep a 4-person team's code consistent and review-ready for an investor pitch. Optimize for reuse, simplicity, and faithful architecture — **no AI slop, no over-engineering.**
 
-> Sibling rule files: [`../client/Claude.md`](../client/Claude.md) (React) and `../ai-service/Claude.md` (Python AI). Source specs live in [`../documentation/`](../documentation/). Cross-doc contradictions are resolved in the approved plan as **R1–R9** and restated under "Canonical truths" below — never re-litigate them; if a doc disagrees, this file + the plan win.
+> Sibling rule files: [`../client/Claude.md`](../client/Claude.md) (React) and `../ai-service/Claude.md` (Python AI). Source specs live in [`../documentation/`](../documentation/). Cross-doc contradictions are resolved in the approved plan as **R1–R9**, plus **R10** (field encryption, added by the LY final-hardening plan), and restated under "Canonical truths" below — never re-litigate them; if a doc disagrees, this file + the plan win.
 
 ## Stack (do not change without updating this file)
 - NestJS 11 · Node 20 LTS · TypeScript 5 (strict)
@@ -17,11 +17,11 @@ These rules are binding for all work in `server/`. They exist to keep a 4-person
 
 ## Adapter rule (CRITICAL)
 Every external integration goes behind an interface in `src/services/<name>/` with a **mock/local** impl and a **real** impl, selected by `ConfigService`. Never call AWS/Stripe/Polygon/SES SDKs directly from a feature module.
-- `KeyManagementService` — LocalKms (Node crypto, RSA-2048) ↔ AwsKms
-- `BlockchainService` — LocalAnchor ↔ PolygonAmoy (ethers v6)
-- `PaymentService` — MockStripe ↔ StripeTest
-- `EmailService` — ConsoleEmail ↔ SES
-- `StorageService` — LocalDisk ↔ S3
+- `KeyManagementService` — **LocalKms (implemented)**: Node crypto; RSA-2048 org signing keys, plus R10 data keys via `generateDataKey`/`decryptDataKey`, which mirror AWS KMS `GenerateDataKey`/`Decrypt`. AwsKms is **roadmap**: the factory throws for any driver but `local`.
+- `BlockchainService` — LocalAnchor (JSON-ledger simulator, dev default) ↔ **PolygonAnchor (implemented)**: `polygon-anchor.service.ts`, ethers v6, `BLOCKCHAIN_DRIVER=amoy`.
+- `PaymentService` — MockStripe ↔ StripeTest (**roadmap**; only `mock` exists)
+- `EmailService` — ConsoleEmail / Gmail SMTP ↔ SES (**roadmap**)
+- `StorageService` — LocalDisk, always wrapped by `EncryptedStorageService` (R10) ↔ S3 (**roadmap**)
 - `AiClient` — HTTP client to `ai-service`
 
 ## Folder layout (module-first; mirror NestJS conventions)
@@ -43,9 +43,31 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
 ## Canonical truths (single source — never fork these)
 - **DocumentStatus:** `REQUESTED → DRAFT → PENDING_HR → ISSUED → ANCHORED`; terminal `REVOKED`, `EXPIRED`. Reject = action returning to `DRAFT` (no REJECTED state). `merkleStatus` is derived, not stored.
 - **Roles:** `ORG_ADMIN, MANAGER, HR, HOLDER, RECRUITER` (authenticated) + public `VERIFIER` (no account). Defined once in `schema.prisma`.
-- **Hash (R4):** `document_hash = SHA-256( JCS(content_json) ++ salt )`, salt = 32-byte hex appended as UTF-8. Use `common/utils/crypto.ts` only — never inline. Worked example lives in that file's header comment.
-- **Signing (R3):** RSA-2048 / RS256, sign the **hash**, via `KeyManagementService`. Verify with org public key.
+- **Hash (R4):** `document_hash = SHA-256( JCS(content_json) ++ salt )`, lowercase hex.
+  - `content_json` is the validated subject after `normalizeSubject`.
+  - The salt is `randomBytes(32)`, stored as 64 lowercase hex chars and appended as UTF-8 text.
+  - Use `common/utils/crypto.util.ts` only — never inline. Worked examples are in that file's header and in `documentation/Crypto_Pipeline_Viva_Guide.md` §2.
+  - `tools/verify-credential/test-vectors.json` gates both this implementation and the offline verifier.
+- **Signing (R3):** RSA-2048 / RS256 via `KeyManagementService`, over a per-role **statement**, never the bare hash (C1).
+  - `signingStatementHash(documentHash, role, memberId)` = `SHA-256(JCS({v:1, documentHash, role, memberId}))`.
+  - The manager signs `MANAGER` at sign; HR signs `HR` at approve.
+  - Both use the org's **one custodial key**. RBAC enforces separation of duties and the statements record it; two keys don't prove it.
+  - Verify against the document's pinned `signing_public_key_pem`, falling back to the org key.
+- **Merkle:** `common/utils/merkle.util.ts` only. `merkletreejs` with `sortPairs: true`; leaves are the raw 32-byte document hashes (not re-hashed); an odd node is promoted, not duplicated.
 - **Contract (R2):** `AnchorRegistry` (`anchorRoot`, `revokeDocument`, `verifyRoot`, `isRevoked`).
+  - On Polygon Amoy (chain 80002) at `<AMOY_REGISTRY_ADDRESS>`; read the real address from `contracts/deployments/amoy.json` once deployed.
+  - Reached through `PolygonAnchorService`. Only authorized anchors can write.
+  - The server's ABI copy lives in `services/blockchain/anchor-registry.abi.ts`.
+- **Field encryption (R10):** the Prisma query extension (`prisma/encryption/field-encryption.extension.ts`) seals `ENCRYPTED_FIELDS` (`prisma/encryption/encrypted-fields.ts`) through `FieldCipher` (`services/key-management/field-cipher.ts`).
+  - **Fields:** `Document.{contentJson, salt, managerSignature, hrSignature, revocationReasonText}` and `DocumentVersion.{contentJson, changeSummary}`.
+  - **Envelope:** `cvenc:v1:<keyId 16 hex>:<wrappedDek>:<iv>:<ciphertext‖tag>`, base64url and unpadded. Json columns store it as a JSON string.
+  - **Cipher:** AES-256-GCM, a fresh 12-byte IV per field, **AAD `careervault|<field>|v1`** (the bare field name), and one data key (DEK) per written row.
+  - **Key hierarchy:** `KMS_MASTER_KEY` (32 bytes) → HKDF-SHA256 (`info = careervault/field-kek/v1`) → field KEK. The `keyId` is the first 16 hex of SHA-256(KEK). The KEK wraps each DEK with AES-256-GCM (AAD `careervault|dek|v1`). The org RSA key files are wrapped directly under the master key.
+  - **PDFs:** issued PDFs are sealed by `EncryptedStorageService` with label `file:<key>`.
+  - **Plaintext by design:** `documentHash`, `signingPublicKeyPem`, user email and name (a blind index is roadmap), and embeddings.
+  - **Known gap:** revocation and rejection reason text is also copied into `audit_logs.new_value` and notifications, in plaintext.
+  - **Never** filter, sort or `distinct` on an encrypted field (the extension throws), and never write one through a nested relation write.
+  - `npm run db:audit-encryption` proves the DB and storage hold no plaintext.
 - **Billing (R5):** org tier = promotional feature gates (not Stripe). User `subscriptions.tier` = Stripe-billed.
 - **Revocation (R7):** DB status authoritative; on-chain is secondary.
 - **Region (R8):** ap-south-1. **Manager auth (R9):** external = magic link only; internal = email/password.
@@ -63,7 +85,7 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
 - **Org signing keys must live on durable storage.** With `KEY_MANAGEMENT_DRIVER=local` the private keys are files under `STORAGE_LOCAL_DIR` while only a POINTER (`organizations.kms_key_id`) is in Postgres. On an ephemeral container the files vanish on every deploy and the pointer does not, which took every signature down with a bare 500. Two things prevent it now and both must stay: a mounted disk in `render.yaml`, and `KMS_MASTER_KEY` being **required in production** (unset, each process mints a throwaway master key). `ensureOrgKey` verifies the material exists and re-keys if it does not — safe only because `documents.signing_public_key_pem` records the key each signature was made under, so re-keying never invalidates history. Do not remove that column's use in `VerificationService`.
 
 ## Reuse catalog (search before writing new)
-`PrismaService`, `ConfigService`, Pino `Logger`, `crypto.ts`, `merkle.ts`, `pagination.ts`, response/error envelope, `AuditService` + `@Audit`, `EventEmitter2` bus, the six adapters. Three similar handlers beat one over-abstracted base.
+`PrismaService`, `ConfigService`, Pino `Logger`, `crypto.util.ts`, `merkle.util.ts`, `FieldCipher`, `pagination.ts`, response/error envelope, `AuditService` + `@Audit`, `EventEmitter2` bus, the adapters in `services/`. Three similar handlers beat one over-abstracted base.
 
 ## Coding discipline
 - Files: services ≤ ~200 lines, controllers thin (no business logic). Split when larger. One responsibility per file; filename matches the primary export.
