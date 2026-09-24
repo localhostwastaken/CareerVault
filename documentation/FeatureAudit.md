@@ -1,6 +1,13 @@
 # CareerVault — Feature Audit
 
 > Status as of August 2026. Covers all implemented and working features across backend, frontend, and AI service.
+>
+> **Updated September 2026 (LY final hardening):**
+> - field-level envelope encryption (R10) and encrypted PDFs;
+> - the Polygon Amoy anchoring driver (the contract deploy is still pending);
+> - the standalone offline credential verifier.
+>
+> The byte-exact spec, with code references, is in [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.md).
 
 ---
 
@@ -27,7 +34,12 @@
 **Features:**
 - JWT RS256 — 15-min access token + 7-day refresh token
 - Refresh token rotation with IP/user-agent tracking
-- GDPR-compliant account deletion (anonymize PII, revoke sessions, drop discovery data)
+- GDPR account deletion. What it does:
+  - anonymizes PII and revokes sessions, API keys and share links;
+  - drops discovery data;
+  - nulls the salt on all the holder's documents, so the anchored hash becomes unlinkable;
+  - scrubs drafts and every version snapshot.
+- What it doesn't do yet: issued documents' content is retained (encrypted) as the issuer's record, and PDFs aren't deleted (roadmap).
 
 ---
 
@@ -99,10 +111,13 @@ Plus a public marketing landing at `/`.
 
 Per R3 & R4 spec:
 
-- **Hash:** `SHA-256(JCS(contentJson) ++ salt)` — JCS = JSON Canonicalization Scheme; salt = 32-byte random hex
-- **Signatures:** RSA-2048 / RS256 — Manager signs first, then HR (dual approval)
-- **Key Management:** LocalKMS (Node crypto) in dev; AWS KMS planned (adapter stub — not yet wired)
-- **Key files:** JWT RS256 keys auto-generated under `server/keys/` if not set in `.env`; per-org signing keys under `storage/kms/` (owner-only)
+- **Hash:** `SHA-256(JCS(contentJson) ++ salt)`. JCS is the JSON Canonicalization Scheme (RFC 8785). The salt is 32 random bytes, stored as 64 hex chars.
+- **Signatures:** RSA-2048 / RS256. The manager signs first, then HR (dual approval). Each signs a distinct role statement, `SHA-256(JCS({v:1, documentHash, role, memberId}))`, not the bare hash. Both use the org's **single custodial key**: separation of duties is enforced by RBAC and recorded in the statements, not proven by two personal keys (per-member keys are roadmap).
+- **Key Management:** LocalKMS (Node crypto) in every environment.
+  - Per-org RSA-2048 private keys are stored as files, AES-256-GCM-wrapped under `KMS_MASTER_KEY`, which is required in production.
+  - It also provides R10 data keys via `generateDataKey`/`decryptDataKey`, which mirror AWS KMS.
+  - **Roadmap:** the AWS KMS driver. `KEY_MANAGEMENT_DRIVER=aws` throws "not implemented".
+- **Key files:** JWT RS256 keys auto-generated under `server/keys/` if not set in `.env`; per-org signing keys under `storage/kms/` (owner-only, wrapped under the master key)
 - **Document versions:** each draft edit creates an auditable version record
 
 ---
@@ -114,9 +129,40 @@ Per R3 & R4 spec:
 - `GET /api/v1/merkle/batches` — list historical batches
 
 **Features:**
-- Daily midnight cron batch (gated by `WORKER=true`)
-- LocalAnchor in dev (persistent JSON ledger at `./storage/chain/ledger.json`); Polygon Amoy adapter planned (ethers v6) — stub, not yet wired
-- Merkle proofs embedded per document → included in JSON-LD credential download
+- Daily midnight (Asia/Kolkata) cron batch, gated by `WORKER=true`, plus an admin **Anchor now** card on `/app/analytics` with recent batches and PolygonScan links.
+- Merkle tree: SHA-256 over sorted pairs; leaves are the raw document hashes; an odd node is promoted, not duplicated.
+- LocalAnchor (a persistent JSON ledger at `./storage/chain/ledger.json`) is the dev default. Its anchors have no chain id and can't be checked independently.
+- **PolygonAnchorService is implemented** (`BLOCKCHAIN_DRIVER=amoy`, ethers v6). It calls `AnchorRegistry.anchorRoot` on Polygon Amoy (chain 80002) with:
+  - a 30 gwei tip floor;
+  - serialized writes;
+  - confirmation polling (2 confirmations);
+  - idempotent retries;
+  - a boot self-check;
+  - verification that degrades to "pending" when the RPC is down.
+- **Pending:** the contract deploy to Amoy is a human-gated step; the address will be `<AMOY_REGISTRY_ADDRESS>`.
+- Merkle proofs are stored per document and included in the JSON-LD credential download, along with the chain id, contract and transaction.
+
+---
+
+## Field Encryption (R10) ✅
+
+Application-level envelope encryption, so a live SQL view, a dump or a backup shows ciphertext for
+the sensitive document columns.
+
+- **Encrypted:** `documents.{content_json, salt, manager_signature, hr_signature, revocation_reason_text}` and `document_versions.{content_json, change_summary}`. Each is stored as `cvenc:v1:<keyId>:<wrappedDek>:<iv>:<ciphertext‖tag>`.
+- **Scheme:** AES-256-GCM, with a fresh data key per written row, a fresh 12-byte IV per field, and AAD `careervault|<field>|v1`.
+- **Key hierarchy:** `KMS_MASTER_KEY` → HKDF-SHA256 field KEK (`careervault/field-kek/v1`) → per-row data key.
+- **Where it runs:** a Prisma 7 query extension (`server/src/prisma/encryption/`), so every service still reads and writes plaintext.
+- **PDFs:** issued PDFs are encrypted on disk by `EncryptedStorageService`.
+- **Safety nets:**
+  - a boot self-test refuses to start if data keys can't be opened;
+  - `npm run db:audit-encryption` counts encrypted / null / plaintext / undecryptable values in the DB and storage and exits 1 on any plaintext;
+  - `test/encryption.e2e-spec.ts` asserts the envelopes with raw SQL.
+- **Plaintext by design:** `document_hash` (the public lookup key and Merkle leaf; salted and one-way), user email and name, and embeddings.
+- **Known gaps:**
+  - reason text in audit logs and notifications is plaintext;
+  - there's no master-key rotation tooling;
+  - the master key is an environment secret. **Roadmap:** AWS KMS, and a blind index for email.
 
 ---
 
@@ -134,10 +180,18 @@ No account required.
 - Salt + document hash (R4)
 - Merkle proof → anchored root
 - Org public key verification
-- On-chain anchor status
+- On-chain anchor status, with PolygonScan links for the transaction and the contract. An unreachable chain reads as `VERIFIED_PENDING_ANCHOR`, never as a failure.
 - Tamper detection (salt/hash/signature mismatch)
 
 **Frontend pages:** `/verify`, `/verify/hash/:hash`, `/verify/:token`
+
+**Offline verifier:** `tools/verify-credential` re-checks a downloaded credential with its own code, importing nothing from `server/`. It checks:
+- integrity and both RS256 statements;
+- Merkle inclusion;
+- the registry pin (`KNOWN_REGISTRIES` / `--registry`);
+- `verifyRoot`, `isRevoked` and the `RootAnchored` receipt on-chain.
+
+`--selftest` replays the shared known-answer vectors. It doesn't prove that the issuer key belongs to the named organisation; it prints the key fingerprint for an out-of-band check.
 
 ---
 
@@ -184,8 +238,11 @@ No account required.
 `DOCUMENT_REQUESTED`, `PENDING_HR_REVIEW`, `DOCUMENT_APPROVED`, `DOCUMENT_REJECTED`, `DOCUMENT_ISSUED`, `DOCUMENT_ANCHORED`, `DOCUMENT_REVOKED`, `LINK_VIEWED`, `PAYMENT_SUCCESS`, `PAYMENT_FAILED`, `RECRUITER_MESSAGE`, `TALENT_MATCH`
 
 **Audit logs:**
-- Every action logged: actor, action, entity type/id, old/new values, IP, user-agent
-- Retention: STANDARD (90-day auto-purge), COMPLIANCE (7-year archival)
+- **Logged events:**
+  - COMPLIANCE tier: document signed, issued and revoked; every public verification (verdict); bulk-issuance start and completion; an org signing key replaced.
+  - STANDARD tier: document rejected.
+- **What each row records:** actor, action, entity type and id, details in `new_value`, and a timestamp. The `old_value`, `ip_address` and `user_agent` columns exist but aren't populated yet. Logins, profile edits, anchoring and GDPR erasure aren't audited.
+- **Retention:** STANDARD rows are auto-purged after 90 days by the retention cron. COMPLIANCE rows are never auto-purged; the 7-year window is policy, not enforced in code.
 
 ---
 
@@ -257,14 +314,14 @@ All external integrations are behind swappable adapters — local/mock by defaul
 
 | Adapter | Dev (wired) | Prod target | Wired? |
 |---------|-------------|-------------|--------|
-| Key Management | LocalKMS (Node crypto) | AWS KMS | ✗ stub |
-| Blockchain | LocalAnchor (JSON ledger) | Polygon Amoy (ethers v6) | ✗ stub |
-| Payment | MockStripe | Stripe | ✗ stub |
-| Email | ConsoleEmail (stdout) / Gmail SMTP (nodemailer) | AWS SES | Gmail ✓ wired; SES ✗ stub |
-| Storage | LocalDisk (`./storage`) | AWS S3 | ✗ stub |
+| Key Management | LocalKMS (Node crypto: RSA-2048 signing keys + R10 data keys) | AWS KMS | Local ✓ wired (all environments); AWS ✗ roadmap |
+| Blockchain | LocalAnchor (JSON ledger) | Polygon Amoy (ethers v6) | ✓ wired (`BLOCKCHAIN_DRIVER=amoy`); contract deploy to Amoy pending |
+| Payment | MockStripe | Stripe | ✗ roadmap |
+| Email | ConsoleEmail (stdout) / Gmail SMTP (nodemailer) | AWS SES | Gmail ✓ wired; SES ✗ roadmap |
+| Storage | LocalDisk (`./storage`), always wrapped by `EncryptedStorageService` (R10) | AWS S3 | Local ✓ wired (encrypted at rest); S3 ✗ roadmap |
 | DNS Verification | LocalDns (always passes) | Real TXT lookup | ✓ wired |
 
-> **Wired today:** all Dev implementations, the real DNS adapter, and Gmail SMTP for email. Gmail (`EMAIL_DRIVER=gmail`, via `GMAIL_USER`/`GMAIL_APP_PASSWORD` app password) sends real mail without a domain or cloud account — good for prototypes, capped at Gmail's ~500 recipients/day. Selecting any other prod driver (`aws`, `amoy`, `stripe`, `ses`, `s3`) throws `<DRIVER>="..." not implemented` — those remain interface-ready stubs pending cloud accounts.
+> **Wired today:** all Dev implementations, the real DNS adapter, Gmail SMTP for email, and the Polygon Amoy anchoring driver (`BLOCKCHAIN_DRIVER=amoy`, which needs `POLYGON_RPC_URL`, `ANCHOR_REGISTRY_ADDRESS` and `ANCHOR_PRIVATE_KEY`). Gmail (`EMAIL_DRIVER=gmail`, via `GMAIL_USER`/`GMAIL_APP_PASSWORD` app password) sends real mail without a domain or cloud account — good for prototypes, capped at Gmail's ~500 recipients/day. Selecting any other prod driver (`aws`, `stripe`, `ses`, `s3`) throws `<DRIVER>="..." not implemented`; those remain roadmap, pending cloud accounts.
 
 ---
 
@@ -294,8 +351,9 @@ batch, skipping `PENDING_HR` — HR acts as both signer and approver.
 - `GET /api/v1/bulk-issuance/:id` — poll a single batch's progress
 
 **Features:** all-or-nothing CSV validation (max 500 rows), async in-process processing,
-`BULK_ISSUANCE_STARTED`/`COMPLETED` compliance-tier audit logs, dual manager+HR signature
-from a single KMS signing operation, 90-day expiry, new holders get a magic link.
+`BULK_ISSUANCE_STARTED`/`COMPLETED` compliance-tier audit logs, two distinct role statements (MANAGER
+and HR) each signed with the org key, both naming the acting HR member, 90-day expiry, and a magic
+link for each new holder.
 
 **Frontend page:** `/app/bulk` (HR nav — "Bulk Issue")
 
@@ -338,3 +396,7 @@ manage keys)
 |---------|--------|
 | Bulk API metering | Verifier API keys exist; usage-based Stripe metering (per SystemDesign) not yet wired |
 | Verifier API keys UI polish | Functional; no usage/analytics dashboard yet |
+| Amoy contract deployment | Pending, human-gated. `AnchorRegistry` isn't deployed yet; the address and the verifier's `KNOWN_REGISTRIES[80002]` get filled in afterwards. |
+| Database TLS pinning + Supabase Data API off | Pending, human-gated. Pin Supabase's CA (`sslmode=verify-full`), then enforce SSL. Nothing in the repo does this yet. |
+| AWS KMS driver, KEK rotation tooling, email blind index | Roadmap |
+| Per-member signing keys, multisig registry owner | Roadmap |
