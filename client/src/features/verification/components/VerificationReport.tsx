@@ -48,7 +48,8 @@ export function VerificationReport({ result }: { result: VerificationResult }) {
       {result.erased && (
         <Notice tone="neutral" title="The holder erased this credential">
           They exercised their right to erasure, so the original content no longer exists and nothing can be checked
-          against this hash. Only the hash and its anchor remain.
+          against this hash.
+          {anchor && ' The on-chain anchor below still shows when the hash was anchored.'}
         </Notice>
       )}
       {result.verdict === 'INVALID' && !result.erased && (
