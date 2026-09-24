@@ -191,7 +191,8 @@ No account required.
 - On-chain anchor status, with PolygonScan links for the transaction and the contract. An unreachable chain reads as `VERIFIED_PENDING_ANCHOR`, never as a failure.
 - Tamper detection (salt/hash/signature mismatch)
 - An erased holder's document returns `erased: true` and no content, with an integrity check that names erasure
-- A record whose stored fields can't be read (a failed envelope, or plaintext under strict mode) reads `INVALID` with no content instead of failing the request, including within a bulk call
+- A record whose stored fields can't be read (a failed envelope or wrapped data key, or plaintext under strict mode) reads `INVALID` with no content, by hash or by share link. An envelope naming a different key id returns a 503 (`ENCRYPTION_KEY_UNAVAILABLE`) instead, because that is what a wrong master key looks like
+- In a bulk call each hash gets its own result, or its own error entry if its lookup fails, so one hash never fails the whole call
 
 **Frontend pages:** `/verify`, `/verify/hash/:hash`, `/verify/:token`
 

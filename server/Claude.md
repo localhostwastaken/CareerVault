@@ -71,7 +71,9 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
   - **Known gap (dev only):** with strict off, legacy passthrough plus the trusted plaintext `signing_public_key_pem` let a DB writer plant a self-consistent forged row that the batch then anchors; `db:audit-encryption` flags it.
   - **Known gap:** envelopes are bound to the field, not the row, so an envelope copied into another row decrypts there. A row-bound AAD is roadmap.
   - **Plain Json columns:** every non-encrypted Json column is listed in `PLAIN_JSON_FIELDS` (`encrypted-fields.spec.ts` fails otherwise), and the read walk never enters one, so a key inside it (an AI skill named `salt`) is never taken for a field.
-  - **Unreadable records:** public verification reports a record whose fields fail to decrypt, or that strict mode refuses, as `INVALID` with no content (`isFieldReadError`), never as a 500.
+  - **Unreadable records:** public verification (`/verify/hash`, a share link, each bulk item) reports a record whose fields can't be read as R10 data as `INVALID` with no content (`isFieldReadError`: a failed envelope, a wrapped data key that fails to unwrap under our own key id, or plaintext strict mode refuses).
+    - An envelope naming another key id (`DataKeyUnavailableError.keyMismatch`) is what a wrong `KMS_MASTER_KEY` looks like on every row, so it is a 503 `ENCRYPTION_KEY_UNAVAILABLE` that names no key, never `INVALID`. A DB writer can use that to deny one record's lookup (viva guide L16).
+    - A bulk request gives each hash whose lookup throws, for any reason, its own error entry, so one hash never fails the call.
   - **Never** filter, sort or `distinct` on an encrypted field (the extension throws), and never write one through a nested relation write.
   - `npm run db:audit-encryption` proves the DB and storage hold no plaintext.
 - **Billing (R5):** org tier = promotional feature gates (not Stripe). User `subscriptions.tier` = Stripe-billed.

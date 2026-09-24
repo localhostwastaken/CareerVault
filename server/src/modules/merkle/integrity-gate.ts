@@ -1,6 +1,6 @@
 import type { Logger } from '@nestjs/common';
 import { hashDocument } from '../../common/utils/crypto.util.js';
-import { isFieldReadError } from '../../prisma/encryption/field-encryption.extension.js';
+import { describeReadError } from '../../prisma/encryption/field-encryption.extension.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 
 // Batch-time integrity gate (R4 hash, R10 field encryption). Every root the batch anchors is
@@ -58,13 +58,6 @@ async function failureOf(
       ? null
       : 'its content and salt do not recompute its documentHash';
   } catch (error) {
-    return `its stored fields could not be read (${describe(error)})`;
+    return `its stored fields could not be read (${describeReadError(error)})`;
   }
-}
-
-// Any error but a field read error is reduced to its class name, since a message such as a
-// JSON parse error's can quote the text it failed on.
-function describe(error: unknown): string {
-  if (isFieldReadError(error)) return error.message;
-  return error instanceof Error ? error.name : 'unknown error';
 }

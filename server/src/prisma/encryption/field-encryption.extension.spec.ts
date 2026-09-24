@@ -13,6 +13,8 @@ import { DataKeyUnavailableError } from '../../services/key-management/key-manag
 import { LocalKmsService } from '../../services/key-management/local-kms.service.js';
 import {
   createFieldEncryptionHandler,
+  describeReadError,
+  isFieldReadError,
   PlaintextFieldError,
 } from './field-encryption.extension.js';
 
@@ -556,6 +558,45 @@ describe('field-encryption extension (R10)', () => {
       const { sent } = await run(model, 'findMany', { where });
 
       expect(sent.where).toEqual(where);
+    });
+  });
+
+  // A record that can't be read as R10 data fails closed as INVALID in public verification. A
+  // data key naming another key id is kept out: it is what a wrong KMS_MASTER_KEY looks like
+  // on every row, and reporting every genuine document as tampered would be worse than a 503.
+  describe('read error classification', () => {
+    const KEY = '0123456789abcdef';
+    const OTHER = 'fedcba9876543210';
+
+    it.each([
+      ['a failed envelope', new FieldDecryptionError('salt'), true],
+      ['refused plaintext', new PlaintextFieldError('salt'), true],
+      [
+        'a data key that fails to unwrap under our key id',
+        new DataKeyUnavailableError(KEY, KEY, 'failed authentication'),
+        true,
+      ],
+      [
+        'a data key wrapped under another key id',
+        new DataKeyUnavailableError(OTHER, KEY, 'different master key'),
+        false,
+      ],
+      ['any other error', new Error('connection reset'), false],
+    ])('treats %s as unreadable: %s', (_, error, unreadable) => {
+      expect(isFieldReadError(error)).toBe(unreadable);
+    });
+
+    it('describes key errors by message but anything else only by class name', () => {
+      const parse = new SyntaxError('Unexpected token s in "salary 90000"');
+
+      expect(describeReadError(new FieldDecryptionError('salt'))).toContain(
+        'Field "salt"',
+      );
+      expect(
+        describeReadError(new DataKeyUnavailableError(OTHER, KEY, 'mismatch')),
+      ).toBe('mismatch');
+      expect(describeReadError(parse)).toBe('SyntaxError');
+      expect(describeReadError('boom')).toBe('unknown error');
     });
   });
 });

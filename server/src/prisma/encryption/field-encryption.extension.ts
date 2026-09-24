@@ -4,6 +4,7 @@ import {
   FieldDecryptionError,
   isEnvelope,
 } from '../../services/key-management/field-cipher.js';
+import { DataKeyUnavailableError } from '../../services/key-management/key-management.service.js';
 import {
   ENCRYPTED_FIELD_NAMES,
   ENCRYPTED_FIELDS,
@@ -41,14 +42,32 @@ export class PlaintextFieldError extends Error {
   }
 }
 
-/** A stored field that can't be read as R10 data; both kinds name the field, never its value. */
+/**
+ * A stored field that can't be read as R10 data, i.e. a damaged or planted row. Each kind names
+ * the field or key id, never a value. A data key under another key id is excluded: it is what
+ * a wrong KMS_MASTER_KEY looks like on every row (DataKeyUnavailableError.keyMismatch).
+ */
 export function isFieldReadError(
   error: unknown,
-): error is PlaintextFieldError | FieldDecryptionError {
+): error is
+  | PlaintextFieldError
+  | FieldDecryptionError
+  | DataKeyUnavailableError {
   return (
     error instanceof PlaintextFieldError ||
-    error instanceof FieldDecryptionError
+    error instanceof FieldDecryptionError ||
+    (error instanceof DataKeyUnavailableError && !error.keyMismatch)
   );
+}
+
+/**
+ * Safe to log. Any error but a key or field read error is reduced to its class name, since a
+ * message such as a JSON parse error's can quote the text it failed on.
+ */
+export function describeReadError(error: unknown): string {
+  if (isFieldReadError(error) || error instanceof DataKeyUnavailableError)
+    return error.message;
+  return error instanceof Error ? error.name : 'unknown error';
 }
 
 export interface QueryCall {

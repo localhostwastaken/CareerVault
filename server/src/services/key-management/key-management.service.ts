@@ -31,6 +31,15 @@ export class DataKeyUnavailableError extends Error {
     super(message);
     this.name = 'DataKeyUnavailableError';
   }
+
+  /**
+   * The envelope names a key this deployment does not hold. That is what a wrong
+   * KMS_MASTER_KEY looks like on every row, and one edited row looks the same, so it is
+   * reported as a deployment fault. Under our own key id, only the row can be damaged.
+   */
+  get keyMismatch(): boolean {
+    return this.keyId !== this.expectedKeyId;
+  }
 }
 
 /**

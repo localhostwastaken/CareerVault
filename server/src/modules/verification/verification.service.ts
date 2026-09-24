@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { isFieldReadError } from '../../prisma/encryption/field-encryption.extension.js';
+import {
+  describeReadError,
+  isFieldReadError,
+} from '../../prisma/encryption/field-encryption.extension.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { KeyManagementService } from '../../services/key-management/key-management.service.js';
 import { BlockchainService } from '../../services/blockchain/blockchain.service.js';
@@ -16,6 +19,11 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import type { DocumentType } from '../../generated/prisma/enums.js';
 import { anchorCheck } from './anchor-check.js';
 import { ERASURE_DETAIL, isErased } from './is-erased.js';
+
+const BULK_ITEM_UNAVAILABLE = {
+  code: 'VERIFICATION_UNAVAILABLE',
+  message: 'This hash could not be checked right now. Retry it.',
+};
 
 const TYPE_LABEL: Record<string, string> = {
   EXPERIENCE_LETTER: 'experience letter',
@@ -55,6 +63,10 @@ type VerifiableDocument = Prisma.DocumentGetPayload<{
   include: typeof INCLUDE;
 }>;
 
+type SharedDocumentLink = Prisma.SharedLinkGetPayload<{
+  include: { document: { include: typeof INCLUDE } };
+}>;
+
 // Public, no-auth verification (R6). Recomputes every guarantee from scratch using the
 // SAME primitives that produced them (R4 hash, R3 RS256 signatures, Merkle proof,
 // DB-authoritative revocation per R7) — never trusts a stored "is valid" flag.
@@ -80,35 +92,53 @@ export class VerificationService {
       });
     } catch (error) {
       if (!isFieldReadError(error)) throw error;
-      return this.unreadable(documentHash, error);
+      const row = await this.prisma.document.findFirst({
+        where: { documentHash },
+        select: { id: true },
+      });
+      return this.unreadable(row?.id, error);
     }
     return doc ? this.present(doc, 'public') : this.notFound();
   }
 
   // Bulk API (R6): enterprise/basic verifiers submit many hashes per call. Reuses verifyByHash's full report per hash — no shortcuts on the recomputed guarantees.
+  // Each hash settles on its own: one that can't be checked at all, for any reason, gets an
+  // error entry rather than costing the caller every other result.
   async verifyBulk(hashes: string[]) {
-    const results = await Promise.all(
-      hashes.map(async (hash) => ({
-        hash,
-        result: await this.verifyByHash(hash),
-      })),
+    return Promise.all(
+      hashes.map((hash) =>
+        this.verifyByHash(hash).then(
+          (result) => ({ hash, result, error: null }),
+          (error: unknown) => {
+            this.logger.error(
+              `Bulk verification of ${hash} failed: ${describeReadError(error)}`,
+            );
+            return { hash, result: null, error: BULK_ITEM_UNAVAILABLE };
+          },
+        ),
+      ),
     );
-    return results;
   }
 
   async verifyByToken(token: string) {
-    const link = await this.prisma.sharedLink.findUnique({
-      where: { urlToken: token },
-      include: { document: { include: INCLUDE } },
-    });
     const now = new Date();
-    if (
-      !link ||
-      !link.isActive ||
-      (link.expiresAt !== null && link.expiresAt < now)
-    ) {
-      return this.notFound();
+    let link: SharedDocumentLink | null;
+    try {
+      link = await this.prisma.sharedLink.findUnique({
+        where: { urlToken: token },
+        include: { document: { include: INCLUDE } },
+      });
+    } catch (error) {
+      if (!isFieldReadError(error)) throw error;
+      // SharedLink holds no encrypted field, so without the document this read can't fail so.
+      const bare = await this.prisma.sharedLink.findUnique({
+        where: { urlToken: token },
+      });
+      return bare && isLive(bare, now)
+        ? this.unreadable(bare.documentId, error)
+        : this.notFound();
     }
+    if (!link || !isLive(link, now)) return this.notFound();
     // Atomic view claim: the cap is re-checked under the row lock, so concurrent views
     // cannot exceed maxViews (TOCTOU-safe) — a plain read-then-increment could.
     const where: Prisma.SharedLinkWhereInput = { id: link.id, isActive: true };
@@ -389,19 +419,15 @@ export class VerificationService {
     }
   }
 
-  // Sealed fields that won't open, or plaintext that strict mode refuses, mean the row was
-  // written around the app. Fail closed as INVALID, disclosing nothing, and record it: one
-  // such row must not turn a lookup, or a whole bulk request, into a 500.
-  private async unreadable(documentHash: string, error: Error) {
-    const row = await this.prisma.document.findFirst({
-      where: { documentHash },
-      select: { id: true },
-    });
-    if (row) {
+  // Sealed fields that won't open under our key, or plaintext that strict mode refuses, mean
+  // the row was written around the app. Fail closed as INVALID, disclosing nothing, and
+  // record it: one such row must not turn a lookup, or a whole bulk request, into a 500.
+  private async unreadable(documentId: string | undefined, error: Error) {
+    if (documentId) {
       this.logger.error(
-        `Public verification of document ${row.id} failed closed: ${error.message}`,
+        `Public verification of document ${documentId} failed closed: ${error.message}`,
       );
-      await this.writeAuditLog(row.id, 'INVALID');
+      await this.writeAuditLog(documentId, 'INVALID');
     }
     return {
       ...this.notFound(),
@@ -433,4 +459,21 @@ export class VerificationService {
 
 function isoDate(value: Date): string {
   return value.toISOString().slice(0, 10);
+}
+
+// Only a pre-check for maxViews: the view claim in verifyByToken re-checks it atomically.
+function isLive(
+  link: {
+    isActive: boolean;
+    expiresAt: Date | null;
+    maxViews: number | null;
+    views: number;
+  },
+  now: Date,
+): boolean {
+  return (
+    link.isActive &&
+    (link.expiresAt === null || link.expiresAt >= now) &&
+    (link.maxViews === null || link.views < link.maxViews)
+  );
 }

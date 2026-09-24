@@ -1,4 +1,4 @@
-import { createPublicKey, verify } from 'node:crypto';
+import { createPublicKey, randomBytes, randomUUID, verify } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -266,6 +266,87 @@ describe('field encryption at rest (e2e)', () => {
     expect(signedBy(proof.hrSignature, 'HR', proof.approverMemberId)).toBe(
       true,
     );
+  });
+
+  // What an examiner editing the visible prefix of a cell in the Supabase Table Editor gets.
+  // Each copy of the genuine row carries one edited salt envelope under its own lookup hash.
+  describe('with an envelope edited in place', () => {
+    const copyWithSalt = async (edit: (parts: string[]) => void) => {
+      const id = randomUUID();
+      const hash = randomBytes(32).toString('hex');
+      const [{ salt }] = await prisma.$queryRaw<{ salt: string }[]>`
+        SELECT salt FROM documents WHERE id = ${documentId}::uuid`;
+      const parts = salt.split(':');
+      edit(parts);
+      await prisma.$executeRaw`
+        INSERT INTO documents (id, type, status, holder_id, organization_id,
+          signer_member_id, approver_member_id, content_json, salt, document_hash,
+          manager_signature, hr_signature, signing_public_key_pem, issued_at, updated_at)
+        SELECT ${id}::uuid, type, status, holder_id, organization_id, signer_member_id,
+          approver_member_id, content_json, ${parts.join(':')}, ${hash},
+          manager_signature, hr_signature, signing_public_key_pem, issued_at, now()
+        FROM documents WHERE id = ${documentId}::uuid`;
+      return { id, hash };
+    };
+    // parts: cvenc, v1, keyId, wrappedDek, iv, ciphertext‖tag
+    const editKeyId = (parts: string[]) => {
+      parts[2] = parts[2] === '0'.repeat(16) ? '1'.repeat(16) : '0'.repeat(16);
+    };
+    const editWrappedDek = (parts: string[]) => {
+      parts[3] = (parts[3][0] === 'A' ? 'B' : 'A') + parts[3].slice(1);
+    };
+    const UNREADABLE = [
+      {
+        key: 'integrity',
+        label: 'Content integrity',
+        status: 'fail',
+        detail:
+          'The stored content failed integrity checks and cannot be verified.',
+      },
+    ];
+
+    // Indistinguishable from a deployment on the wrong KMS_MASTER_KEY, so not "tampered".
+    it('answers an edited key id with a 503 that names no key', async () => {
+      const { hash } = await copyWithSalt(editKeyId);
+
+      const res = await get(`/verify/hash/${hash}`).expect(503);
+
+      expect(res.body).toMatchObject({
+        success: false,
+        error: { code: 'ENCRYPTION_KEY_UNAVAILABLE', statusCode: 503 },
+      });
+      expect(res.text).not.toMatch(/[0-9a-f]{16}/);
+    });
+
+    it('fails an edited wrapped data key closed as INVALID', async () => {
+      const { hash } = await copyWithSalt(editWrappedDek);
+
+      const res = await get(`/verify/hash/${hash}`).expect(200);
+
+      expect(data<{ verdict: string; checks: unknown }>(res)).toMatchObject({
+        verdict: 'INVALID',
+        document: null,
+        checks: UNREADABLE,
+      });
+      expect(res.text).not.toContain('Holder Person');
+    });
+
+    it('fails the same record closed as INVALID behind a share link', async () => {
+      const { id } = await copyWithSalt(editWrappedDek);
+      const token = `e2e-${randomUUID()}`;
+      await prisma.$executeRaw`
+        INSERT INTO shared_links (id, document_id, url_token)
+        VALUES (${randomUUID()}::uuid, ${id}::uuid, ${token})`;
+
+      const res = await get(`/verify/${token}`).expect(200);
+
+      expect(data<{ verdict: string; checks: unknown }>(res)).toMatchObject({
+        verdict: 'INVALID',
+        document: null,
+        checks: UNREADABLE,
+      });
+      expect(res.text).not.toContain('Holder Person');
+    });
   });
 
   // GDPR erasure rewrites encrypted columns inside an array $transaction; the scrubbed

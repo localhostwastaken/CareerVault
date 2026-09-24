@@ -124,17 +124,20 @@ export class FieldCipher implements OnModuleInit {
     }
   }
 
+  // Keyed on the key id too, so an envelope whose key id was edited fails the same way
+  // whether or not this process has already opened the genuine one.
   private unwrap(wrapped: string, keyId: string): Promise<Buffer> {
-    const cached = this.dekCache.get(wrapped);
+    const cacheKey = `${keyId}:${wrapped}`;
+    const cached = this.dekCache.get(cacheKey);
     if (cached) return cached;
     const pending = this.kms.decryptDataKey(wrapped, keyId);
     // A failed unwrap must not stick, or one transient KMS error would poison the row.
-    pending.catch(() => this.dekCache.delete(wrapped));
+    pending.catch(() => this.dekCache.delete(cacheKey));
     if (this.dekCache.size >= DEK_CACHE_LIMIT) {
       const [oldest] = this.dekCache.keys();
       this.dekCache.delete(oldest);
     }
-    this.dekCache.set(wrapped, pending);
+    this.dekCache.set(cacheKey, pending);
     return pending;
   }
 }

@@ -161,6 +161,38 @@ describe('FieldCipher (R10 field encryption)', () => {
     ).rejects.toBeInstanceOf(DataKeyUnavailableError);
   });
 
+  // What an examiner editing a cell's visible prefix in a table editor produces. Public
+  // verification tells the two apart by comparing the key ids the error carries.
+  it('reports an edited key id as a key mismatch, even once the genuine envelope was opened', async () => {
+    const { cipher } = cipherOver();
+    const [envelope] = await cipher.encrypt([{ label: 'x', plaintext: 's' }]);
+    await cipher.decrypt('x', envelope);
+    const parts = envelope.split(':');
+    parts[2] = parts[2] === '0'.repeat(16) ? '1'.repeat(16) : '0'.repeat(16);
+
+    const error = await cipher
+      .decrypt('x', parts.join(':'))
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DataKeyUnavailableError);
+    expect((error as DataKeyUnavailableError).keyMismatch).toBe(true);
+  });
+
+  it('reports an edited wrapped data key under the right key id as a failed unwrap, not a key mismatch', async () => {
+    const { cipher } = cipherOver();
+    const [envelope] = await cipher.encrypt([{ label: 'x', plaintext: 's' }]);
+    const parts = envelope.split(':');
+    // The first base64 character carries six significant bits, so this always changes a byte.
+    parts[3] = (parts[3][0] === 'A' ? 'B' : 'A') + parts[3].slice(1);
+
+    const error = await cipher
+      .decrypt('x', parts.join(':'))
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DataKeyUnavailableError);
+    expect((error as DataKeyUnavailableError).keyMismatch).toBe(false);
+  });
+
   it('recognises envelopes and nothing else', async () => {
     const [envelope] = await cipherOver().cipher.encrypt([
       { label: 'x', plaintext: 'y' },

@@ -6,6 +6,7 @@ import {
 } from '../../common/utils/merkle.util.js';
 import { PlaintextFieldError } from '../../prisma/encryption/field-encryption.extension.js';
 import { FieldDecryptionError } from '../../services/key-management/field-cipher.js';
+import { DataKeyUnavailableError } from '../../services/key-management/key-management.service.js';
 import { VerificationService } from './verification.service.js';
 
 /**
@@ -64,6 +65,7 @@ function verificationService(
   overrides: Record<string, unknown> = {},
   findFirst?: FindFirst,
   audits: unknown[] = [],
+  models: Record<string, unknown> = {},
 ) {
   const doc = liveDoc(overrides);
   const prisma = {
@@ -74,13 +76,15 @@ function verificationService(
         return Promise.resolve({});
       },
     },
+    ...models,
   };
   const kms = { verify: () => Promise.resolve(true) };
+  const notifications = { notify: () => Promise.resolve() };
   return new VerificationService(
     prisma as never,
     kms as never,
     blockchain as never,
-    {} as never,
+    notifications as never,
   );
 }
 
@@ -249,9 +253,18 @@ describe('VerificationService for a record whose stored fields cannot be read', 
           ? Promise.resolve({ id: 'planted-1' })
           : Promise.reject(error);
 
+  // Edited cells, as field-cipher.spec.ts shows each one arises: an edited IV, ciphertext or
+  // tag fails the field; an edited wrapped data key fails its unwrap under our own key id.
+  const KEY = '0123456789abcdef';
+  const badWrappedDek = () =>
+    new DataKeyUnavailableError(KEY, KEY, 'failed authentication');
+  const otherKeyId = () =>
+    new DataKeyUnavailableError('fedcba9876543210', KEY, 'different key');
+
   it.each([
     ['planted plaintext', new PlaintextFieldError('contentJson')],
     ['an envelope that fails authentication', new FieldDecryptionError('salt')],
+    ['a wrapped data key that fails to unwrap', badWrappedDek()],
   ])('reports %s as INVALID and audits it', async (_, error) => {
     const audits: unknown[] = [];
     const service = verificationService(chainUp, {}, lookup(error), audits);
@@ -278,19 +291,138 @@ describe('VerificationService for a record whose stored fields cannot be read', 
     ]);
   });
 
-  it('keeps a bulk request answering when one of its hashes is planted', async () => {
+  // A single row naming another key id is indistinguishable from a deployment running the
+  // wrong KMS_MASTER_KEY, so it must not read as tampered: the filter answers it with a 503.
+  it('rethrows a data key wrapped under another key id instead of calling it INVALID', async () => {
+    const audits: unknown[] = [];
     const service = verificationService(
       chainUp,
       {},
-      lookup(new PlaintextFieldError('salt'), () => Promise.resolve(liveDoc())),
+      lookup(otherKeyId()),
+      audits,
     );
 
-    const results = await service.verifyBulk([PLANTED, HASH]);
+    await expect(service.verifyByHash(PLANTED)).rejects.toBeInstanceOf(
+      DataKeyUnavailableError,
+    );
+    expect(audits).toEqual([]);
+  });
 
-    expect(results.map((r) => [r.hash, r.result.verdict])).toEqual([
-      [PLANTED, 'INVALID'],
-      [HASH, 'VERIFIED'],
-    ]);
+  it.each([
+    ['planted plaintext', new PlaintextFieldError('salt')],
+    ['a wrapped data key that fails to unwrap', badWrappedDek()],
+  ])(
+    'keeps a bulk request answering when one hash holds %s',
+    async (_, error) => {
+      const service = verificationService(
+        chainUp,
+        {},
+        lookup(error, () => Promise.resolve(liveDoc())),
+      );
+
+      const results = await service.verifyBulk([PLANTED, HASH]);
+
+      expect(results.map((r) => [r.hash, r.result?.verdict, r.error])).toEqual([
+        [PLANTED, 'INVALID', null],
+        [HASH, 'VERIFIED', null],
+      ]);
+    },
+  );
+
+  it.each([
+    ['a data key wrapped under another key id', otherKeyId()],
+    ['a failing database read', new Error('connection reset')],
+  ])(
+    'gives a bulk hash whose lookup throws %s an error entry, not a failed call',
+    async (_, error) => {
+      const service = verificationService(
+        chainUp,
+        {},
+        lookup(error, () => Promise.resolve(liveDoc())),
+      );
+
+      const results = await service.verifyBulk([PLANTED, HASH]);
+
+      expect(results).toEqual([
+        {
+          hash: PLANTED,
+          result: null,
+          error: {
+            code: 'VERIFICATION_UNAVAILABLE',
+            message: 'This hash could not be checked right now. Retry it.',
+          },
+        },
+        expect.objectContaining({ hash: HASH, error: null }),
+      ]);
+      expect(results[1].result?.verdict).toBe('VERIFIED');
+    },
+  );
+
+  describe('behind a share link', () => {
+    const TOKEN = 'share-token';
+    const link = (overrides: Record<string, unknown> = {}) => ({
+      id: 'link-1',
+      documentId: 'planted-1',
+      isActive: true,
+      expiresAt: null,
+      maxViews: null,
+      views: 0,
+      ...overrides,
+    });
+    // SharedLink has no encrypted field: only the read that includes the document throws.
+    const sharedLink = (bare: object, claims: unknown[]) => ({
+      sharedLink: {
+        findUnique: (args: { include?: object }) =>
+          args.include
+            ? Promise.reject(badWrappedDek())
+            : Promise.resolve(bare),
+        updateMany: (args: unknown) => {
+          claims.push(args);
+          return Promise.resolve({ count: 1 });
+        },
+      },
+    });
+
+    it('reports an unreadable shared document as INVALID, audits it and counts no view', async () => {
+      const audits: unknown[] = [];
+      const claims: unknown[] = [];
+      const service = verificationService(
+        chainUp,
+        {},
+        undefined,
+        audits,
+        sharedLink(link(), claims),
+      );
+
+      const result = await service.verifyByToken(TOKEN);
+
+      expect(result).toMatchObject({
+        verdict: 'INVALID',
+        document: null,
+        checks: [UNREADABLE],
+      });
+      expect(audits).toMatchObject([{ data: { entityId: 'planted-1' } }]);
+      expect(claims).toEqual([]);
+    });
+
+    it.each([
+      ['inactive', { isActive: false }],
+      ['expired', { expiresAt: new Date('2020-01-01T00:00:00.000Z') }],
+      ['used up', { maxViews: 3, views: 3 }],
+    ])(
+      'still answers NOT_FOUND when the link to one is %s',
+      async (_, overrides) => {
+        const service = verificationService(
+          chainUp,
+          {},
+          undefined,
+          [],
+          sharedLink(link(overrides), []),
+        );
+
+        expect((await service.verifyByToken(TOKEN)).verdict).toBe('NOT_FOUND');
+      },
+    );
   });
 
   it('still fails loudly on any other error', async () => {
