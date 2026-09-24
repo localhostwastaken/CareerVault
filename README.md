@@ -12,6 +12,7 @@ A **Web 2.5 career-document verification platform** — organizations issue cryp
 | [`ai-service/`](ai-service/) | Python · FastAPI | Skill extraction, embeddings, explainable (SHAP) talent ranking |
 | [`contracts/`](contracts/) | Hardhat · Solidity | `AnchorRegistry` — Merkle-root anchoring on Polygon |
 | [`e2e/`](e2e/README.md) | Playwright | Browser tests for the whole org → request → sign → issue → verify chain |
+| [`tools/verify-credential/`](tools/verify-credential/README.md) | Node · `canonicalize` · `ethers` | Standalone offline verifier for a downloaded credential (imports nothing from `server/`) |
 
 Per-package engineering rules live in each `Claude.md`. Heavy external integrations (KMS, blockchain, payments, email, storage) sit behind swappable adapters — local/mock by default, so the whole stack runs with no cloud accounts.
 
@@ -86,19 +87,30 @@ data — see [`e2e/README.md`](e2e/README.md).
 A document's authenticity is proven from its **Verifiable Credential**, a standalone JSON-LD payload fetched from `GET /api/v1/documents/:id/credential`. That file embeds everything a third party needs to verify **offline, without CareerVault online**: the
 canonical `credentialSubject`, the `proof.salt` and `proof.documentHash` (R4: `SHA-256( JCS(content) ++ salt )`), both RS256 co-signatures, the issuer's public key, and the Merkle proof once anchored.
 
-**Dual signatures are two distinct cryptographic acts.** The manager and HR do *not* sign the bare
-document hash — that would produce two byte-identical RS256 signatures and prove nothing about who
-approved what. Each signs a role- and identity-bound statement:
+**Dual signatures are two distinct signed statements, made with one organisation key.** The manager and HR
+do *not* sign the bare document hash. RS256 (PKCS#1 v1.5) is deterministic, so that would produce two
+byte-identical signatures that prove nothing about who approved what. Each signs a role- and
+identity-bound statement:
 
 ```
 statement = SHA-256( JCS({ v: 1, documentHash, role, memberId }) )
 ```
 
-with `role: "MANAGER"` + `proof.signerMemberId` for `proof.managerSignature`, and `role: "HR"` +
-`proof.approverMemberId` for `proof.hrSignature`. Verification recomputes each statement and checks
-its RS256 signature against `issuer.publicKeyPem`, so separation of duties is cryptographically
-attested rather than merely recorded in a database column. `proof.statementScheme` in every
-credential documents this, and `verificationInstructions` spells out the full offline procedure.
+- `proof.managerSignature` is over the statement with `role: "MANAGER"` and `proof.signerMemberId`.
+- `proof.hrSignature` is over the statement with `role: "HR"` and `proof.approverMemberId`.
+
+Verification recomputes each statement and checks its RS256 signature against `issuer.publicKeyPem`.
+
+**What that proves:** the organisation's key signed two distinct, role-bound statements, MANAGER and
+then HR, each naming a membership. **What it doesn't:** both signatures are made with the
+organisation's **single custodial key**, not a key per person. Separation of duties is *enforced* by
+the application: only the assigned manager can sign, only HR can approve, and the manager who signed
+can't also approve. It is *recorded* immutably inside the signed statements. Two independent personal
+keys don't prove it; per-member keys are on the roadmap. Bulk issuance signs both statements with the
+acting HR member's id.
+
+`proof.statementScheme` in every credential documents this, and `verificationInstructions` spells out
+the full offline procedure.
 
 **Document content is server-validated per type** against India-first schemas (experience/relieving
 letter, salary certificate with a reconciling CTC breakdown in integer paise, recommender-bound
@@ -112,7 +124,78 @@ for salary certificates — the holder's name. A holder who deliberately shares 
 link opts into full disclosure for that link. A freshly issued document verifies as
 `VERIFIED_PENDING_ANCHOR` (valid, awaiting the daily Merkle batch) and becomes `VERIFIED` once anchored.
 
+**On-chain anchoring.** Issued documents are batched into a SHA-256 Merkle tree: sorted pairs, the
+raw document hashes as leaves, and an odd node promoted rather than duplicated. A batch runs on a
+midnight (Asia/Kolkata) cron on the worker, or on demand when an org admin clicks **Anchor now** on
+the Analytics page (`POST /api/v1/merkle/run`). Only the 32-byte root goes on-chain, via
+`anchorRoot(bytes32 root, uint256 count)` on the [`AnchorRegistry`](contracts/contracts/AnchorRegistry.sol)
+contract. Each document stores its Merkle proof, and the credential's `anchor` block names the chain,
+contract and transaction.
+
+| | |
+|---|---|
+| Network | Polygon Amoy testnet, chain id `80002` (`BLOCKCHAIN_DRIVER=amoy`) |
+| Contract | `<AMOY_REGISTRY_ADDRESS>`, filled in after deployment (`contracts/deployments/amoy.json`) |
+| Anchor wallet | `0x955cE8960A1Fb6fCCd9e5F42D81a844dEDf5056e` (the deployer: contract owner and authorized anchor) |
+| Explorer | [amoy.polygonscan.com](https://amoy.polygonscan.com). The verify page links the transaction and the contract; the admin's anchoring card links each batch's transaction. |
+
+The database stays authoritative for revocation (R7):
+- an unreachable RPC degrades verification to `VERIFIED_PENDING_ANCHOR`, because the proof is still checked locally, instead of failing it;
+- on-chain revocation is recorded fire-and-forget.
+
+`BLOCKCHAIN_DRIVER=local`, the dev default, anchors into a JSON-ledger simulator. Its anchors carry
+`chainId: null` and can't be checked independently.
+
+**Offline verifier.** [`tools/verify-credential`](tools/verify-credential/README.md) re-checks a
+downloaded credential with its own code; it imports nothing from `server/`:
+
+```bash
+cd tools/verify-credential && npm install
+node verify-credential.mjs --selftest                     # known-answer vectors, no network
+node verify-credential.mjs careervault-credential-<id>.jsonld --explain
+node verify-credential.mjs <file> --rpc <amoy-rpc-url> --registry <AMOY_REGISTRY_ADDRESS>
+```
+
+It does five things:
+1. recomputes the hash;
+2. verifies both statements;
+3. folds the Merkle proof;
+4. checks that `anchor.contractAddress` is CareerVault's pinned registry (`KNOWN_REGISTRIES`, or
+   `--registry`; the Amoy pin is filled in at deployment);
+5. calls `verifyRoot`/`isRevoked` and confirms the anchoring transaction's `RootAnchored` log.
+
+That proves integrity, the two signatures, Merkle inclusion and on-chain anchoring. It does **not**
+prove that the embedded issuer key belongs to the named organisation. The verifier prints the key's
+SHA-256 SPKI fingerprint so you can check it out of band. Read its final summary line, not just the
+exit code.
+
 > The issued **PDF is a human-readable artifact only** — it shows the document hash in its footer but intentionally does **not** carry the JSON-LD or the salt in its metadata. The salt is kept out of the PDF so it stays portable through the credential file; never rely on PDF metadata for verification. (PDF metadata is used solely to stamp the Merkle anchor for archival once a root is on-chain.) **Note:** this supersedes the older design-doc claim that a PDF alone is independently verifiable — the offline proof is the credential file, not the PDF.
+
+## Data protection
+Three layers, each with a different job. Details and evidence are in §4 of
+[`documentation/Crypto_Pipeline_Viva_Guide.md`](documentation/Crypto_Pipeline_Viva_Guide.md).
+
+1. **Storage.** Supabase encrypts its disks and backups (AES-256, provider-managed). This is
+   transparent to every SQL session, so it protects the media, not the data, from anyone who can query.
+2. **Transport.** HTTPS to the client and the API. The API↔Postgres leg uses TLS only if `DATABASE_URL`
+   asks for it. Pinning Supabase's CA (`sslmode=verify-full`) and enforcing SSL is a pending deployment step.
+3. **Application envelope encryption (R10).** The server encrypts before it writes:
+   - Every value written to
+     `documents.{content_json, salt, manager_signature, hr_signature, revocation_reason_text}` and
+     `document_versions.{content_json, change_summary}` is stored as a `cvenc:v1:…` envelope.
+   - Issued PDFs are encrypted on disk the same way.
+   - Key hierarchy: `KMS_MASTER_KEY` → HKDF-SHA256 field KEK → a fresh AES-256 data key per written row →
+     AES-256-GCM, with the field name as AAD.
+   - `npm run db:audit-encryption` (in `server/`) proves no plaintext remains; it reports any row
+     written before R10 as plaintext.
+
+**Plaintext by design:**
+- `document_hash`: it's the public lookup key and the Merkle leaf, and it's salted and one-way;
+- user emails and names: login looks them up (a blind index is on the roadmap);
+- embeddings;
+- audit and notification text.
+
+The master key is an environment secret; an AWS KMS driver is on the roadmap.
 
 ## Demo accounts
 After `npm run db:seed`, sign in with password `Password123@`:
