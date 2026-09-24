@@ -29,6 +29,13 @@ services:
         value: 7d
       - key: AI_SERVICE_URL
         value: http://localhost:9910   # internal; same container
+      # R10 fail-closed reads. Someone with database write access but no KMS_MASTER_KEY can't
+      # make an envelope, so any new content they plant is PLAINTEXT. With this on, it is
+      # refused on read and the Merkle batch's integrity gate skips the row, so our wallet
+      # never anchors it. Needs a database with no pre-R10 rows: `npm run db:audit-encryption`
+      # must PASS against it first.
+      - key: FIELD_ENCRYPTION_STRICT
+        value: "true"
       # ── Integration drivers ─────────────────────────────────────────────────
       # ⚠  MOCKED IN THIS DEPLOY — the trust model (signed, domain-verified docs)
       #    is only real when these are switched to their "real" values. Every

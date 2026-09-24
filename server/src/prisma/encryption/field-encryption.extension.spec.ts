@@ -11,7 +11,10 @@ import {
 } from '../../services/key-management/field-cipher.js';
 import { DataKeyUnavailableError } from '../../services/key-management/key-management.service.js';
 import { LocalKmsService } from '../../services/key-management/local-kms.service.js';
-import { createFieldEncryptionHandler } from './field-encryption.extension.js';
+import {
+  createFieldEncryptionHandler,
+  PlaintextFieldError,
+} from './field-encryption.extension.js';
 
 type Row = Record<string, unknown>;
 
@@ -381,6 +384,84 @@ describe('field-encryption extension (R10)', () => {
           hrSignature: salt,
         })),
       ).rejects.toBeInstanceOf(FieldDecryptionError);
+    });
+  });
+
+  // FIELD_ENCRYPTION_STRICT: a DB writer without the KEK cannot make an envelope, so the
+  // only way to plant a value is as plaintext; strict reads refuse it instead of trusting it.
+  describe('strict reads', () => {
+    const read = (row: Row, model = 'Document') =>
+      createFieldEncryptionHandler(cipher, { strict: true })({
+        model,
+        operation: 'findUnique',
+        args: { where: { id: 'd1' } },
+        query: () => Promise.resolve(structuredClone(row)),
+      });
+
+    it.each([
+      ['salt', { salt: 'c0ffee' }],
+      ['managerSignature', { managerSignature: 'bWFuYWdlcg==' }],
+      ['contentJson', { contentJson: { employeeName: 'Planted Person' } }],
+      ['contentJson', { contentJson: 'not an envelope' }],
+    ])('refuses plaintext in %s', async (field, row) => {
+      await expect(read(row)).rejects.toThrow(
+        new PlaintextFieldError(field).message,
+      );
+      await expect(read(row)).rejects.toBeInstanceOf(PlaintextFieldError);
+    });
+
+    it('refuses plaintext in a Document nested under another model', async () => {
+      await expect(
+        read({ urlToken: 't', document: { salt: 'c0ffee' } }, 'SharedLink'),
+      ).rejects.toBeInstanceOf(PlaintextFieldError);
+    });
+
+    it('names the field but never the value', async () => {
+      const error = await read({ salt: 'c0ffee-planted-salt' }).catch(
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(PlaintextFieldError);
+      expect((error as Error).message).toContain('salt');
+      expect((error as Error).message).not.toContain('c0ffee-planted-salt');
+    });
+
+    it('still opens envelopes and returns nulls', async () => {
+      const sealed = await seal({ contentJson: '{"a":1}', salt: 'c0ffee' });
+
+      const result = await read({
+        id: 'd1',
+        ...sealed,
+        managerSignature: null,
+        hrSignature: null,
+      });
+
+      expect(result).toEqual({
+        id: 'd1',
+        contentJson: { a: 1 },
+        salt: 'c0ffee',
+        managerSignature: null,
+        hrSignature: null,
+      });
+    });
+
+    it('leaves models without encrypted fields alone', async () => {
+      await expect(
+        read({ action: 'USER_ERASED', newValue: null }, 'AuditLog'),
+      ).resolves.toEqual({ action: 'USER_ERASED', newValue: null });
+    });
+
+    it('passes the same plaintext through when strict is off (legacy rows in dev)', async () => {
+      const legacy = { id: 'd1', salt: 'c0ffee', contentJson: { a: 1 } };
+
+      const { result } = await run(
+        'Document',
+        'findUnique',
+        { where: { id: 'd1' } },
+        () => structuredClone(legacy),
+      );
+
+      expect(result).toEqual(legacy);
     });
   });
 

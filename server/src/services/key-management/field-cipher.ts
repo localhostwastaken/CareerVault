@@ -62,7 +62,7 @@ export class FieldCipher implements OnModuleInit {
     }
   }
 
-  /** One data key per call — i.e. per written row — with a fresh IV and AAD per entry. */
+  /** One data key per call, i.e. per row payload (updateMany shares one envelope), with a fresh IV and AAD per entry. */
   async encrypt(
     entries: ReadonlyArray<{ label: string; plaintext: string }>,
   ): Promise<string[]> {

@@ -23,6 +23,23 @@ import {
 
 type Row = Record<string, unknown>;
 
+export interface FieldEncryptionOptions {
+  // FIELD_ENCRYPTION_STRICT. A DB writer without the KEK cannot make an envelope, so the
+  // only value they can plant in an encrypted column is plaintext. Strict reads refuse it;
+  // off, it reads back as legacy data, which dev databases with pre-R10 rows still need.
+  strict?: boolean;
+}
+
+/** Names the field only, never its value, so it is safe to log. */
+export class PlaintextFieldError extends Error {
+  constructor(readonly field: string) {
+    super(
+      `Field "${field}" holds a value that is not an R10 envelope; strict mode refuses plaintext in an encrypted column`,
+    );
+    this.name = 'PlaintextFieldError';
+  }
+}
+
 export interface QueryCall {
   model?: string;
   operation: string;
@@ -72,16 +89,24 @@ const FIELDS_BY_MODEL: ReadonlyMap<string, readonly string[]> = new Map(
   Object.entries(ENCRYPTED_FIELDS),
 );
 
-export function fieldEncryption(cipher: FieldCipher) {
+export function fieldEncryption(
+  cipher: FieldCipher,
+  options: FieldEncryptionOptions = {},
+) {
   return Prisma.defineExtension({
     name: 'field-encryption',
     query: {
-      $allModels: { $allOperations: createFieldEncryptionHandler(cipher) },
+      $allModels: {
+        $allOperations: createFieldEncryptionHandler(cipher, options),
+      },
     },
   });
 }
 
-export function createFieldEncryptionHandler(cipher: FieldCipher) {
+export function createFieldEncryptionHandler(
+  cipher: FieldCipher,
+  { strict = false }: FieldEncryptionOptions = {},
+) {
   return async ({
     model,
     operation,
@@ -99,7 +124,7 @@ export function createFieldEncryptionHandler(cipher: FieldCipher) {
       }
     }
     const result = await query(next);
-    await openResult(cipher, result);
+    await openResult(cipher, result, strict);
     return result;
   };
 }
@@ -124,7 +149,7 @@ async function sealArgs(
   return next;
 }
 
-/** One `encrypt` call, and so one data key, per written row. */
+/** One `encrypt` call, and so one data key, per row payload (updateMany shares one envelope). */
 async function sealRow(
   cipher: FieldCipher,
   fields: readonly string[],
@@ -273,9 +298,14 @@ function isNullTest(value: unknown): boolean {
 // ── reads ────────────────────────────────────────────────────────────────────
 
 // Encrypted values are leaves: decrypted Json is caller data (it may hold a `salt` key of
-// its own), and legacy plaintext is returned exactly as stored.
-async function openResult(cipher: FieldCipher, result: unknown): Promise<void> {
+// its own), and legacy plaintext is returned exactly as stored unless `strict` refuses it.
+async function openResult(
+  cipher: FieldCipher,
+  result: unknown,
+  strict: boolean,
+): Promise<void> {
   const pending: Promise<void>[] = [];
+  let refused: string | undefined;
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
       node.forEach(visit);
@@ -292,10 +322,13 @@ async function openResult(cipher: FieldCipher, result: unknown): Promise<void> {
               : plain;
           }),
         );
+      else if (strict && value !== undefined && !isNull(value)) refused ??= key;
     }
   };
   visit(result);
+  // Awaited before refusing, so no decrypt already started is left to reject unobserved.
   await Promise.all(pending);
+  if (refused) throw new PlaintextFieldError(refused);
 }
 
 // ── shared ───────────────────────────────────────────────────────────────────

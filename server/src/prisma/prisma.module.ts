@@ -17,7 +17,9 @@ import { PrismaService } from './prisma.service.js';
       // though, so never test for that.
       useFactory: (config: ConfigService, cipher: FieldCipher) =>
         new PrismaService(config).$extends(
-          fieldEncryption(cipher),
+          fieldEncryption(cipher, {
+            strict: config.get<boolean>('FIELD_ENCRYPTION_STRICT') ?? false,
+          }),
         ) as unknown as PrismaService,
     },
   ],

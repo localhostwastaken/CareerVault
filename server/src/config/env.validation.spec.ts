@@ -105,6 +105,32 @@ describe('env validation — anchoring', () => {
   });
 });
 
+describe('env validation — FIELD_ENCRYPTION_STRICT', () => {
+  it('defaults to false, so dev databases with pre-R10 rows still read', () => {
+    expect(validate(DATABASE).value.FIELD_ENCRYPTION_STRICT).toBe(false);
+  });
+
+  it.each([
+    ['true', true],
+    ['false', false],
+  ])('converts %s from its env string', (raw, parsed) => {
+    const { error, value } = validate({
+      ...DATABASE,
+      FIELD_ENCRYPTION_STRICT: raw,
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.FIELD_ENCRYPTION_STRICT).toBe(parsed);
+  });
+
+  it('rejects a value that is not a boolean', () => {
+    expect(
+      validate({ ...DATABASE, FIELD_ENCRYPTION_STRICT: 'yes please' }).error
+        ?.message,
+    ).toContain('FIELD_ENCRYPTION_STRICT');
+  });
+});
+
 describe('env validation — production driver warning', () => {
   const PRODUCTION = {
     ...DATABASE,
@@ -136,5 +162,19 @@ describe('env validation — production driver warning', () => {
     validate({ ...PRODUCTION, ...AMOY });
 
     expect(warnings.join('\n')).not.toContain('BLOCKCHAIN_DRIVER');
+  });
+
+  it('flags reads that still pass plaintext through when strict mode is off', () => {
+    validate(PRODUCTION);
+
+    expect(warnings.join('\n')).toContain(
+      'FIELD_ENCRYPTION_STRICT=false — plaintext in an encrypted column is read back as legacy data',
+    );
+  });
+
+  it('does not flag strict reads', () => {
+    validate({ ...PRODUCTION, FIELD_ENCRYPTION_STRICT: 'true' });
+
+    expect(warnings.join('\n')).not.toContain('FIELD_ENCRYPTION_STRICT');
   });
 });

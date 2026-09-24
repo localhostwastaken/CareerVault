@@ -55,6 +55,12 @@ function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
         'That path MUST be durable storage; on an ephemeral container every key is lost on ' +
         'redeploy and no document can be signed.',
     );
+  if (env.FIELD_ENCRYPTION_STRICT !== true)
+    mocked.push(
+      'FIELD_ENCRYPTION_STRICT=false — plaintext in an encrypted column is read back as legacy ' +
+        'data, so anyone with database write access can plant a self-signed document that ' +
+        'verifies and is then anchored by our wallet. Set it to true once no pre-R10 rows remain.',
+    );
   if (mocked.length === 0) return;
 
   const banner = '='.repeat(74);
@@ -136,6 +142,11 @@ export const envValidationSchema = Joi.object({
         }),
       otherwise: Joi.string().allow('').optional(),
     }),
+
+  // R10 fail-closed reads: an encrypted column holding anything but an envelope is refused,
+  // not passed through as legacy plaintext. Off by default so dev databases seeded before R10
+  // still read; render.yaml turns it on for production.
+  FIELD_ENCRYPTION_STRICT: Joi.boolean().default(false),
 
   KEY_MANAGEMENT_DRIVER: Joi.string().valid('local', 'aws').default('local'),
   BLOCKCHAIN_DRIVER: Joi.string().valid('local', 'amoy').default('local'),
