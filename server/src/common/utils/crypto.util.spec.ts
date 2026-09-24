@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   canonicalizeJson,
   generateSalt,
@@ -6,6 +8,33 @@ import {
   sha256Hex,
   signingStatementHash,
 } from './crypto.util.js';
+
+interface TestVectors {
+  rfc8785: {
+    numbers: { literal: string; expected: string }[];
+    keySorting: { input: unknown; expected: string };
+  };
+  pipeline: {
+    documentHash: { content: unknown; salt: string; expected: string }[];
+    statementHash: {
+      documentHash: string;
+      role: 'MANAGER' | 'HR';
+      memberId: string;
+      expected: string;
+    }[];
+  };
+}
+
+// Jest's ESM runner makes import.meta.url-relative resolution awkward, and `npm test`
+// always runs with cwd = this package root (server/), so resolving from process.cwd() is
+// both simpler and reliable. tools/verify-credential/test-vectors.json is the single source
+// of truth for these values — this file and that tool's --selftest both gate against it.
+const VECTORS = JSON.parse(
+  readFileSync(
+    join(process.cwd(), '../tools/verify-credential/test-vectors.json'),
+    'utf8',
+  ),
+) as TestVectors;
 
 describe('crypto.util (R4 document hash)', () => {
   it('generateSalt returns 32 random bytes as lowercase hex', () => {
@@ -103,4 +132,35 @@ describe('normalizeSubject (deterministic signed bytes)', () => {
       normalizeSubject({ list: [{ a: 1, b: '' }], nested: { c: null, d: 2 } }),
     ).toEqual({ list: [{ a: 1 }], nested: { d: 2 } });
   });
+});
+
+// The verifier at tools/verify-credential is an independent, standalone re-implementation
+// that imports nothing from this codebase. These vectors are the executable proof that it
+// agrees with the real crypto.util.ts on every algorithm it re-implements.
+describe('known-answer vectors (tools/verify-credential/test-vectors.json)', () => {
+  it.each(VECTORS.rfc8785.numbers)(
+    'RFC 8785 number $literal canonicalizes to $expected',
+    ({ literal, expected }) => {
+      expect(canonicalizeJson(Number(literal))).toBe(expected);
+    },
+  );
+
+  it('RFC 8785 key-sorting example canonicalizes to the expected string', () => {
+    const { input, expected } = VECTORS.rfc8785.keySorting;
+    expect(canonicalizeJson(input)).toBe(expected);
+  });
+
+  it.each(VECTORS.pipeline.documentHash)(
+    'hashDocument reproduces the fixed documentHash vector',
+    ({ content, salt, expected }) => {
+      expect(hashDocument(content, salt)).toBe(expected);
+    },
+  );
+
+  it.each(VECTORS.pipeline.statementHash)(
+    'signingStatementHash reproduces the fixed $role vector',
+    ({ documentHash, role, memberId, expected }) => {
+      expect(signingStatementHash(documentHash, role, memberId)).toBe(expected);
+    },
+  );
 });
