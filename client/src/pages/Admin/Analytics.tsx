@@ -34,6 +34,11 @@ const AdminAnalytics = () => {
         description="Issuance, sharing and talent activity across your organisation."
       />
 
+      {/* Sibling to the overview QueryBoundary, not nested in it — anchoring depends on
+          /merkle/*, not /analytics/overview, and must stay usable if the overview query
+          is slow or errors. */}
+      <AnchoringCard />
+
       <QueryBoundary
         query={query}
         skeleton={
@@ -71,8 +76,6 @@ const AdminAnalytics = () => {
                 tone={data.documents.revoked > 0 ? 'revoked' : 'default'}
               />
             </div>
-
-            <AnchoringCard />
 
             <div className="grid gap-4 lg:grid-cols-2">
               <Card className="flex flex-col gap-5 p-6">
