@@ -15,6 +15,11 @@ export interface VerificationAnchor {
   txHash: string | null
   blockNumber: number | null
   anchoredAt: string | null
+  chainId: number | null
+  network: string
+  contractAddress: string | null
+  explorerTxUrl: string | null
+  explorerContractUrl: string | null
 }
 
 export interface VerificationDocument {

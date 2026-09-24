@@ -1,9 +1,9 @@
-import { Anchor } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { HashDisplay } from '@/components/shared/HashDisplay'
 import { Notice } from '@/components/shared/Notice'
 import { extractContentFields } from '@/features/document/content'
 import { DOCUMENT_TYPE_LABEL } from '@/features/document/types'
+import { AnchorCard } from '@/features/verification/components/AnchorCard'
 import { VerdictBanner } from '@/features/verification/components/VerdictBanner'
 import { CheckRow } from '@/features/verification/components/CheckRow'
 import type { VerificationResult } from '@/features/verification/types'
@@ -83,7 +83,7 @@ export function VerificationReport({ result }: { result: VerificationResult }) {
         <Card className="p-6">
           <h2 className="text-h2 text-foreground">Verification checks</h2>
           <p className="mt-0.5 text-body text-muted-foreground">
-            Each step is recomputed at request time — nothing here is cached.
+            Every check is recomputed from the stored document; the Merkle root is read from Polygon.
           </p>
           <ol className="mt-3">
             {result.checks.map((check, index) => (
@@ -93,32 +93,7 @@ export function VerificationReport({ result }: { result: VerificationResult }) {
         </Card>
       )}
 
-      {anchor && (
-        <Card className="p-6">
-          <div className="flex items-center gap-2">
-            <Anchor className="size-4 text-anchor" />
-            <h2 className="text-h2 text-foreground">On-chain anchor</h2>
-          </div>
-          <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <dt className="label-micro">Merkle root</dt>
-              <dd className="mt-1">
-                <HashDisplay value={anchor.rootHash} lead={16} tail={16} label="Copy Merkle root" />
-              </dd>
-            </div>
-            {anchor.txHash && (
-              <div className="sm:col-span-2">
-                <dt className="label-micro">Transaction</dt>
-                <dd className="mt-1">
-                  <HashDisplay value={anchor.txHash} lead={16} tail={16} label="Copy transaction hash" />
-                </dd>
-              </div>
-            )}
-            <Field label="Block" value={anchor.blockNumber != null ? `#${anchor.blockNumber}` : '—'} />
-            <Field label="Anchored" value={formatDate(anchor.anchoredAt)} />
-          </dl>
-        </Card>
-      )}
+      {anchor && <AnchorCard anchor={anchor} />}
     </div>
   )
 }
