@@ -16,6 +16,7 @@ import {
 import { NotificationService } from '../notification/notification.service.js';
 import { PdfGenerationService } from '../document/pdf-generation.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { integrityGate } from './integrity-gate.js';
 
 const TYPE_LABEL: Record<string, string> = {
   EXPERIENCE_LETTER: 'experience letter',
@@ -45,10 +46,11 @@ export class MerkleService {
   ) {}
 
   // Anchoring pipeline (R2/R7). Gathers unanchored ISSUED documents (optionally scoped
-  // to one org), builds a Merkle tree over their R4 document hashes, anchors the root,
-  // then atomically persists the MerkleRoot + per-document proofs and flips each to
-  // ANCHORED. Idempotent: re-running over the same documents yields the same root, which
-  // verifyRoot detects so we never double-anchor; a failed DB write self-heals next run.
+  // to one org), drops any that fail the integrity gate, builds a Merkle tree over the
+  // rest's R4 document hashes, anchors the root, then atomically persists the MerkleRoot +
+  // per-document proofs and flips each to ANCHORED. Idempotent: re-running over the same
+  // documents yields the same root, which verifyRoot detects so we never double-anchor;
+  // a failed DB write self-heals next run.
   async runBatch(organizationId?: string): Promise<BatchResult> {
     if (this.running) {
       this.logger.warn(
@@ -58,7 +60,7 @@ export class MerkleService {
     }
     this.running = true;
     try {
-      const docs = await this.prisma.document.findMany({
+      const candidates = await this.prisma.document.findMany({
         where: {
           status: 'ISSUED',
           documentHash: { not: null },
@@ -68,6 +70,7 @@ export class MerkleService {
         orderBy: [{ issuedAt: 'asc' }, { id: 'asc' }],
         select: { id: true, documentHash: true, holderId: true, type: true },
       });
+      const docs = await integrityGate(this.prisma, candidates, this.logger);
       if (docs.length === 0) {
         this.logger.log('Merkle batch: nothing to anchor');
         return { anchored: 0, rootHash: null, txHash: null };

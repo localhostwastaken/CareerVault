@@ -1,3 +1,5 @@
+import { hashDocument } from '../../common/utils/crypto.util.js';
+import { PlaintextFieldError } from '../../prisma/encryption/field-encryption.extension.js';
 import { MerkleService } from './merkle.service.js';
 
 /**
@@ -8,13 +10,25 @@ import { MerkleService } from './merkle.service.js';
 
 const REGISTRY = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
 const ANCHORED_AT = new Date('2026-09-23T18:30:00.000Z');
-const HASHES = ['aa'.repeat(32), 'bb'.repeat(32)];
+const SALT = 'ab'.repeat(32);
+const contentOf = (id: string) => ({ employeeName: `Holder ${id}` });
+
+type Stored = { contentJson: unknown; salt: string | null } | Error;
+
+/** The rows the batch finds, keyed by id; what the gate's read returns for each. */
+const valid = (id: string): [string, Stored] => [
+  id,
+  { contentJson: contentOf(id), salt: SALT },
+];
 
 function merkleService(
   blockchain: object,
   storedRoots: Record<string, unknown>[] = [],
+  stored: [string, Stored][] = [valid('doc-0'), valid('doc-1')],
 ) {
   const created: Record<string, unknown>[] = [];
+  const proofs: string[] = [];
+  const anchored: string[] = [];
   const tx = {
     merkleRoot: {
       create: ({ data }: { data: Record<string, unknown> }) => {
@@ -22,20 +36,38 @@ function merkleService(
         return Promise.resolve({ id: 'root-1', ...data });
       },
     },
-    documentMerkleProof: { create: () => Promise.resolve({}) },
-    document: { updateMany: () => Promise.resolve({ count: 1 }) },
+    documentMerkleProof: {
+      create: ({ data }: { data: { documentId: string } }) => {
+        proofs.push(data.documentId);
+        return Promise.resolve({});
+      },
+    },
+    document: {
+      updateMany: ({ where }: { where: { id: string } }) => {
+        anchored.push(where.id);
+        return Promise.resolve({ count: 1 });
+      },
+    },
   };
+  const rows = new Map(stored);
   const prisma = {
     document: {
+      // Every candidate claims the hash its genuine content would have.
       findMany: () =>
         Promise.resolve(
-          HASHES.map((documentHash, i) => ({
-            id: `doc-${i}`,
-            documentHash,
+          stored.map(([id], i) => ({
+            id,
+            documentHash: hashDocument(contentOf(id), SALT),
             holderId: `holder-${i}`,
             type: 'EXPERIENCE_LETTER',
           })),
         ),
+      findUnique: ({ where }: { where: { id: string } }) => {
+        const row = rows.get(where.id);
+        return row instanceof Error
+          ? Promise.reject(row)
+          : Promise.resolve(row ?? null);
+      },
     },
     $transaction: (work: (client: typeof tx) => Promise<unknown>) => work(tx),
     user: { findUnique: () => Promise.resolve(null) },
@@ -49,7 +81,7 @@ function merkleService(
     notifications as never,
     pdf as never,
   );
-  return { service, created };
+  return { service, created, proofs, anchored };
 }
 
 describe('MerkleService', () => {
@@ -132,6 +164,57 @@ describe('MerkleService', () => {
       contractAddress: null,
       anchoredAt: ANCHORED_AT,
     });
+  });
+
+  it('anchors only the documents that pass the integrity gate', async () => {
+    const { service, created, proofs, anchored } = merkleService(
+      {
+        verifyRoot: () => Promise.resolve({ exists: false }),
+        anchorRoot: () => Promise.resolve({ txHash: '0xanchor' }),
+      },
+      [],
+      [
+        valid('genuine'),
+        ['planted', new PlaintextFieldError('salt')],
+        [
+          'altered',
+          { contentJson: { employeeName: 'Someone Else' }, salt: SALT },
+        ],
+      ],
+    );
+
+    const result = await service.runBatch('org-1');
+
+    // A single-leaf tree's root is the leaf itself.
+    expect(result).toEqual({
+      anchored: 1,
+      rootHash: hashDocument(contentOf('genuine'), SALT),
+      txHash: '0xanchor',
+    });
+    expect(created[0]).toMatchObject({ documentCount: 1 });
+    expect(proofs).toEqual(['genuine']);
+    expect(anchored).toEqual(['genuine']);
+  });
+
+  it('sends nothing on-chain when no candidate passes the gate', async () => {
+    let anchorCalls = 0;
+    const { service, created } = merkleService(
+      {
+        verifyRoot: () => Promise.resolve({ exists: false }),
+        anchorRoot: () => {
+          anchorCalls++;
+          return Promise.resolve({ txHash: '0xanchor' });
+        },
+      },
+      [],
+      [['planted', new PlaintextFieldError('contentJson')]],
+    );
+
+    const result = await service.runBatch();
+
+    expect(result).toEqual({ anchored: 0, rootHash: null, txHash: null });
+    expect(anchorCalls).toBe(0);
+    expect(created).toEqual([]);
   });
 
   it('lists batches with their network and explorer link', async () => {
