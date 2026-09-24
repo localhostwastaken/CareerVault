@@ -8,6 +8,7 @@ import { ListSkeleton, StatCardsSkeleton } from '@/components/shared/Skeletons'
 import { StatCard } from '@/components/shared/StatCard'
 import { StatusBreakdown } from '@/features/analytics/components/StatusBreakdown'
 import { useGetAnalyticsOverviewQuery } from '@/features/analytics/api'
+import { AnchoringCard } from '@/features/anchoring/components/AnchoringCard'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { formatNumber } from '@/lib/format'
 
@@ -70,6 +71,8 @@ const AdminAnalytics = () => {
                 tone={data.documents.revoked > 0 ? 'revoked' : 'default'}
               />
             </div>
+
+            <AnchoringCard />
 
             <div className="grid gap-4 lg:grid-cols-2">
               <Card className="flex flex-col gap-5 p-6">

@@ -152,6 +152,8 @@ export const APISlice = createApi({
     'Message',
     'BulkBatch',
     'VerifierKey',
+    'AnchorBatch',
+    'Analytics',
   ],
   endpoints: () => ({}),
 })
