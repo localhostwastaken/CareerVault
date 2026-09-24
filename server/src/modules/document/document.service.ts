@@ -192,9 +192,9 @@ export class DocumentService {
 
     const salt = generateSalt();
     const documentHash = hashDocument(subject, salt);
-    // C1: the manager signs a role- and identity-bound statement over the hash, not the
-    // bare hash — so this signature is cryptographically distinct from HR's co-signature
-    // and binds separation of duties (verified in VerificationService).
+    // C1: the manager signs a role- and identity-bound statement, not the bare hash, so it
+    // differs from HR's co-signature. RBAC enforces separation of duties and the signed
+    // role/memberId statements record it; both are signed with the org's one key.
     const managerSignature = await this.kms.sign(
       kmsKeyId,
       signingStatementHash(documentHash, 'MANAGER', member.id),
