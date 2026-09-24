@@ -128,9 +128,10 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_TTL: Joi.string().default('7d'),
 
   // Required in production, optional elsewhere. LocalKmsService wraps every org signing key
-  // with this; when it is unset it mints a random one per process, so on a container without
-  // durable storage each deploy silently orphans every key it wrote — which is precisely how
-  // manager signing started failing with an unexplained 500. Failing to boot is the honest
+  // with this; when it is unset the dev fallback keeps a generated key in
+  // STORAGE_LOCAL_DIR/kms/master.key, so on a container without durable storage each deploy
+  // silently orphans every key it wrote — which is precisely how manager signing started
+  // failing with an unexplained 500. Failing to boot is the honest
   // outcome: an unsigned deploy is worse than no deploy. It is no longer only signing keys at
   // stake either (R10): this same master key derives the field-encryption KEK, so losing it
   // also makes every encrypted DB column and every stored PDF permanently unreadable. Back it

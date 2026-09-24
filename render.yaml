@@ -86,7 +86,9 @@ services:
       # REQUIRED in production (the app refuses to boot without it). Base64, decoding to
       # exactly 32 bytes: openssl rand -base64 32
       # A hex value will NOT work — it decodes to 48 bytes and fails validation.
-      # Rotating this makes every existing org signing key unreadable; treat it as permanent.
+      # It wraps every org signing key and derives the key for the R10-encrypted DB fields
+      # and stored PDFs: losing or rotating it makes all of them unreadable. Treat it as
+      # permanent and keep an offline backup.
       - key: KMS_MASTER_KEY
         sync: false
       - key: GROQ_API_KEY            # enables LLM skill extraction

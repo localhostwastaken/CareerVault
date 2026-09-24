@@ -86,9 +86,12 @@ async function main() {
   }
 
   console.log(`New anchor wallet address: ${wallet.address}`)
+  // The official Polygon faucet no longer serves Amoy; these do.
   console.log('Fund it on Polygon Amoy before anchoring anything:')
-  console.log('  https://faucet.polygon.technology/')
   console.log('  https://www.alchemy.com/faucets/polygon-amoy')
+  console.log('  https://faucet.quicknode.com/polygon/amoy')
+  console.log('  https://ethglobal.com/faucet/polygon-amoy-80002')
+  console.log('  https://faucets.chain.link/polygon-amoy')
 }
 
 main().catch((error) => {
