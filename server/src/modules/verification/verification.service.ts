@@ -14,6 +14,7 @@ import {
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { DocumentType } from '../../generated/prisma/enums.js';
 import { anchorCheck } from './anchor-check.js';
+import { ERASURE_DETAIL, isErased } from './is-erased.js';
 
 const TYPE_LABEL: Record<string, string> = {
   EXPERIENCE_LETTER: 'experience letter',
@@ -129,6 +130,7 @@ export class VerificationService {
     const isIssued = ['ISSUED', 'ANCHORED', 'REVOKED', 'EXPIRED'].includes(
       doc.status,
     );
+    const erased = isIssued && isErased(doc);
     checks.push({
       key: 'exists',
       label: 'Document on record',
@@ -143,19 +145,22 @@ export class VerificationService {
       !!doc.salt &&
       !!doc.documentHash &&
       hashDocument(doc.contentJson, doc.salt) === doc.documentHash;
+    let integrityDetail = 'Content matches its cryptographic hash.';
+    if (erased) integrityDetail = ERASURE_DETAIL;
+    else if (!integrityOk)
+      integrityDetail = doc.salt
+        ? 'Content does not match the recorded hash.'
+        : 'Original content is unavailable.';
     checks.push({
       key: 'integrity',
       label: 'Content integrity',
       status: integrityOk ? 'pass' : 'fail',
-      detail: integrityOk
-        ? 'Content matches its cryptographic hash.'
-        : doc.salt
-          ? 'Content does not match the recorded hash.'
-          : 'Original content is unavailable.',
+      detail: integrityDetail,
     });
 
     // 3 & 4. RS256 signatures verified against the org public key. Each co-signature is
-    // over a distinct role+identity statement (C1), so they attest two separate acts.
+    // over a distinct role+identity statement (C1), so they record two separate acts; both
+    // are made with the one org key, and RBAC is what enforces who performs each.
     const issuerOk = await this.verifySignature(
       doc,
       doc.managerSignature,
@@ -204,10 +209,12 @@ export class VerificationService {
     // asked for once step 5 found it unreachable, so a hung RPC costs one timeout, not two.
     const revoked = doc.status === 'REVOKED' || doc.revokedAt !== null;
     const expired = !revoked && doc.expiresAt !== null && doc.expiresAt < now;
+    // HR's free text can name the holder, so it goes with the rest of an erased document.
+    const reasonText = erased ? null : doc.revocationReasonText;
     let statusDetail = 'Active — not revoked or expired.';
     if (revoked) {
       statusDetail = `Revoked${doc.revokedAt ? ` on ${isoDate(doc.revokedAt)}` : ''}${
-        doc.revocationReasonText ? `: ${doc.revocationReasonText}` : ''
+        reasonText ? `: ${reasonText}` : ''
       }.`;
     } else if (expired) {
       statusDetail = `Expired on ${isoDate(doc.expiresAt as Date)}.`;
@@ -243,32 +250,40 @@ export class VerificationService {
     return {
       verdict,
       anchored: anchorStatus === 'pass',
+      // Lets a verifier tell an erased credential from a tampered one; the verdict can't.
+      erased,
       // Withhold the document body for anything not actually issued — a non-issued
-      // (e.g. rejected-draft) record reads as INVALID and must not disclose content/PII.
-      document: isIssued
-        ? {
-            type: doc.type,
-            status: doc.status,
-            organizationName: doc.organization.name,
-            // Anonymous salary lookups don't disclose whose salary it is; a holder-shared
-            // link and every other document type still show the name.
-            holderName:
-              disclosure === 'public' && doc.type === SALARY_PROOF_TYPE
-                ? null
-                : doc.holder.fullName,
-            issuedAt: doc.issuedAt,
-            expiresAt: doc.expiresAt,
-            documentHash: doc.documentHash,
-            version: doc.version,
-            content: this.publicContent(doc.contentJson, doc.type, disclosure),
-          }
-        : null,
+      // (e.g. rejected-draft) record reads as INVALID and must not disclose content/PII —
+      // and for an erased one, whose remaining metadata still belongs to the holder.
+      document:
+        isIssued && !erased
+          ? {
+              type: doc.type,
+              status: doc.status,
+              organizationName: doc.organization.name,
+              // Anonymous salary lookups don't disclose whose salary it is; a holder-shared
+              // link and every other document type still show the name.
+              holderName:
+                disclosure === 'public' && doc.type === SALARY_PROOF_TYPE
+                  ? null
+                  : doc.holder.fullName,
+              issuedAt: doc.issuedAt,
+              expiresAt: doc.expiresAt,
+              documentHash: doc.documentHash,
+              version: doc.version,
+              content: this.publicContent(
+                doc.contentJson,
+                doc.type,
+                disclosure,
+              ),
+            }
+          : null,
       anchor,
       revocation: revoked
         ? {
             revokedAt: doc.revokedAt,
             code: doc.revocationReasonCode,
-            reason: doc.revocationReasonText,
+            reason: reasonText,
           }
         : null,
       checks,
@@ -368,6 +383,7 @@ export class VerificationService {
     return {
       verdict: 'NOT_FOUND' as Verdict,
       anchored: false,
+      erased: false,
       document: null,
       anchor: null,
       revocation: null,

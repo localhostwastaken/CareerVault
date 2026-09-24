@@ -17,7 +17,10 @@ const SALT = 'a'.repeat(64);
 const HASH = hashDocument(CONTENT, SALT);
 const TREE = buildMerkleTree([HASH, 'bb'.repeat(32)]);
 
-function verificationService(blockchain: object) {
+function verificationService(
+  blockchain: object,
+  overrides: Record<string, unknown> = {},
+) {
   const doc = {
     id: 'doc-1',
     type: 'EXPERIENCE_LETTER',
@@ -50,6 +53,7 @@ function verificationService(blockchain: object) {
         anchoredAt: new Date('2026-09-02T00:00:00.000Z'),
       },
     },
+    ...overrides,
   };
   const prisma = {
     document: { findFirst: () => Promise.resolve(doc) },
@@ -123,6 +127,79 @@ describe('VerificationService with the chain unreachable', () => {
     expect(result.anchor).toMatchObject({
       network: 'polygon-amoy',
       explorerTxUrl: 'https://amoy.polygonscan.com/tx/0xanchor',
+    });
+  });
+});
+
+/**
+ * GDPR Art. 17 (UserService.deleteAccount): erasure nulls the salt and scrubs the content of
+ * every one of the holder's documents, keeping only the hash, signatures and Merkle proof.
+ * The public lookup of that hash must then say so, and disclose nothing about the person.
+ */
+describe('VerificationService for a document whose holder was erased', () => {
+  const chainUp = {
+    verifyRoot: () => Promise.resolve({ exists: true }),
+    isRevoked: () => Promise.resolve({ revoked: false }),
+  };
+  const ERASED = { salt: null, contentJson: {} };
+
+  it('returns no content and says the holder exercised their right to erasure', async () => {
+    const service = verificationService(chainUp, ERASED);
+
+    const result = await service.verifyByHash(HASH);
+
+    expect(result.verdict).toBe('INVALID');
+    expect(result.erased).toBe(true);
+    expect(result.document).toBeNull();
+    expect(check(result, 'integrity')).toEqual({
+      key: 'integrity',
+      label: 'Content integrity',
+      status: 'fail',
+      detail:
+        'The holder exercised their right to erasure; the original content no longer exists.',
+    });
+    expect(JSON.stringify(result)).not.toContain('Jane Doe');
+  });
+
+  it('treats scrubbed content as erased even while a salt is still present', async () => {
+    const service = verificationService(chainUp, { contentJson: {} });
+
+    const result = await service.verifyByHash(HASH);
+
+    expect(result.erased).toBe(true);
+    expect(result.document).toBeNull();
+  });
+
+  it('keeps a revoked verdict but withholds the free-text reason', async () => {
+    const service = verificationService(chainUp, {
+      ...ERASED,
+      status: 'REVOKED',
+      revokedAt: new Date('2026-09-10T00:00:00.000Z'),
+      revocationReasonCode: 'ISSUED_IN_ERROR',
+      revocationReasonText: 'Jane Doe left before the letter was due',
+    });
+
+    const result = await service.verifyByHash(HASH);
+
+    expect(result.verdict).toBe('REVOKED');
+    expect(result.revocation).toEqual({
+      revokedAt: new Date('2026-09-10T00:00:00.000Z'),
+      code: 'ISSUED_IN_ERROR',
+      reason: null,
+    });
+    expect(check(result, 'status')?.detail).toBe('Revoked on 2026-09-10.');
+    expect(JSON.stringify(result)).not.toContain('Jane Doe');
+  });
+
+  it('still discloses the allow-listed content of a live document', async () => {
+    const service = verificationService(chainUp);
+
+    const result = await service.verifyByHash(HASH);
+
+    expect(result.verdict).toBe('VERIFIED');
+    expect(result.erased).toBe(false);
+    expect(result.document?.content).toMatchObject({
+      employeeName: 'Jane Doe',
     });
   });
 });
