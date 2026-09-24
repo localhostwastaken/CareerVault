@@ -224,6 +224,8 @@ describe('MerkleService', () => {
     // A single-leaf tree's root is the leaf itself.
     expect(result).toEqual({
       anchored: 1,
+      skipped: 2,
+      busy: false,
       rootHash: hashDocument(contentOf('genuine'), SALT),
       txHash: '0xanchor',
     });
@@ -265,9 +267,41 @@ describe('MerkleService', () => {
 
     const result = await service.runBatch();
 
-    expect(result).toEqual({ anchored: 0, rootHash: null, txHash: null });
+    // "Nothing anchored" must not read as "everything is on-chain" when the gate held one back.
+    expect(result).toEqual({
+      anchored: 0,
+      skipped: 1,
+      busy: false,
+      rootHash: null,
+      txHash: null,
+    });
     expect(anchorCalls).toBe(0);
     expect(created).toEqual([]);
+  });
+
+  it('says so when it skips a run because another is still in progress', async () => {
+    let release: () => void = () => undefined;
+    const { service } = merkleService({
+      verifyRoot: () =>
+        new Promise((resolve) => {
+          release = () => resolve({ exists: false });
+        }),
+      anchorRoot: () => Promise.resolve({ txHash: '0xanchor' }),
+    });
+
+    const first = service.runBatch();
+    await new Promise((resolve) => setImmediate(resolve));
+    const second = await service.runBatch();
+    release();
+    await first;
+
+    expect(second).toEqual({
+      anchored: 0,
+      skipped: 0,
+      busy: true,
+      rootHash: null,
+      txHash: null,
+    });
   });
 
   it('lists batches with their network and explorer link', async () => {

@@ -248,10 +248,13 @@ describe('strict field encryption and the batch integrity gate (e2e)', () => {
 
   it('anchors the genuine document and skips the planted one', async () => {
     const res = await post('/merkle/run', {}, admin.token).expect(200);
-    const batch = data<{ anchored: number; rootHash: string }>(res);
+    const batch = data<{ anchored: number; skipped: number; rootHash: string }>(
+      res,
+    );
     rootHash = batch.rootHash;
 
     expect(batch.anchored).toBe(1);
+    expect(batch.skipped).toBe(1);
     // A single-leaf tree's root is the leaf itself.
     expect(batch.rootHash).toBe(validHash);
     await expect(statusOf(validId)).resolves.toEqual({
@@ -275,7 +278,11 @@ describe('strict field encryption and the batch integrity gate (e2e)', () => {
   it('skips the planted row again on the next run, leaving nothing to anchor', async () => {
     const res = await post('/merkle/run', {}, admin.token).expect(200);
 
-    expect(data<{ anchored: number }>(res).anchored).toBe(0);
+    expect(data<{ anchored: number; skipped: number }>(res)).toMatchObject({
+      anchored: 0,
+      skipped: 1,
+      busy: false,
+    });
     await expect(statusOf(plantedId)).resolves.toEqual({
       status: 'ISSUED',
       proofs: 0,

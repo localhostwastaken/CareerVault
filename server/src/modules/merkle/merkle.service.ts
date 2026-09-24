@@ -26,9 +26,21 @@ const TYPE_LABEL: Record<string, string> = {
 
 export interface BatchResult {
   anchored: number;
+  // Held back by the integrity gate: without it, "0 anchored" would read as "all on-chain".
+  skipped: number;
+  // Another run was already in progress, so this one did nothing.
+  busy: boolean;
   rootHash: string | null;
   txHash: string | null;
 }
+
+const nothingAnchored = (skipped: number, busy = false): BatchResult => ({
+  anchored: 0,
+  skipped,
+  busy,
+  rootHash: null,
+  txHash: null,
+});
 
 @Injectable()
 export class MerkleService {
@@ -56,7 +68,7 @@ export class MerkleService {
       this.logger.warn(
         'Merkle batch already in progress; skipping overlapping run',
       );
-      return { anchored: 0, rootHash: null, txHash: null };
+      return nothingAnchored(0, true);
     }
     this.running = true;
     try {
@@ -73,9 +85,10 @@ export class MerkleService {
         select: { id: true, documentHash: true, holderId: true, type: true },
       });
       const docs = await integrityGate(this.prisma, candidates, this.logger);
+      const skipped = candidates.length - docs.length;
       if (docs.length === 0) {
         this.logger.log('Merkle batch: nothing to anchor');
-        return { anchored: 0, rootHash: null, txHash: null };
+        return nothingAnchored(skipped);
       }
 
       const leaves = docs.map((doc) => doc.documentHash as string);
@@ -153,7 +166,7 @@ export class MerkleService {
       this.logger.log(
         `Merkle batch: anchored ${docs.length} document(s) under root ${rootHash}`,
       );
-      return { anchored: docs.length, rootHash, txHash };
+      return { anchored: docs.length, skipped, busy: false, rootHash, txHash };
     } finally {
       this.running = false;
     }

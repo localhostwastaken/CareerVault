@@ -15,6 +15,10 @@ export interface AnchorBatch {
 
 export interface AnchorRunResult {
   anchored: number
+  // Issued documents the batch's integrity gate held back, un-anchored.
+  skipped: number
+  // Another batch was already running, so this one did nothing.
+  busy: boolean
   rootHash: string | null
   txHash: string | null
 }

@@ -7,18 +7,34 @@ import { HashDisplay } from '@/components/shared/HashDisplay'
 import { ListSkeleton } from '@/components/shared/Skeletons'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { useListAnchorBatchesQuery, useRunAnchorBatchMutation } from '@/features/anchoring/api'
-import type { AnchorBatch } from '@/features/anchoring/types'
+import type { AnchorBatch, AnchorRunResult } from '@/features/anchoring/types'
 import { formatNumber, formatRelativeTime, truncateHash } from '@/lib/format'
 import { notify, toastApiError } from '@/lib/notify'
+
+const documents = (count: number) => `${formatNumber(count)} document${count === 1 ? '' : 's'}`
+
+// "0 anchored" alone can mean a batch was already running, or that the integrity gate held
+// documents back, so neither may read as "everything is on-chain".
+function reportRun({ anchored, skipped, busy, txHash }: AnchorRunResult) {
+  if (busy) {
+    notify.info('A batch is already running. Try again once it finishes.')
+    return
+  }
+  if (anchored > 0) notify.success(`Anchored ${documents(anchored)}${txHash ? ` · tx ${truncateHash(txHash, 10, 8)}` : ''}`)
+  if (skipped > 0) {
+    notify.error(
+      `${documents(skipped)} failed the integrity check and ${skipped === 1 ? 'was' : 'were'} left un-anchored. The server log names ${skipped === 1 ? 'it' : 'them'}.`,
+    )
+  }
+  if (anchored === 0 && skipped === 0) notify.info('Nothing to anchor: no issued document is waiting for a batch.')
+}
 
 function BatchRow({ batch }: { batch: AnchorBatch }) {
   return (
     <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border py-3 last:border-b-0">
       <div className="flex flex-wrap items-center gap-3">
         <HashDisplay value={batch.rootHash} lead={10} tail={6} label="Copy Merkle root" />
-        <span className="text-label text-muted-foreground">
-          {formatNumber(batch.documentCount)} document{batch.documentCount === 1 ? '' : 's'}
-        </span>
+        <span className="text-label text-muted-foreground">{documents(batch.documentCount)}</span>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <span className="tnum text-label text-muted-foreground">
@@ -37,14 +53,7 @@ export function AnchoringCard() {
 
   const onAnchor = async () => {
     try {
-      const result = await runBatch().unwrap()
-      if (result.anchored === 0) {
-        notify.info('Nothing to anchor — every issued document is already on-chain.')
-        return
-      }
-      notify.success(
-        `Anchored ${result.anchored} document${result.anchored === 1 ? '' : 's'} · tx ${truncateHash(result.txHash, 10, 8)}`,
-      )
+      reportRun(await runBatch().unwrap())
     } catch (error) {
       toastApiError(error, 'Could not anchor the batch')
     }
