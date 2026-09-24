@@ -37,9 +37,13 @@
 - GDPR account deletion. What it does:
   - anonymizes PII and revokes sessions, API keys and share links;
   - drops discovery data;
-  - nulls the salt on all the holder's documents, so the anchored hash becomes unlinkable;
+  - nulls the salt on all the holder's documents, so nobody can recompute or prove the hash from content;
   - scrubs drafts and every version snapshot.
-- What it doesn't do yet: issued documents' content is retained (encrypted) as the issuer's record, and PDFs aren't deleted (roadmap).
+- What it doesn't do yet:
+  - issued documents' content is retained (encrypted) as the issuer's record, in the same row as the hash;
+  - the public hash lookup still returns that document's allow-listed fields, including the name, so the hash is **not yet unlinkable**;
+  - PDFs aren't deleted.
+  All of this is roadmap. Withholding content when the salt is null is a pending code change.
 
 ---
 
@@ -150,8 +154,8 @@ Application-level envelope encryption, so a live SQL view, a dump or a backup sh
 the sensitive document columns.
 
 - **Encrypted:** `documents.{content_json, salt, manager_signature, hr_signature, revocation_reason_text}` and `document_versions.{content_json, change_summary}`. Each is stored as `cvenc:v1:<keyId>:<wrappedDek>:<iv>:<ciphertext‖tag>`.
-- **Scheme:** AES-256-GCM, with a fresh data key per written row, a fresh 12-byte IV per field, and AAD `careervault|<field>|v1`.
-- **Key hierarchy:** `KMS_MASTER_KEY` → HKDF-SHA256 field KEK (`careervault/field-kek/v1`) → per-row data key.
+- **Scheme:** AES-256-GCM, with a fresh data key per row payload, a fresh 12-byte IV per field, and AAD `careervault|<field>|v1`. An `updateMany` seals its payload once, so every row it matches gets the same envelope.
+- **Key hierarchy:** `KMS_MASTER_KEY` → HKDF-SHA256 field KEK (`careervault/field-kek/v1`) → a data key per row payload.
 - **Where it runs:** a Prisma 7 query extension (`server/src/prisma/encryption/`), so every service still reads and writes plaintext.
 - **PDFs:** issued PDFs are encrypted on disk by `EncryptedStorageService`.
 - **Safety nets:**
@@ -161,6 +165,7 @@ the sensitive document columns.
 - **Plaintext by design:** `document_hash` (the public lookup key and Merkle leaf; salted and one-way), user email and name, and embeddings.
 - **Known gaps:**
   - reason text in audit logs and notifications is plaintext;
+  - plaintext found in an encrypted column is read back as legacy data. Verification also trusts the plaintext `signing_public_key_pem` column. Together, these let someone with DB write access plant a self-consistent forged row; `db:audit-encryption` flags it. Failing closed is a pending code change.
   - there's no master-key rotation tooling;
   - the master key is an environment secret. **Roadmap:** AWS KMS, and a blind index for email.
 

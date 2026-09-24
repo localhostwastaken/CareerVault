@@ -61,11 +61,12 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
 - **Field encryption (R10):** the Prisma query extension (`prisma/encryption/field-encryption.extension.ts`) seals `ENCRYPTED_FIELDS` (`prisma/encryption/encrypted-fields.ts`) through `FieldCipher` (`services/key-management/field-cipher.ts`).
   - **Fields:** `Document.{contentJson, salt, managerSignature, hrSignature, revocationReasonText}` and `DocumentVersion.{contentJson, changeSummary}`.
   - **Envelope:** `cvenc:v1:<keyId 16 hex>:<wrappedDek>:<iv>:<ciphertext‖tag>`, base64url and unpadded. Json columns store it as a JSON string.
-  - **Cipher:** AES-256-GCM, a fresh 12-byte IV per field, **AAD `careervault|<field>|v1`** (the bare field name), and one data key (DEK) per written row.
+  - **Cipher:** AES-256-GCM, a fresh 12-byte IV per field, **AAD `careervault|<field>|v1`** (the bare field name), and one data key (DEK) per row payload. An `updateMany` seals its payload once, so every matched row gets the same envelope.
   - **Key hierarchy:** `KMS_MASTER_KEY` (32 bytes) → HKDF-SHA256 (`info = careervault/field-kek/v1`) → field KEK. The `keyId` is the first 16 hex of SHA-256(KEK). The KEK wraps each DEK with AES-256-GCM (AAD `careervault|dek|v1`). The org RSA key files are wrapped directly under the master key.
   - **PDFs:** issued PDFs are sealed by `EncryptedStorageService` with label `file:<key>`.
   - **Plaintext by design:** `documentHash`, `signingPublicKeyPem`, user email and name (a blind index is roadmap), and embeddings.
   - **Known gap:** revocation and rejection reason text is also copied into `audit_logs.new_value` and notifications, in plaintext.
+  - **Known gap:** reads return non-envelope values in encrypted columns unchanged (legacy passthrough). Verification also trusts the plaintext `signing_public_key_pem` column. Together, these let a DB writer plant a self-consistent forged row; `db:audit-encryption` flags it, and failing closed is a pending code change.
   - **Never** filter, sort or `distinct` on an encrypted field (the extension throws), and never write one through a nested relation write.
   - `npm run db:audit-encryption` proves the DB and storage hold no plaintext.
 - **Billing (R5):** org tier = promotional feature gates (not Stripe). User `subscriptions.tier` = Stripe-billed.
@@ -85,7 +86,7 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
 - **Org signing keys must live on durable storage.** With `KEY_MANAGEMENT_DRIVER=local` the private keys are files under `STORAGE_LOCAL_DIR` while only a POINTER (`organizations.kms_key_id`) is in Postgres. On an ephemeral container the files vanish on every deploy and the pointer does not, which took every signature down with a bare 500. Two things prevent it now and both must stay: a mounted disk in `render.yaml`, and `KMS_MASTER_KEY` being **required in production** (unset, each process mints a throwaway master key). `ensureOrgKey` verifies the material exists and re-keys if it does not — safe only because `documents.signing_public_key_pem` records the key each signature was made under, so re-keying never invalidates history. Do not remove that column's use in `VerificationService`.
 
 ## Reuse catalog (search before writing new)
-`PrismaService`, `ConfigService`, Pino `Logger`, `crypto.util.ts`, `merkle.util.ts`, `FieldCipher`, `pagination.ts`, response/error envelope, `AuditService` + `@Audit`, `EventEmitter2` bus, the adapters in `services/`. Three similar handlers beat one over-abstracted base.
+`PrismaService`, `ConfigService`, Pino `Logger`, `crypto.util.ts`, `merkle.util.ts`, `FieldCipher`, `common/dtos/pagination.dto.ts` (`PaginationDto`, `pageMeta`), response/error envelope, `AuditService` (the org-scoped audit-log *reader*; services write `auditLog` rows directly), the adapters in `services/`. Three similar handlers beat one over-abstracted base.
 
 ## Coding discipline
 - Files: services ≤ ~200 lines, controllers thin (no business logic). Split when larger. One responsibility per file; filename matches the primary export.

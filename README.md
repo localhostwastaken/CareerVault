@@ -136,7 +136,7 @@ contract and transaction.
 |---|---|
 | Network | Polygon Amoy testnet, chain id `80002` (`BLOCKCHAIN_DRIVER=amoy`) |
 | Contract | `<AMOY_REGISTRY_ADDRESS>`, filled in after deployment (`contracts/deployments/amoy.json`) |
-| Anchor wallet | `0x955cE8960A1Fb6fCCd9e5F42D81a844dEDf5056e` (the deployer: contract owner and authorized anchor) |
+| Anchor wallet | `0x955cE8960A1Fb6fCCd9e5F42D81a844dEDf5056e` (it will be the deployer, and so the contract owner and first authorized anchor, once the registry is deployed) |
 | Explorer | [amoy.polygonscan.com](https://amoy.polygonscan.com). The verify page links the transaction and the contract; the admin's anchoring card links each batch's transaction. |
 
 The database stays authoritative for revocation (R7):
@@ -184,7 +184,7 @@ Three layers, each with a different job. Details and evidence are in §4 of
      `documents.{content_json, salt, manager_signature, hr_signature, revocation_reason_text}` and
      `document_versions.{content_json, change_summary}` is stored as a `cvenc:v1:…` envelope.
    - Issued PDFs are encrypted on disk the same way.
-   - Key hierarchy: `KMS_MASTER_KEY` → HKDF-SHA256 field KEK → a fresh AES-256 data key per written row →
+   - Key hierarchy: `KMS_MASTER_KEY` → HKDF-SHA256 field KEK → a fresh AES-256 data key per row payload →
      AES-256-GCM, with the field name as AAD.
    - `npm run db:audit-encryption` (in `server/`) proves no plaintext remains; it reports any row
      written before R10 as plaintext.

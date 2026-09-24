@@ -9,7 +9,7 @@
 >
 > - **Deployment.** Render (API) + Supabase (Postgres) + Vercel (React/Vite client), not the AWS topology in §2.2.
 > - **Keys.** Custodial RSA-2048 org keys are generated and held by the server (`LocalKms`), stored AES-256-GCM-wrapped under `KMS_MASTER_KEY`. AWS KMS and HashiCorp Vault are **Roadmap**.
-> - **Encryption.** R10 application envelope encryption covers the sensitive document fields and PDFs (AES-256-GCM, `KMS_MASTER_KEY` → HKDF field KEK → a data key per row) and is **Implemented**. At rest, the database is encrypted by Supabase (provider AES-256).
+> - **Encryption.** R10 application envelope encryption covers the sensitive document fields and PDFs (AES-256-GCM, `KMS_MASTER_KEY` → HKDF field KEK → a data key per row payload) and is **Implemented**. At rest, the database is encrypted by Supabase (provider AES-256).
 > - **Contract.** `AnchorRegistry` (`anchorRoot(bytes32, uint256)`, `revokeDocument`, `verifyRoot`, `isRevoked`) supersedes the `MerkleRootRegistry` sketched in §2.4. It targets the **Polygon Amoy testnet** (deploy pending).
 > - **Hash.** `SHA-256(JCS(credentialSubject) ‖ salt)`, never an unsalted hash of the JSON-LD payload.
 > - **Not built.** Redis/BullMQ, S3, SES, live Stripe, the GitHub/IPFS mirrors and the PDF-embedded proof are **Roadmap** or superseded.
@@ -393,7 +393,7 @@ flowchart TB
         KMS2["AWS KMS<br/>(Master Keys)<br/>Roadmap · today KMS_MASTER_KEY + LocalKms"]
         VAULT2["HashiCorp Vault<br/>(Transit Engine)<br/>Roadmap · today LocalKms RS256"]
 
-        KMS2 -->|"Envelope Encryption"| DATA_KEY["Data Encryption Key<br/>(Encrypts sensitive DB fields)<br/>Implemented (R10): one DEK per row"]
+        KMS2 -->|"Envelope Encryption"| DATA_KEY["Data Encryption Key<br/>(Encrypts sensitive DB fields)<br/>Implemented (R10): one DEK per row payload"]
         VAULT2 -->|"Sign Operation"| DOC_SIGN["Document Signature<br/>(Only on authenticated<br/>user click of Approve)"]
     end
 
@@ -462,7 +462,7 @@ Two authentication flows coexist:
 The platform uses a **custodial key model** — users never generate, store, or manage cryptographic keys. This is a deliberate decision: the target audience (HR managers, employees) should not need to understand key management.
 
 - **AWS KMS** manages master encryption keys for envelope encryption. Sensitive database fields (e.g., salary figures in document payloads) are encrypted with a data encryption key (DEK), which is itself encrypted by the KMS master key. The encrypted DEK is stored alongside the ciphertext. Decryption requires a KMS API call, which is audit-logged.
-  - **Implemented (R10), with a local KMS:** `KMS_MASTER_KEY` → HKDF-SHA256 field KEK → a fresh DEK per written row → AES-256-GCM per field, with AAD `careervault|<field>|v1`. The wrapped DEK travels inside each `cvenc:v1:` envelope.
+  - **Implemented (R10), with a local KMS:** `KMS_MASTER_KEY` → HKDF-SHA256 field KEK → a fresh DEK per row payload (an `updateMany` shares one envelope across the rows it matches) → AES-256-GCM per field, with AAD `careervault|<field>|v1`. The wrapped DEK travels inside each `cvenc:v1:` envelope.
   - DEK unwraps are cached and **not** audit-logged.
   - **Roadmap:** AWS KMS as the master-key holder.
 - **HashiCorp Vault Transit Engine** handles document signing. When an authenticated user (Manager or HR) clicks "Approve," the backend sends the JCS-canonicalized JSON-LD payload to Vault's Transit engine, which signs it with the organization's signing key. The signature is stored with the document and embedded in the PDF. Keys never leave Vault. Key rotation is automatic (new key version created periodically; old versions retained for verification).
@@ -734,7 +734,7 @@ This triple-redundancy (Polygon + GitHub + IPFS) ensures that Merkle roots are r
 |---|---|---|
 | **SHA-256** | Document hashing | Industry-standard, collision-resistant. Used for Merkle leaf computation. Node.js `crypto` module — no external dependency. |
 | **JCS (RFC 8785)** | JSON canonicalization | Deterministic JSON serialization before hashing. Ensures the same logical document always produces the same hash regardless of key ordering. Library: `canonicalize` npm package. |
-| **AES-256** | Encryption at rest | Via AWS KMS envelope encryption. Data keys encrypted by KMS master key. **Implemented** as AES-256-GCM envelope encryption (R10): `KMS_MASTER_KEY` → HKDF-SHA256 field KEK → a fresh data key per written row; per-field AAD; PDFs too. **Roadmap:** AWS KMS as the master-key holder. |
+| **AES-256** | Encryption at rest | Via AWS KMS envelope encryption. Data keys encrypted by KMS master key. **Implemented** as AES-256-GCM envelope encryption (R10): `KMS_MASTER_KEY` → HKDF-SHA256 field KEK → a fresh data key per row payload; per-field AAD; PDFs too. **Roadmap:** AWS KMS as the master-key holder. |
 | **RSA-2048 / RS256** | Document signing | **Implemented:** per-org keys held by the server (`LocalKms`), wrapped under `KMS_MASTER_KEY`. The manager and HR each sign a role statement `SHA-256(JCS({v:1, documentHash, role, memberId}))` with the same org key. |
 | **RS256** | JWT signing | RSA-based JWT signatures. Key pair managed in AWS Secrets Manager. **Roadmap:** today the key pair comes from environment secrets, or dev key files. |
 
@@ -1772,6 +1772,8 @@ X-Request-ID: <uuid>  (for tracing)
 }
 ```
 
+> **As implemented (Sep 2026):** the real endpoint is `DELETE /api/v1/users/me`. It runs synchronously and returns `{ "deleted": true }`, inside the standard response envelope. It doesn't delete PDFs. The "dead hashes" note overstates it: the salt is nulled, so no one can recompute the hash from content, but an issued document's content stays linked to its hash, and the public hash lookup still returns its allow-listed fields. See "Data Retention & Compliance" below.
+
 ---
 
 #### Notifications Module
@@ -1992,7 +1994,7 @@ The Webhook Dispatcher handler is a placeholder for V2, where organizations and 
 | **Issuance Audit Logs** | 7 years | Automatic purge after retention period | Legal compliance, dispute resolution |
 | **System Logs (IPs, Logins)** | 90 days | Automatic purge via CloudWatch log group retention | Operational necessity |
 | **User Profile Data** | Until GDPR deletion request | Full wipe: user row, S3 PDFs, share links, salt. **As implemented:** the user row is anonymized (tombstoned, not deleted), share links are deactivated and the salt is nulled. PDF deletion is Roadmap. | User consent |
-| **Document Data** | Until GDPR deletion or org-initiated purge | Full wipe from SQL and S3. On-chain hash becomes dead. **As implemented:** drafts and every version snapshot are scrubbed, and the salt is nulled on all the holder's documents, so the on-chain hash is dead. Issued documents' content is retained (encrypted) as the issuer's record. Org-initiated purge and PDF deletion are Roadmap. | User consent + contractual |
+| **Document Data** | Until GDPR deletion or org-initiated purge | Full wipe from SQL and S3. On-chain hash becomes dead. **As implemented:** drafts and every version snapshot are scrubbed, and the salt is nulled on all the holder's documents, so nobody can recompute or prove the hash from content. Issued documents' content is retained (encrypted) as the issuer's record, in the same row as the hash, and the public hash lookup still returns its allow-listed fields (including the name). So the hash is **not yet unlinkable**. Org-initiated purge and PDF deletion are Roadmap. | User consent + contractual |
 | **Payment Records** | 7 years | Retained in Stripe (Stripe's retention policy) | Tax/legal compliance |
 | **Merkle Roots (on-chain)** | Permanent (immutable) | Cannot be deleted from Polygon | Legitimate interest (verification integrity) |
 
@@ -2002,7 +2004,7 @@ The Webhook Dispatcher handler is a placeholder for V2, where organizations and 
 |---|---|---|
 | **Encryption at Rest** | RDS (AES-256), S3 (SSE-KMS), Redis (ElastiCache encryption) | **Implemented differently (Sep 2026):** Supabase provider AES-256, plus R10 application envelope encryption of the sensitive document fields and PDFs (AES-256-GCM). RDS, S3 and ElastiCache are Roadmap. |
 | **Encryption in Transit** | TLS 1.3 everywhere, HSTS headers | **Partial:** HTTPS on Vercel and Render; HSTS via `helmet`. Pinning Supabase's CA (`sslmode=verify-full`) for the API↔DB leg is a pending deployment step. |
-| **GDPR Right to Erasure** | Full wipe endpoint. User row, PDFs, share links, salt deleted. On-chain hash = dead. | **Partial:** `DELETE /users/me` nulls the salt (dead hash), scrubs drafts and version snapshots, anonymizes PII, and revokes links, keys and sessions. Issued content is retained (encrypted); PDF deletion and an erasure audit row are Roadmap. |
+| **GDPR Right to Erasure** | Full wipe endpoint. User row, PDFs, share links, salt deleted. On-chain hash = dead. | **Partial:** `DELETE /users/me` nulls the salt (the hash can no longer be recomputed from content), scrubs drafts and version snapshots, anonymizes PII, and revokes links, keys and sessions. Issued content is retained (encrypted), and the public hash lookup still returns its allow-listed fields, including the name, so the hash is not yet unlinkable. Scrubbing issued content (or withholding it when the salt is gone), PDF deletion and an erasure audit row are Roadmap. |
 | **GDPR Data Portability** | Export endpoint: download all documents as ZIP | **Roadmap.** The per-document credential file (`GET /documents/:id/credential`) is implemented. |
 | **Password Security** | bcrypt (cost 12), minimum 8 characters, no password reuse check (V1) | Planned for V1 |
 | **Rate Limiting** | Redis sliding window, per-endpoint limits | Planned for V1 |
