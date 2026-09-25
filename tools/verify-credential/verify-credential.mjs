@@ -107,9 +107,9 @@ const networkLabel = (chainId) => KNOWN_NETWORK_NAMES[chainId] ?? `chain ${chain
 // itself told to anchor. `--registry <address>` pins/overrides this for any chain (e.g. a
 // local Hardhat deployment, which has no fixed address to hardcode here).
 const KNOWN_REGISTRIES = {
-  // Filled in once CareerVault's Amoy AnchorRegistry is deployed. `null` means "not deployed
-  // yet", which prints as unpinned (⚠), not mismatched (✗) — there is nothing to mismatch.
-  80002: null,
+  // CareerVault's Amoy AnchorRegistry, source-verified on PolygonScan (deployed 2026-09-25;
+  // record: contracts/deployments/amoy.json).
+  80002: '0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a',
 };
 
 // Pure (no I/O): the pin a credential's anchor should be checked against, and whether it

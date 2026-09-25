@@ -55,7 +55,7 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
   - Verify against the document's pinned `signing_public_key_pem`, falling back to the org key.
 - **Merkle:** `common/utils/merkle.util.ts` only. `merkletreejs` with `sortPairs: true`; leaves are the raw 32-byte document hashes (not re-hashed); an odd node is promoted, not duplicated.
 - **Contract (R2):** `AnchorRegistry` (`anchorRoot`, `revokeDocument`, `verifyRoot`, `isRevoked`).
-  - On Polygon Amoy (chain 80002) at `<AMOY_REGISTRY_ADDRESS>`; read the real address from `contracts/deployments/amoy.json` once deployed.
+  - On Polygon Amoy (chain 80002) at `0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a` (record: `contracts/deployments/amoy.json`, deploy block 48502677).
   - Reached through `PolygonAnchorService`. Only authorized anchors can write.
   - The server's ABI copy lives in `services/blockchain/anchor-registry.abi.ts`.
 - **Field encryption (R10):** the Prisma query extension (`prisma/encryption/field-encryption.extension.ts`) seals `ENCRYPTED_FIELDS` (`prisma/encryption/encrypted-fields.ts`) through `FieldCipher` (`services/key-management/field-cipher.ts`).
