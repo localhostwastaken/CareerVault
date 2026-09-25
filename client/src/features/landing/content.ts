@@ -1,15 +1,4 @@
-import {
-  Anchor,
-  BadgeCheck,
-  Building2,
-  FileSignature,
-  PenLine,
-  Search,
-  Send,
-  ShieldCheck,
-  UserRound,
-  type LucideIcon,
-} from 'lucide-react'
+import { Anchor, Building2, FileSignature, Search, ShieldCheck, UserRound, type LucideIcon } from 'lucide-react'
 
 export interface Pillar {
   icon: LucideIcon
@@ -37,20 +26,74 @@ export const PILLARS: Pillar[] = [
   },
 ]
 
-export interface Stage {
-  icon: LucideIcon
-  label: string
+// Illustrative, and labelled as such wherever it renders: one record told end to end.
+// The hero's verification sample shows this same document hash.
+export const EXAMPLE_HASH = '8f2c9a1e4b6d0357af92c1e8d4b6a70f3c5e9b1d2a4f6c8e0b3d5f7a9c1e3b5d'
+
+export interface RecordEvent {
+  step: string
+  role: string
   actor: string
-  body: string
+  action: string
+  detail: string
+  /** ISO timestamp, rendered in the viewer's timezone. */
+  at: string
+  evidence: { label: string; value: string; isMono?: boolean; tone?: 'anchor' | 'verified' }
 }
 
-export const STAGES: Stage[] = [
-  { icon: Send, label: 'Request', actor: 'Employee', body: 'Pick a verified organisation and the document you need.' },
-  { icon: PenLine, label: 'Sign', actor: 'Manager', body: 'The assigned manager drafts the details and signs.' },
-  { icon: BadgeCheck, label: 'Co-sign', actor: 'HR', body: 'HR reviews, co-signs, and issues the final document.' },
-  { icon: Anchor, label: 'Anchor', actor: 'CareerVault', body: 'The hash joins that day’s Merkle root, committed on-chain.' },
-  { icon: Search, label: 'Verify', actor: 'Anyone', body: 'A share link runs every authenticity check, publicly.' },
-]
+export const EXAMPLE_RECORD = {
+  type: 'Experience Letter',
+  holder: 'Priya Sharma',
+  issuer: 'TechCorp',
+  reference: 'TECHCO/EXP/2026/K7M2P9',
+  events: [
+    {
+      step: '01',
+      role: 'Employee',
+      actor: 'Priya Sharma',
+      action: 'Requested the letter',
+      detail: 'Chose TechCorp, a verified organisation, and the manager who knows her work.',
+      at: '2026-06-12T03:44:00Z',
+      evidence: { label: 'Routed to', value: 'Rohan Mehta, Manager' },
+    },
+    {
+      step: '02',
+      role: 'Manager',
+      actor: 'Rohan Mehta',
+      action: 'Drafted and signed',
+      detail: 'Signed a MANAGER statement over the content hash with TechCorp’s key.',
+      at: '2026-06-12T05:32:00Z',
+      evidence: { label: 'Reference', value: 'TECHCO/EXP/2026/K7M2P9', isMono: true },
+    },
+    {
+      step: '03',
+      role: 'HR',
+      actor: 'Ananya Iyer',
+      action: 'Co-signed and issued',
+      detail: 'Added the HR statement. A document is issued only once both signatures exist.',
+      at: '2026-06-12T10:10:00Z',
+      evidence: { label: 'Document hash', value: `${EXAMPLE_HASH.slice(0, 10)}…${EXAMPLE_HASH.slice(-6)}`, isMono: true },
+    },
+    {
+      step: '04',
+      role: 'Merkle batch',
+      actor: 'CareerVault',
+      action: 'Anchored on Polygon',
+      detail: 'That day’s documents were batched into one Merkle root and committed on-chain.',
+      at: '2026-06-12T18:30:00Z',
+      evidence: { label: 'Block', value: '#84219301', isMono: true, tone: 'anchor' },
+    },
+    {
+      step: '05',
+      role: 'Verifier',
+      actor: 'A recruiter',
+      action: 'Verified from a share link',
+      detail: 'Every check recomputed from the record — no account, no call to HR.',
+      at: '2026-06-18T04:57:00Z',
+      evidence: { label: 'Result', value: '6 of 6 checks passed', tone: 'verified' },
+    },
+  ] satisfies RecordEvent[],
+}
 
 export interface AudiencePath {
   icon: LucideIcon

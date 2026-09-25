@@ -47,6 +47,11 @@ export interface ProgressSummary {
   tone: 'pending' | 'verified' | 'revoked' | 'neutral'
 }
 
+/** A manager sent it back to the holder: still DRAFT in the database, shown as "Returned". */
+export function isReturned(document: DocumentDetail): boolean {
+  return (document.contentJson as Record<string, unknown> | null)?.returnedByManager === true
+}
+
 /**
  * Plain-language status. A holder should never have to infer from a badge who is
  * sitting on their request or how long it has been there.

@@ -35,6 +35,7 @@ const RecruiterTalentSearch = () => {
     holderId: match.holderId,
     holderName: match.holderName,
     skills: match.skills,
+    evidence: match.evidence,
     matchScore: match.matchScore,
     baseValue: match.explanation?.baseValue ?? 0,
     contributions: match.explanation?.contributions ?? [],
@@ -137,6 +138,12 @@ const RecruiterTalentSearch = () => {
                 />
               ) : (
                 <div className="flex flex-col gap-3">
+                  {/* The ranker's features never include verification status, so say so
+                      once, where the ranked list starts. */}
+                  <p className="text-label text-muted-foreground">
+                    Ranked by fit from skills extracted from each candidate's documents. The score does not weigh
+                    verification status — the credential counts on each record show what is issued and anchored.
+                  </p>
                   {candidates.map((candidate) => (
                     <CandidateCard
                       key={candidate.holderId}

@@ -16,7 +16,9 @@ const VerifyResult = () => {
   useDocumentTitle(data ? `Verification — ${data.verdict.toLowerCase().replaceAll('_', ' ')}` : 'Verifying document')
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 lg:px-8">
+    // Wide enough for the report's rail + evidence columns. Narrow states share its left
+    // edge instead of re-centring, so nothing jumps sideways when the report lands.
+    <div className="mx-auto max-w-6xl px-4 py-10 lg:px-8">
       <div className="no-print mb-5 flex items-center justify-between gap-2">
         <Button asChild variant="ghost" size="sm" className="-ml-2">
           <Link to="/verify">
@@ -35,16 +37,20 @@ const VerifyResult = () => {
       </div>
 
       {isLoading ? (
-        <VerifyingProgress />
+        <div className="max-w-2xl">
+          <VerifyingProgress />
+        </div>
       ) : isError || !data ? (
-        <ErrorState
-          // Replaces the whole report, verdict banner h1 included, so it carries the h1.
-          headingLevel={1}
-          title="Verification unavailable"
-          description="We couldn’t reach the verification service. This says nothing about the document itself — please try again."
-          error={error}
-          onRetry={refetch}
-        />
+        <div className="max-w-2xl">
+          <ErrorState
+            // Replaces the whole report, verdict banner h1 included, so it carries the h1.
+            headingLevel={1}
+            title="Verification unavailable"
+            description="We couldn’t reach the verification service. This says nothing about the document itself — please try again."
+            error={error}
+            onRetry={refetch}
+          />
+        </div>
       ) : (
         <VerificationReport result={data} />
       )}

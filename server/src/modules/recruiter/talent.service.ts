@@ -2,6 +2,12 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { AiClientService } from '../../services/ai/ai-client.service.js';
 import { RecruiterService } from './recruiter.service.js';
+import {
+  EVIDENCE_STATUSES,
+  emptyEvidence,
+  summarizeCredentials,
+  type CredentialEvidence,
+} from './credential-evidence.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
 
@@ -171,18 +177,42 @@ export class TalentService {
       orderBy: { matchScore: 'desc' },
       include: { holder: { select: { id: true, fullName: true } } },
     });
-    const skillsByHolder = await this.skillsByHolder(
-      matches.map((m) => m.holderId),
-      this.orgScope(profile),
-    );
+    const holderIds = matches.map((m) => m.holderId);
+    const scope = this.orgScope(profile);
+    const [skillsByHolder, evidenceByHolder] = await Promise.all([
+      this.skillsByHolder(holderIds, scope),
+      this.evidenceByHolder(holderIds, scope),
+    ]);
     return matches.map((m) => ({
       holderId: m.holderId,
       holderName: m.holder.fullName,
       skills: skillsByHolder.get(m.holderId) ?? [],
+      evidence: evidenceByHolder.get(m.holderId) ?? emptyEvidence(),
       matchScore: m.matchScore,
       explanation: m.shapExplanationJson,
       createdAt: m.createdAt,
     }));
+  }
+
+  // Same scope as skillsByHolder: a SAME_ORG recruiter must not learn how many
+  // credentials a candidate holds from other organizations.
+  private async evidenceByHolder(holderIds: string[], orgScope: string | null) {
+    if (holderIds.length === 0) return new Map<string, CredentialEvidence>();
+    const rows = await this.prisma.document.findMany({
+      where: {
+        holderId: { in: holderIds },
+        status: { in: [...EVIDENCE_STATUSES] },
+        ...(orgScope ? { organizationId: orgScope } : {}),
+      },
+      select: {
+        holderId: true,
+        status: true,
+        organizationId: true,
+        issuedAt: true,
+        expiresAt: true,
+      },
+    });
+    return summarizeCredentials(rows, new Date());
   }
 
   // Org scoping (R6): SAME_ORG recruiters are confined to their own organization;

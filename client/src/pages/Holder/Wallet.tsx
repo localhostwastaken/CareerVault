@@ -7,7 +7,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { Section } from '@/components/shared/Section'
 import { EvidenceStripSkeleton, ListSkeleton } from '@/components/shared/Skeletons'
-import { DocumentCard } from '@/features/document/components/DocumentCard'
+import { CredentialRegister } from '@/features/document/components/CredentialRegister'
 import { WalletOnboarding } from '@/features/document/components/WalletOnboarding'
 import { useListDocumentsQuery } from '@/features/document/api'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
@@ -88,11 +88,7 @@ const HolderWallet = () => {
                   )
                 }
               >
-                <div className="flex flex-col gap-3">
-                  {documents.slice(0, RECENT_COUNT).map((document) => (
-                    <DocumentCard key={document.id} document={document} />
-                  ))}
-                </div>
+                <CredentialRegister documents={documents.slice(0, RECENT_COUNT)} />
               </Section>
 
               {issued === 0 && (

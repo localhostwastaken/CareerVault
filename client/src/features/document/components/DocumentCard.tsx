@@ -2,15 +2,10 @@ import { Link } from 'react-router-dom'
 import { ChevronRight, FileText } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { StatusBadge } from '@/components/shared/StatusBadge'
-import { documentProgress } from '@/features/document/documentProgress'
+import { documentProgress, isReturned } from '@/features/document/documentProgress'
 import { documentReference } from '@/features/document/reference'
 import { DOCUMENT_TYPE_LABEL, type DocumentDetail } from '@/features/document/types'
 import { formatDate } from '@/lib/format'
-
-function isReturned(doc: DocumentDetail): boolean {
-  const content = doc.contentJson as Record<string, unknown> | null
-  return content?.returnedByManager === true
-}
 
 interface DocumentCardProps {
   document: DocumentDetail

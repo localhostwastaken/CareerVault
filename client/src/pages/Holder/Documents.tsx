@@ -6,7 +6,7 @@ import { FilterBar } from '@/components/shared/FilterBar'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { ListSkeleton } from '@/components/shared/Skeletons'
-import { DocumentCard } from '@/features/document/components/DocumentCard'
+import { CredentialRegister } from '@/features/document/components/CredentialRegister'
 import { useListDocumentsQuery } from '@/features/document/api'
 import { DOCUMENT_SORTS, useDocumentFilters } from '@/features/document/useDocumentFilters'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
@@ -88,11 +88,7 @@ const HolderDocuments = () => {
                 }
               />
             ) : (
-              <div className="flex flex-col gap-3">
-                {visible.map((document) => (
-                  <DocumentCard key={document.id} document={document} />
-                ))}
-              </div>
+              <CredentialRegister documents={visible} />
             )}
           </div>
         )}

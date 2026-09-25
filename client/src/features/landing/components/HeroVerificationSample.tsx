@@ -3,6 +3,7 @@ import { HashDisplay } from '@/components/shared/HashDisplay'
 import { CheckRow } from '@/features/verification/components/CheckRow'
 import { VerdictBanner } from '@/features/verification/components/VerdictBanner'
 import type { VerificationCheck } from '@/features/verification/types'
+import { EXAMPLE_HASH } from '@/features/landing/content'
 
 // A real product artifact, not decoration — the exact evidence rail a visitor gets
 // from /verify, with illustrative values so the hero doesn't need a live document.
@@ -27,7 +28,7 @@ export function HeroVerificationSample() {
       <div className="mt-4 border-t border-border pt-4">
         <p className="label-micro mb-1.5">Document hash · SHA-256</p>
         <HashDisplay
-          value="8f2c9a1e4b6d0357af92c1e8d4b6a70f3c5e9b1d2a4f6c8e0b3d5f7a9c1e3b5d7"
+          value={EXAMPLE_HASH}
           lead={16}
           tail={16}
           label="Copy document hash"

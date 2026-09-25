@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, FileWarning, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, FileWarning } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { AttestationPanel } from '@/components/shared/AttestationPanel'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Notice } from '@/components/shared/Notice'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -13,6 +12,8 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { setActivePersona } from '@/features/auth/authSlice'
 import { useGetDocumentQuery } from '@/features/document/api'
 import { SignDocumentForm } from '@/features/document/components/SignDocumentForm'
+import { SignedConfirmation } from '@/features/document/components/SignedConfirmation'
+import { SigningCeremony } from '@/features/document/components/SigningCeremony'
 import { DOCUMENT_TYPE_LABEL, type DocumentDetail } from '@/features/document/types'
 import { useAppDispatch, useAuth } from '@/hooks/useAuth'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
@@ -29,35 +30,14 @@ const ManagerSignDocument = () => {
   // PENDING_HR status would otherwise replace this confirmation with "can't be signed".
   if (signed) {
     return (
-      <div className="mx-auto flex max-w-2xl flex-col gap-6">
-        <AttestationPanel
-          title="Signed and sent to HR"
-          description={`Your signature is bound to this content. ${signed.organizationName} HR will review and co-sign before it is issued.`}
-          record={`${DOCUMENT_TYPE_LABEL[signed.type]} for ${signed.holderName}`}
-          signerLabel="Signed by"
-          signerName={signed.signerName ?? user?.fullName ?? '—'}
-          recordedAt={signed.updatedAt}
-          nextStep="HR co-signature"
-          actions={
-            <>
-              <Button asChild>
-                <Link to={`/app/documents/${signed.id}`}>
-                  View document
-                  <ArrowRight />
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link to="/app/inbox">Back to inbox</Link>
-              </Button>
-            </>
-          }
-        />
+      <div className="mx-auto flex max-w-3xl flex-col gap-6">
+        <SignedConfirmation signed={signed} fallbackSignerName={user?.fullName} />
       </div>
     )
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+    <div className="mx-auto flex max-w-5xl flex-col gap-6">
       <Button asChild variant="ghost" size="sm" className="-ml-2 self-start">
         <Link to="/app/inbox">
           <ArrowLeft />
@@ -106,32 +86,34 @@ const ManagerSignDocument = () => {
               <PageHeader
                 eyebrow={`Draft & sign · ${document.organizationName}`}
                 title={DOCUMENT_TYPE_LABEL[document.type]}
-                description={`For ${document.holderName} · ${document.holderEmail}`}
+                description={
+                  canSign
+                    ? 'Complete the record, read what you are attesting to, then sign.'
+                    : `For ${document.holderName} · ${document.holderEmail}`
+                }
                 actions={<StatusBadge status={document.status} />}
               />
 
-              {note && (
-                <div className="inset-well p-4">
-                  <p className="label-micro">What the holder asked for</p>
-                  <p className="mt-1.5 text-body text-foreground">{note}</p>
-                </div>
-              )}
-
               {canSign ? (
-                <>
-                  {/* Signing is an attestation, not a form submission. Saying so before
-                      the fields is the difference between a signature and a click. */}
-                  <Notice tone="neutral" title="You're attesting to this record" icon={ShieldCheck}>
-                    By signing, you confirm — on behalf of {document.organizationName} — that the details below are true
-                    about {document.holderName}. Your signature is cryptographically bound to this content and sent to
-                    HR for approval.
-                  </Notice>
+                // The ceremony rail sits beside the fields on wide screens and above them
+                // otherwise — either way it is read before anything is signed.
+                <div className="grid gap-8 xl:grid-cols-[18rem_minmax(0,1fr)]">
+                  <div className="xl:sticky xl:top-24 xl:self-start">
+                    <SigningCeremony document={document} signerName={user?.fullName ?? '—'} note={note} />
+                  </div>
                   <Card className="p-6">
                     <SignDocumentForm document={document} onSigned={setSigned} />
                   </Card>
-                </>
+                </div>
               ) : (
-                <Notice
+                <div className="flex max-w-2xl flex-col gap-6">
+                  {note && (
+                    <div className="inset-well p-4">
+                      <p className="label-micro">What the holder asked for</p>
+                      <p className="mt-1.5 text-body text-foreground">{note}</p>
+                    </div>
+                  )}
+                  <Notice
                   tone="neutral"
                   title={isOwnOrg ? 'This document can no longer be signed' : 'This document belongs to another organisation'}
                   actions={
@@ -157,7 +139,8 @@ const ManagerSignDocument = () => {
                     : managerHere
                       ? `You are signed in as another organisation's persona. Switch to ${document.organizationName} to sign it.`
                       : `Only a manager at ${document.organizationName} can sign it.`}
-                </Notice>
+                  </Notice>
+                </div>
               )}
             </div>
           )

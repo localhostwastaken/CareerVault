@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { StatusBadge } from '@/components/shared/StatusBadge'
+import { isReturned } from '@/features/document/documentProgress'
 import { DOCUMENT_TYPE_LABEL, type DocumentDetail } from '@/features/document/types'
 import { formatDateTime, formatRelativeTime } from '@/lib/format'
 
@@ -18,8 +19,6 @@ export interface QueueConfig {
   actionHref: (document: DocumentDetail) => string
 }
 
-const isReturned = (document: DocumentDetail) =>
-  (document.contentJson as Record<string, unknown> | null)?.returnedByManager === true
 
 function RowStatus({ document }: { document: DocumentDetail }) {
   const returned = isReturned(document)

@@ -47,7 +47,9 @@ export function PublicLayout() {
         </div>
       </header>
 
-      <main id="main" className="flex-1">
+      {/* At least a viewport tall (less the 4rem header), so the footer starts below the
+          fold and a lazy page or a report replacing its loader never shoves it down in view. */}
+      <main id="main" className="min-h-[calc(100vh-4rem)] flex-1">
         <Outlet />
       </main>
 

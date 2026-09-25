@@ -41,10 +41,20 @@ export interface SearchResult {
   matches: MatchCandidate[]
 }
 
+/** Counts only — the server never discloses which organizations issued them. */
+export interface CredentialEvidence {
+  verifiedCredentials: number
+  anchoredCredentials: number
+  issuers: number
+  latestIssuedAt: string | null
+}
+
 export interface StoredMatch {
   holderId: string
   holderName: string
   skills: string[]
+  /** Optional: the client and API deploy separately, so an older API may omit it. */
+  evidence?: CredentialEvidence
   matchScore: number
   explanation: { baseValue: number; contributions: ShapContribution[] } | null
   createdAt: string

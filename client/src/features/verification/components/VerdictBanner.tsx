@@ -50,15 +50,22 @@ const VERDICTS: Record<Verdict, { label: string; sub: string; icon: LucideIcon; 
   },
 }
 
-export function VerdictBanner({ verdict, anchored }: { verdict: Verdict; anchored: boolean }) {
+interface VerdictBannerProps {
+  verdict: Verdict
+  anchored: boolean
+  /** Counted from the returned checks by the caller; omitted when there are none. */
+  tally?: { passed: number; total: number }
+}
+
+export function VerdictBanner({ verdict, anchored, tally }: VerdictBannerProps) {
   const config = VERDICTS[verdict]
   const Icon = config.icon
 
   return (
     // role="status" so assistive tech announces the verdict when the report replaces
     // the progress list — this is the one thing the visitor came for.
-    <div role="status" className={cn('rounded-xl border p-6', config.wrap)}>
-      <div className="flex items-start gap-4">
+    <div role="status" className={cn('flex flex-col gap-4 rounded-xl border p-6 sm:flex-row sm:items-start', config.wrap)}>
+      <div className="flex min-w-0 flex-1 items-start gap-4">
         <span className={cn('flex size-12 shrink-0 items-center justify-center rounded-full', config.seal)}>
           <Icon className="size-6" />
         </span>
@@ -79,6 +86,14 @@ export function VerdictBanner({ verdict, anchored }: { verdict: Verdict; anchore
           )}
         </div>
       </div>
+      {tally && (
+        <p className="shrink-0 border-t border-rule-strong pt-3 sm:border-t-0 sm:border-l sm:pl-6 sm:pt-0 sm:text-right">
+          <span className="tnum block font-serif text-h1 text-foreground">
+            {tally.passed} / {tally.total}
+          </span>
+          <span className="label-micro">checks passed</span>
+        </p>
+      )}
     </div>
   )
 }
