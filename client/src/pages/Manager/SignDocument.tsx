@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, FileWarning, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, ArrowRight, FileWarning, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { AttestationPanel } from '@/components/shared/AttestationPanel'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Notice } from '@/components/shared/Notice'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -11,7 +13,7 @@ import { StatusBadge } from '@/components/shared/StatusBadge'
 import { setActivePersona } from '@/features/auth/authSlice'
 import { useGetDocumentQuery } from '@/features/document/api'
 import { SignDocumentForm } from '@/features/document/components/SignDocumentForm'
-import { DOCUMENT_TYPE_LABEL } from '@/features/document/types'
+import { DOCUMENT_TYPE_LABEL, type DocumentDetail } from '@/features/document/types'
 import { useAppDispatch, useAuth } from '@/hooks/useAuth'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
@@ -20,7 +22,39 @@ const ManagerSignDocument = () => {
   const { activeOrgId, user } = useAuth()
   const dispatch = useAppDispatch()
   const query = useGetDocumentQuery(id, { skip: !id })
+  const [signed, setSigned] = useState<DocumentDetail | null>(null)
   useDocumentTitle(query.data ? `Sign — ${DOCUMENT_TYPE_LABEL[query.data.type]}` : 'Sign document')
+
+  // Rendered ahead of the query: signing invalidates the document, and the refetched
+  // PENDING_HR status would otherwise replace this confirmation with "can't be signed".
+  if (signed) {
+    return (
+      <div className="mx-auto flex max-w-2xl flex-col gap-6">
+        <AttestationPanel
+          title="Signed and sent to HR"
+          description={`Your signature is bound to this content. ${signed.organizationName} HR will review and co-sign before it is issued.`}
+          record={`${DOCUMENT_TYPE_LABEL[signed.type]} for ${signed.holderName}`}
+          signerLabel="Signed by"
+          signerName={signed.signerName ?? user?.fullName ?? '—'}
+          recordedAt={signed.updatedAt}
+          nextStep="HR co-signature"
+          actions={
+            <>
+              <Button asChild>
+                <Link to={`/app/documents/${signed.id}`}>
+                  View document
+                  <ArrowRight />
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link to="/app/inbox">Back to inbox</Link>
+              </Button>
+            </>
+          }
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -93,7 +127,7 @@ const ManagerSignDocument = () => {
                     HR for approval.
                   </Notice>
                   <Card className="p-6">
-                    <SignDocumentForm document={document} />
+                    <SignDocumentForm document={document} onSigned={setSigned} />
                   </Card>
                 </>
               ) : (

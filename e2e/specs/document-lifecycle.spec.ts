@@ -76,7 +76,9 @@ test('the manager signs the draft and it moves to HR', async () => {
 
   await signExperienceLetter(managerPage, { employeeCode: 'EMP-0001' })
 
-  // The toast is not the assertion. The status is.
+  // The completion panel is not the assertion. The status is.
+  await expect(managerPage.getByRole('heading', { name: 'Signed and sent to HR' })).toBeVisible()
+  await managerPage.getByRole('link', { name: 'View document' }).click()
   await managerPage.waitForURL(new RegExp(`/app/documents/${documentId}$`))
   await expect(managerPage.getByText('Pending HR').first()).toBeVisible()
 
@@ -199,6 +201,7 @@ test('a relieving letter can be signed even though its extra field is collapsed'
   await managerPage.goto(`/app/documents/${created.id}/sign`)
   await signExperienceLetter(managerPage, { letterKind: 'RELIEVING', employeeCode: 'EMP-0002' })
 
+  await managerPage.getByRole('link', { name: 'View document' }).click()
   await managerPage.waitForURL(new RegExp(`/app/documents/${created.id}$`))
   await expect(managerPage.getByText('Pending HR').first()).toBeVisible()
 

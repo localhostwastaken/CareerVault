@@ -5,6 +5,7 @@ import { FilterBar } from '@/components/shared/FilterBar'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { ListSkeleton } from '@/components/shared/Skeletons'
 import { DocumentCard } from '@/features/document/components/DocumentCard'
+import { WorkQueue, type QueueConfig } from '@/features/document/components/WorkQueue'
 import { useListDocumentsQuery } from '@/features/document/api'
 import { DOCUMENT_SORTS, useDocumentFilters } from '@/features/document/useDocumentFilters'
 import type { AppRole } from '@/features/auth/types'
@@ -21,10 +22,19 @@ interface DocumentListProps {
   role?: AppRole
   /** Hide the filter bar on short, single-purpose queues. */
   isFilterable?: boolean
+  /** Render as an actionable worklist instead of archive rows. */
+  queue?: QueueConfig
 }
 
 // The shared body of every portal queue page: role-scoped, status-limited, filterable.
-export function DocumentList({ statuses, emptyTitle, emptyDescription, role, isFilterable = true }: DocumentListProps) {
+export function DocumentList({
+  statuses,
+  emptyTitle,
+  emptyDescription,
+  role,
+  isFilterable = true,
+  queue,
+}: DocumentListProps) {
   const query = useListDocumentsQuery(role ? { role } : undefined)
   const filters = useListFilters()
   const { activeOrgId } = useAuth()
@@ -84,6 +94,8 @@ export function DocumentList({ statuses, emptyTitle, emptyDescription, role, isF
                 </Button>
               }
             />
+          ) : queue ? (
+            <WorkQueue documents={visible} config={queue} />
           ) : (
             <div className="flex flex-col gap-3">
               {visible.map((document) => (

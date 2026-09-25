@@ -1,6 +1,18 @@
+import { FileSearch } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { DocumentList } from '@/features/document/components/DocumentList'
+import type { QueueConfig } from '@/features/document/components/WorkQueue'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+
+// Approve/return live on the record itself, next to the content and signature evidence.
+const QUEUE: QueueConfig = {
+  countLabel: 'Pending review',
+  waitingLabel: 'Signed',
+  waitingSince: (document) => document.updatedAt,
+  actionLabel: 'Review',
+  actionIcon: FileSearch,
+  actionHref: (document) => `/app/documents/${document.id}`,
+}
 
 const HrApprovals = () => {
   useDocumentTitle('Approvals')
@@ -16,6 +28,7 @@ const HrApprovals = () => {
         statuses={['PENDING_HR']}
         emptyTitle="Nothing to approve"
         emptyDescription="Documents signed by managers land here for your review."
+        queue={QUEUE}
       />
     </div>
   )

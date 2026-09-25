@@ -138,7 +138,12 @@ const RecruiterTalentSearch = () => {
               ) : (
                 <div className="flex flex-col gap-3">
                   {candidates.map((candidate) => (
-                    <CandidateCard key={candidate.holderId} candidate={candidate} onMessage={setTarget} />
+                    <CandidateCard
+                      key={candidate.holderId}
+                      candidate={candidate}
+                      requiredSkills={selected?.requiredSkills ?? []}
+                      onMessage={setTarget}
+                    />
                   ))}
                 </div>
               )}

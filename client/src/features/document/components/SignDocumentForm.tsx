@@ -12,7 +12,7 @@ import { SalarySummary } from '@/features/document/components/SalarySummary'
 import type { DocumentDetail } from '@/features/document/types'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
-import { notify, toastApiError } from '@/lib/notify'
+import { toastApiError } from '@/lib/notify'
 
 function buildContent(type: DocumentDetail['type'], values: SignFormValues): Record<string, unknown> {
   const stillEmployed = type === 'EXPERIENCE_LETTER' && values.letterKind === 'EXPERIENCE'
@@ -32,7 +32,12 @@ function buildContent(type: DocumentDetail['type'], values: SignFormValues): Rec
   return content
 }
 
-export function SignDocumentForm({ document }: { document: DocumentDetail }) {
+interface SignDocumentFormProps {
+  document: DocumentDetail
+  onSigned: (signed: DocumentDetail) => void
+}
+
+export function SignDocumentForm({ document, onSigned }: SignDocumentFormProps) {
   const navigate = useNavigate()
   const [sign, { isLoading }] = useSignDocumentMutation()
   const [showMore, setShowMore] = useState(false)
@@ -59,9 +64,7 @@ export function SignDocumentForm({ document }: { document: DocumentDetail }) {
 
   const onSubmit = async (values: SignFormValues) => {
     try {
-      await sign({ id: document.id, contentJson: buildContent(type, values) }).unwrap()
-      notify.success('Signed and sent to HR for approval.')
-      navigate(`/app/documents/${document.id}`)
+      onSigned(await sign({ id: document.id, contentJson: buildContent(type, values) }).unwrap())
     } catch (error) {
       toastApiError(error, 'Could not sign the document')
     }

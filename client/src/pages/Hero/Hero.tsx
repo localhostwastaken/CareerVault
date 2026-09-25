@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
 import { Anchor, ArrowRight, ScanLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { AudiencePaths } from '@/features/landing/components/AudiencePaths'
+import { HeroVerificationSample } from '@/features/landing/components/HeroVerificationSample'
 import { HowItWorks } from '@/features/landing/components/HowItWorks'
 import { VerifyTeaser } from '@/features/landing/components/VerifyTeaser'
 import { PILLARS } from '@/features/landing/content'
@@ -16,48 +16,51 @@ const Hero = () => {
   return (
     <>
       <section className="mx-auto max-w-6xl px-4 py-20 lg:px-8 lg:py-28">
-        <div className="max-w-3xl">
-          <span className="inline-flex items-center gap-2 rounded-full border border-anchor/25 bg-anchor-soft px-3 py-1 text-micro text-anchor">
-            <Anchor className="size-3.5" />
-            Web 2.5 — SQL speed, blockchain trust
-          </span>
-          <h1 className="mt-6 font-serif text-h1 text-foreground sm:text-display">
-            Career credentials you can <span className="text-seal">prove</span>.
-          </h1>
-          <p className="mt-5 max-w-2xl text-body-lg text-muted-foreground">
-            A fake experience letter takes five minutes to make and weeks to disprove. CareerVault lets companies
-            issue cryptographically signed career documents, and gives people a lifelong wallet to prove them —
-            in seconds, without anyone calling HR.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Button asChild size="lg">
-              <Link to="/auth/register">
-                Get started
-                <ArrowRight />
-              </Link>
-            </Button>
-            <Button asChild size="lg" variant="outline">
-              <Link to="/verify">
-                <ScanLine />
-                Verify a document
-              </Link>
-            </Button>
-          </div>
-        </div>
+        <div className="flex flex-col gap-12 lg:flex-row lg:items-start lg:justify-between lg:gap-16">
+          <div className="max-w-2xl">
+            <span className="inline-flex items-center gap-2 rounded-full border border-anchor/25 bg-anchor-soft px-3 py-1 text-micro text-anchor">
+              <Anchor className="size-3.5" />
+              Web 2.5 — SQL speed, blockchain trust
+            </span>
+            <h1 className="mt-6 font-serif text-h1 text-foreground sm:text-display">
+              Career credentials you can <span className="text-seal">prove</span>.
+            </h1>
+            <p className="mt-5 max-w-xl text-body-lg text-muted-foreground">
+              A fake experience letter takes five minutes to make and weeks to disprove. CareerVault lets companies
+              issue cryptographically signed career documents, and gives people a lifelong wallet to prove them —
+              in seconds, without anyone calling HR.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Button asChild size="lg">
+                <Link to="/auth/register">
+                  Get started
+                  <ArrowRight />
+                </Link>
+              </Button>
+              <Button asChild size="lg" variant="outline">
+                <Link to="/verify">
+                  <ScanLine />
+                  Verify a document
+                </Link>
+              </Button>
+            </div>
 
-        <div className="mt-16 grid gap-4 lg:grid-cols-3">
-          {PILLARS.map((pillar) => {
-            const Icon = pillar.icon
-            return (
-              <Card key={pillar.title} className="p-6">
-                <span className="flex size-10 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-                  <Icon className="size-5" />
-                </span>
-                <h2 className="mt-4 text-h3 text-foreground">{pillar.title}</h2>
-                <p className="mt-2 text-body text-muted-foreground">{pillar.body}</p>
-              </Card>
-            )
-          })}
+            <dl className="mt-12 flex flex-col gap-5 border-t border-border pt-6">
+              {PILLARS.map((pillar) => (
+                <div key={pillar.title} className="flex gap-3">
+                  <pillar.icon className="mt-0.5 size-4 shrink-0 text-seal" aria-hidden />
+                  <div>
+                    <dt className="text-label font-semibold text-foreground">{pillar.title}</dt>
+                    <dd className="mt-0.5 text-body text-muted-foreground">{pillar.body}</dd>
+                  </div>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          <div className="flex shrink-0 justify-center lg:justify-end">
+            <HeroVerificationSample />
+          </div>
         </div>
       </section>
 

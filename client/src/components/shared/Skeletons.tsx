@@ -36,6 +36,19 @@ export function StatCardsSkeleton({ count = 3 }: { count?: number }) {
   )
 }
 
+export function EvidenceStripSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div className="flex flex-wrap gap-x-6 gap-y-3">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="flex flex-col gap-1">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-4 w-10" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function TableSkeleton({ rows = 6, columns = 5 }: { rows?: number; columns?: number }) {
   return (
     <div className="flex flex-col">

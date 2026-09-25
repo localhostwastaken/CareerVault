@@ -2,11 +2,11 @@ import { Link } from 'react-router-dom'
 import { Anchor, Clock, FileText, Plus, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { EvidenceStrip } from '@/components/shared/EvidenceStrip'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { Section } from '@/components/shared/Section'
-import { ListSkeleton, StatCardsSkeleton } from '@/components/shared/Skeletons'
-import { StatCard } from '@/components/shared/StatCard'
+import { EvidenceStripSkeleton, ListSkeleton } from '@/components/shared/Skeletons'
 import { DocumentCard } from '@/features/document/components/DocumentCard'
 import { WalletOnboarding } from '@/features/document/components/WalletOnboarding'
 import { useListDocumentsQuery } from '@/features/document/api'
@@ -39,7 +39,7 @@ const HolderWallet = () => {
         query={query}
         skeleton={
           <div className="flex flex-col gap-8">
-            <StatCardsSkeleton />
+            <EvidenceStripSkeleton />
             <ListSkeleton rows={3} />
           </div>
         }
@@ -51,20 +51,29 @@ const HolderWallet = () => {
           const anchored = documents.filter((d) => d.merkleStatus === 'ANCHORED').length
           const pending = documents.filter((d) => IN_PROGRESS.includes(d.status)).length
 
+          // The record leads; counts are a one-line summary of it, not a panel above it.
+          // Status tones apply only to a non-zero count — a green 0 would read as a result.
           return (
             <div className="flex flex-col gap-8">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard label="Total documents" value={documents.length} icon={FileText} />
-                <StatCard label="Issued" value={issued} icon={ShieldCheck} tone="verified" />
-                <StatCard label="Anchored on-chain" value={anchored} icon={Anchor} tone="anchor" />
-                <StatCard
-                  label="In progress"
-                  value={pending}
-                  icon={Clock}
-                  tone={pending > 0 ? 'pending' : 'default'}
-                  hint={pending > 0 ? 'Waiting on your organisation' : 'Nothing pending'}
-                />
-              </div>
+              <EvidenceStrip
+                label="Wallet summary"
+                facts={[
+                  { label: 'Documents', value: documents.length, icon: FileText },
+                  { label: 'Issued', value: issued, icon: ShieldCheck, tone: issued > 0 ? 'verified' : undefined },
+                  {
+                    label: 'Anchored on-chain',
+                    value: anchored,
+                    icon: Anchor,
+                    tone: anchored > 0 ? 'anchor' : undefined,
+                  },
+                  {
+                    label: 'In progress',
+                    value: pending > 0 ? `${pending} · waiting on your organisation` : '0',
+                    icon: Clock,
+                    tone: pending > 0 ? 'pending' : undefined,
+                  },
+                ]}
+              />
 
               <Section
                 title="Recent documents"

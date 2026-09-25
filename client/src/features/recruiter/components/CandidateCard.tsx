@@ -3,7 +3,9 @@ import { ChevronDown, Mail } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { EvidenceStrip } from '@/components/shared/EvidenceStrip'
 import { ShapExplanation } from '@/features/recruiter/components/ShapExplanation'
+import { skillCoverage } from '@/features/recruiter/skillCoverage'
 import type { ShapContribution } from '@/features/recruiter/types'
 import { cn } from '@/lib/utils'
 
@@ -20,12 +22,16 @@ const MAX_VISIBLE_SKILLS = 8
 
 export function CandidateCard({
   candidate,
+  requiredSkills,
   onMessage,
 }: {
   candidate: CandidateView
+  /** The opening's required skills — the evidence strip scores coverage against them. */
+  requiredSkills: string[]
   onMessage?: (candidate: CandidateView) => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
+  const coverage = skillCoverage(requiredSkills, candidate.skills)
   const score = Math.max(0, Math.min(100, Math.round(candidate.matchScore * 100)))
   const overflow = candidate.skills.length - MAX_VISIBLE_SKILLS
   const initials = candidate.holderName
@@ -72,6 +78,21 @@ export function CandidateCard({
           ))}
           {overflow > 0 && <Badge variant="neutral">+{overflow} more</Badge>}
         </div>
+      )}
+
+      {coverage.required.length > 0 && (
+        <EvidenceStrip
+          label={`Match evidence for ${candidate.holderName}`}
+          className="border-t border-border pt-3"
+          facts={[
+            {
+              label: 'Required skills',
+              value: `${coverage.matched.length} of ${coverage.required.length} matched`,
+            },
+            { label: 'Matched', value: coverage.matched.join(', ') || 'None' },
+            ...(coverage.missing.length > 0 ? [{ label: 'Missing', value: coverage.missing.join(', ') }] : []),
+          ]}
+        />
       )}
 
       <div className="flex items-center gap-2">
