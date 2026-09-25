@@ -307,6 +307,9 @@ model MerkleRoot {
   rootHash           String    @unique @map("root_hash")
   polygonTxHash      String?   @unique @map("polygon_tx_hash") // null for LocalAnchor (R7)
   polygonBlockNumber BigInt?   @map("polygon_block_number")
+  // Where the root was anchored; both null for the LocalAnchor simulator.
+  chainId            Int?      @map("chain_id")
+  contractAddress    String?   @map("contract_address")
   documentCount      Int       @map("document_count")
   ipfsCid            String?   @map("ipfs_cid")
   githubCommitUrl    String?   @map("github_commit_url")

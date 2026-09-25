@@ -8,7 +8,10 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy:local": "hardhat run scripts/deploy.ts",
-    "deploy:amoy": "hardhat run scripts/deploy.ts --network amoy"
+    "deploy:localhost": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:amoy": "hardhat run scripts/deploy.ts --network amoy",
+    "verify:amoy": "hardhat run scripts/verify.ts --network amoy",
+    "new-wallet": "hardhat run scripts/new-wallet.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

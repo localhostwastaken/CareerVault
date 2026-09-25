@@ -7,7 +7,10 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { SigningKeyUnavailableError } from '../../services/key-management/key-management.service.js';
+import {
+  DataKeyUnavailableError,
+  SigningKeyUnavailableError,
+} from '../../services/key-management/key-management.service.js';
 
 // Standard error envelope: { success:false, error:{ code, message, statusCode } }.
 // class-validator produces a string[] message — we join it. 5xx are logged with stack.
@@ -26,8 +29,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // must never leak their raw message to the client.
     let message = 'Internal server error';
 
-    // The one non-HttpException we translate deliberately. It is an operational fault, not
-    // a caller mistake, and the generic 500 above told a manager whose signature just failed
+    // The two non-HttpExceptions we translate deliberately. Both are operational faults, not
+    // caller mistakes, and the generic 500 above told a manager whose signature just failed
     // exactly nothing — the real cause (the key store did not survive a restart) was only
     // ever visible in the server log.
     if (exception instanceof SigningKeyUnavailableError) {
@@ -35,6 +38,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
       code = 'SIGNING_KEY_UNAVAILABLE';
       message =
         "This organisation's signing key is not available, so the document cannot be signed right now. An administrator needs to restore the key store.";
+    } else if (
+      exception instanceof DataKeyUnavailableError &&
+      exception.keyMismatch
+    ) {
+      // A wrong master key on every row, or one row whose key id was edited: the two look
+      // the same, and calling a genuine document tampered would be the worse mistake. The
+      // key ids stay in the server log only.
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      code = 'ENCRYPTION_KEY_UNAVAILABLE';
+      message =
+        'This record is encrypted under a key this deployment does not hold, so it cannot be read right now. An administrator needs to check KMS_MASTER_KEY.';
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       code = codeFromStatus(status);
@@ -75,6 +89,7 @@ function codeFromStatus(status: number): string {
     403: 'FORBIDDEN',
     404: 'NOT_FOUND',
     409: 'CONFLICT',
+    410: 'GONE',
     422: 'UNPROCESSABLE_ENTITY',
     429: 'RATE_LIMITED',
   };

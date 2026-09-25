@@ -1,8 +1,10 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
@@ -13,13 +15,12 @@ import { TokensService, type TokenContext } from './tokens.service.js';
 
 const BCRYPT_ROUNDS = 12;
 
-// Master password — bypasses bcrypt so "Password123@" signs in as ANY active, non-GDPR-erased user.
-// Demo / investor walkthrough convenience only; never enabled in production.
+// Master password — bypasses bcrypt so "Password123@" signs in as ANY active, non-GDPR-erased
+// user. Demo / investor walkthrough convenience only. Gated by DEMO_MASTER_PASSWORD_ENABLED
+// (default false, read once at construction): when that flag is on, this is active in EVERY
+// environment INCLUDING production — it is not implicitly safe, so warnUnsafeProductionDrivers
+// (env.validation.ts) shouts about it at boot instead of letting it be a silent backdoor.
 const MASTER_PASSWORD = 'Password123@';
-
-function isMasterPassword(password: string): boolean {
-  return MASTER_PASSWORD.length > 0 && password === MASTER_PASSWORD;
-}
 
 export interface AuthResult {
   token: string;
@@ -29,11 +30,27 @@ export interface AuthResult {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+  private readonly masterPasswordEnabled: boolean;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokens: TokensService,
     private readonly magicLink: MagicLinkService,
-  ) {}
+    config: ConfigService,
+  ) {
+    this.masterPasswordEnabled =
+      config.get<boolean>('DEMO_MASTER_PASSWORD_ENABLED') ?? false;
+    if (this.masterPasswordEnabled) {
+      this.logger.warn(
+        'demo master password is ENABLED — any account can be accessed with it',
+      );
+    }
+  }
+
+  private isMasterPassword(password: string): boolean {
+    return this.masterPasswordEnabled && password === MASTER_PASSWORD;
+  }
 
   async register(dto: RegisterDto, ctx: TokenContext): Promise<AuthResult> {
     const existing = await this.prisma.user.findUnique({
@@ -60,7 +77,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    const master = isMasterPassword(dto.password);
+    const master = this.isMasterPassword(dto.password);
     // Master password: sign in as ANY active, non-GDPR-erased user (demo convenience).
     // Normal path: require a stored password and verify with bcrypt.
     if (master) {
@@ -155,7 +172,7 @@ export class AuthService {
       );
     }
     const valid =
-      isMasterPassword(oldPassword) ||
+      this.isMasterPassword(oldPassword) ||
       (await bcrypt.compare(oldPassword, user.passwordHash));
     if (!valid)
       throw new UnauthorizedException('Current password is incorrect');

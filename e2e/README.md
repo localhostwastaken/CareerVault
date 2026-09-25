@@ -36,13 +36,45 @@ on ports the dev stack does not use, against **its own** database:
 | Key store / PDFs | `server/storage` | `server/storage-e2e` |
 
 Every adapter runs on its local or mock driver, so no email, payment provider, blockchain RPC
-or AI service is contacted. `NODE_ENV=test` also disables rate limiting — see
+or AI service is contacted (chain mode, below, is the one opt-in exception). `NODE_ENV=test`
+also disables rate limiting — see
 `TestEnvThrottlerGuard`; without it a suite that registers a handful of accounts would trip
 the 5-per-minute registration throttle on its second run.
 
 The demo seed is deliberately **not** loaded. Each spec creates the organisation and people
 it needs, with a run-unique slug, so tests never collide on the unique email and org-domain
 constraints and never depend on fixture data drifting underneath them.
+
+## Chain mode (opt-in)
+
+`npm test` anchors into the API's local JSON-ledger simulator. `npm run test:chain` runs the
+document lifecycle against a real `AnchorRegistry` instead, through the same
+`PolygonAnchorService` a deploy uses — anchored by `/merkle/run`, then verified on-chain —
+on a local Hardhat node, so nothing is sent to a public network.
+
+```bash
+# terminal 1 — a local chain (chainId 31337); leave it running
+cd contracts && npx hardhat node
+
+# terminal 2 — deploy the registry to it, then run the spec
+cd contracts && npm run deploy:localhost
+export E2E_CHAIN_RPC_URL=http://127.0.0.1:8545
+export E2E_ANCHOR_REGISTRY_ADDRESS=$(node -p "require('./deployments/localhost.json').address")
+# Hardhat's default account #0, which deployed the registry and so is an authorized anchor.
+# It is public and well known: fine for a local node, never for a real network.
+export E2E_ANCHOR_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+cd ../e2e && npm run test:chain
+```
+
+- Setting all three `E2E_*` variables switches the API to `BLOCKCHAIN_DRIVER=amoy` with one
+  confirmation and no tip floor; `E2E_CHAIN_ID` overrides the default `31337`. Setting only
+  some of them is an error, and `test:chain` refuses to start without them rather than
+  quietly passing against the simulator.
+- Stop any API already listening on 9901 first. Outside CI Playwright reuses a running
+  server, and one started in simulator mode would turn this run into a no-op.
+- The API log that Playwright prints opens with the adapter's self-check: the chain id, the
+  contract code, the wallet's anchor authorization and its balance (address only, never the
+  key).
 
 ## Rules worth knowing before adding a test
 

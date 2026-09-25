@@ -8,6 +8,7 @@ import { ListSkeleton, StatCardsSkeleton } from '@/components/shared/Skeletons'
 import { StatCard } from '@/components/shared/StatCard'
 import { StatusBreakdown } from '@/features/analytics/components/StatusBreakdown'
 import { useGetAnalyticsOverviewQuery } from '@/features/analytics/api'
+import { AnchoringCard } from '@/features/anchoring/components/AnchoringCard'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { formatNumber } from '@/lib/format'
 
@@ -32,6 +33,11 @@ const AdminAnalytics = () => {
         title="Analytics"
         description="Issuance, sharing and talent activity across your organisation."
       />
+
+      {/* Sibling to the overview QueryBoundary, not nested in it — anchoring depends on
+          /merkle/*, not /analytics/overview, and must stay usable if the overview query
+          is slow or errors. */}
+      <AnchoringCard />
 
       <QueryBoundary
         query={query}

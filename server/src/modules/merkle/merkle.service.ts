@@ -1,6 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
-import { BlockchainService } from '../../services/blockchain/blockchain.service.js';
+import {
+  type AnchorReceipt,
+  BlockchainService,
+} from '../../services/blockchain/blockchain.service.js';
+import {
+  explorerTxUrl,
+  networkName,
+} from '../../services/blockchain/chain-explorer.js';
 import {
   buildMerkleTree,
   merkleProofFor,
@@ -9,6 +16,7 @@ import {
 import { NotificationService } from '../notification/notification.service.js';
 import { PdfGenerationService } from '../document/pdf-generation.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { integrityGate } from './integrity-gate.js';
 
 const TYPE_LABEL: Record<string, string> = {
   EXPERIENCE_LETTER: 'experience letter',
@@ -18,9 +26,21 @@ const TYPE_LABEL: Record<string, string> = {
 
 export interface BatchResult {
   anchored: number;
+  // Held back by the integrity gate: without it, "0 anchored" would read as "all on-chain".
+  skipped: number;
+  // Another run was already in progress, so this one did nothing.
+  busy: boolean;
   rootHash: string | null;
   txHash: string | null;
 }
+
+const nothingAnchored = (skipped: number, busy = false): BatchResult => ({
+  anchored: 0,
+  skipped,
+  busy,
+  rootHash: null,
+  txHash: null,
+});
 
 @Injectable()
 export class MerkleService {
@@ -38,32 +58,37 @@ export class MerkleService {
   ) {}
 
   // Anchoring pipeline (R2/R7). Gathers unanchored ISSUED documents (optionally scoped
-  // to one org), builds a Merkle tree over their R4 document hashes, anchors the root,
-  // then atomically persists the MerkleRoot + per-document proofs and flips each to
-  // ANCHORED. Idempotent: re-running over the same documents yields the same root, which
-  // verifyRoot detects so we never double-anchor; a failed DB write self-heals next run.
+  // to one org), drops any that fail the integrity gate, builds a Merkle tree over the
+  // rest's R4 document hashes, anchors the root, then atomically persists the MerkleRoot +
+  // per-document proofs and flips each to ANCHORED. Idempotent: re-running over the same
+  // documents yields the same root, which verifyRoot detects so we never double-anchor;
+  // a failed DB write self-heals next run.
   async runBatch(organizationId?: string): Promise<BatchResult> {
     if (this.running) {
       this.logger.warn(
         'Merkle batch already in progress; skipping overlapping run',
       );
-      return { anchored: 0, rootHash: null, txHash: null };
+      return nothingAnchored(0, true);
     }
     this.running = true;
     try {
-      const docs = await this.prisma.document.findMany({
+      const candidates = await this.prisma.document.findMany({
         where: {
           status: 'ISSUED',
           documentHash: { not: null },
+          // An erased document has lost its salt for good; the gate could only reject it.
+          salt: { not: null },
           merkleProof: { is: null },
           ...(organizationId ? { organizationId } : {}),
         },
         orderBy: [{ issuedAt: 'asc' }, { id: 'asc' }],
         select: { id: true, documentHash: true, holderId: true, type: true },
       });
+      const docs = await integrityGate(this.prisma, candidates, this.logger);
+      const skipped = candidates.length - docs.length;
       if (docs.length === 0) {
         this.logger.log('Merkle batch: nothing to anchor');
-        return { anchored: 0, rootHash: null, txHash: null };
+        return nothingAnchored(skipped);
       }
 
       const leaves = docs.map((doc) => doc.documentHash as string);
@@ -71,20 +96,32 @@ export class MerkleService {
       const rootHash = merkleRootHex(tree);
 
       // Anchor on-chain only if this exact root isn't already anchored. This makes the
-      // batch safe to retry after a partial failure without spending a second tx.
+      // batch safe to retry after a partial failure without spending a second tx; on that
+      // path the chain's own answer is recorded, including the transaction that landed:
+      // remembered if this process sent it, otherwise looked up from its event.
       const existing = await this.blockchain.verifyRoot(rootHash);
-      const receipt = existing.exists
-        ? null
+      const anchor: Partial<AnchorReceipt> = existing.exists
+        ? {
+            ...existing,
+            ...(existing.txHash
+              ? {}
+              : await this.blockchain.findAnchorTx(rootHash)),
+          }
         : await this.blockchain.anchorRoot(rootHash, docs.length);
 
       await this.prisma.$transaction(async (tx) => {
         const root = await tx.merkleRoot.create({
           data: {
             rootHash,
-            polygonTxHash: receipt?.txHash ?? null,
-            polygonBlockNumber: receipt ? BigInt(receipt.blockNumber) : null,
+            polygonTxHash: anchor.txHash ?? null,
+            polygonBlockNumber:
+              anchor.blockNumber === undefined
+                ? null
+                : BigInt(anchor.blockNumber),
+            chainId: anchor.chainId ?? null,
+            contractAddress: anchor.contractAddress ?? null,
             documentCount: docs.length,
-            anchoredAt: receipt?.anchoredAt ?? existing.anchoredAt ?? null,
+            anchoredAt: anchor.anchoredAt ?? null,
           },
         });
         for (let index = 0; index < docs.length; index++) {
@@ -112,7 +149,7 @@ export class MerkleService {
 
       // Post-commit side effects are best-effort and never authoritative (R7), so each
       // is independently guarded — one holder's failure must not abort the rest.
-      const txHash = receipt?.txHash ?? null;
+      const txHash = anchor.txHash ?? null;
       for (const doc of docs) {
         await this.pdf
           .embedAnchorMetadata(doc.id, { rootHash, txHash: txHash ?? '' })
@@ -129,7 +166,7 @@ export class MerkleService {
       this.logger.log(
         `Merkle batch: anchored ${docs.length} document(s) under root ${rootHash}`,
       );
-      return { anchored: docs.length, rootHash, txHash };
+      return { anchored: docs.length, skipped, busy: false, rootHash, txHash };
     } finally {
       this.running = false;
     }
@@ -150,6 +187,10 @@ export class MerkleService {
       blockNumber: root.polygonBlockNumber
         ? Number(root.polygonBlockNumber)
         : null,
+      chainId: root.chainId,
+      contractAddress: root.contractAddress,
+      network: networkName(root.chainId),
+      explorerTxUrl: explorerTxUrl(root.chainId, root.polygonTxHash),
       documentCount: root.documentCount,
       anchoredAt: root.anchoredAt,
       createdAt: root.createdAt,

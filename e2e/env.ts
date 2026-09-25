@@ -39,9 +39,41 @@ export const ADMIN_DATABASE_URL = withDatabase(serverDatabaseUrl, 'postgres')
 export const E2E_DATABASE_URL = withDatabase(serverDatabaseUrl, E2E_DATABASE)
 export const E2E_DATABASE_NAME = E2E_DATABASE
 
+const CHAIN_VARS = [
+  'E2E_CHAIN_RPC_URL',
+  'E2E_ANCHOR_REGISTRY_ADDRESS',
+  'E2E_ANCHOR_PRIVATE_KEY',
+] as const
+
+/**
+ * Opt-in chain mode (`npm run test:chain`, see README): with all three chain variables set,
+ * the API anchors through the real PolygonAnchorService against that node — a local Hardhat
+ * node, which is why confirmations drop to 1 and the Polygon tip floor to 0. Half a
+ * configuration is refused rather than quietly falling back to the simulator, and so is
+ * test:chain without one: a chain run that never touched a chain must not pass.
+ */
+function blockchainEnv(): Record<string, string> {
+  const missing = CHAIN_VARS.filter((name) => !process.env[name])
+  if (missing.length === CHAIN_VARS.length && !process.env.E2E_REQUIRE_CHAIN) {
+    return { BLOCKCHAIN_DRIVER: 'local' }
+  }
+  if (missing.length > 0) {
+    throw new Error(`Chain mode needs ${missing.join(', ')} — see e2e/README.md`)
+  }
+  return {
+    BLOCKCHAIN_DRIVER: 'amoy',
+    POLYGON_RPC_URL: process.env.E2E_CHAIN_RPC_URL!,
+    ANCHOR_REGISTRY_ADDRESS: process.env.E2E_ANCHOR_REGISTRY_ADDRESS!,
+    ANCHOR_PRIVATE_KEY: process.env.E2E_ANCHOR_PRIVATE_KEY!,
+    ANCHOR_CHAIN_ID: process.env.E2E_CHAIN_ID ?? '31337',
+    ANCHOR_CONFIRMATIONS: '1',
+    ANCHOR_MIN_PRIORITY_FEE_GWEI: '0',
+  }
+}
+
 /**
  * Environment for the API under test. Every adapter is on its local/mock driver, so nothing
- * here reaches the network: no SMTP, no RPC, no payment provider.
+ * here reaches the network: no SMTP, no payment provider, and no RPC unless chain mode is on.
  */
 export const API_ENV: Record<string, string> = {
   NODE_ENV: 'test', // also disables rate limiting — see TestEnvThrottlerGuard
@@ -53,7 +85,7 @@ export const API_ENV: Record<string, string> = {
   // Separate key store and PDF storage, so the suite can never disturb dev signing keys.
   STORAGE_LOCAL_DIR: './storage-e2e',
   KEY_MANAGEMENT_DRIVER: 'local',
-  BLOCKCHAIN_DRIVER: 'local',
+  ...blockchainEnv(),
   PAYMENT_DRIVER: 'mock',
   EMAIL_DRIVER: 'console',
   STORAGE_DRIVER: 'local',

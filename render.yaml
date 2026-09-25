@@ -29,22 +29,33 @@ services:
         value: 7d
       - key: AI_SERVICE_URL
         value: http://localhost:9910   # internal; same container
+      # R10 fail-closed reads. A DB writer without KMS_MASTER_KEY can't make an envelope, so
+      # content they write straight into a document row is PLAINTEXT: refused on read, and
+      # skipped by the Merkle batch's integrity gate, so our wallet never anchors it. (Issuing
+      # through the app after granting themselves memberships is separate: viva guide L15.)
+      # Needs no pre-R10 rows left: `npm run db:audit-encryption` must PASS against it first.
+      - key: FIELD_ENCRYPTION_STRICT
+        value: "true"
       # ── Integration drivers ─────────────────────────────────────────────────
       # ⚠  MOCKED IN THIS DEPLOY — the trust model (signed, domain-verified docs)
       #    is only real when these are switched to their "real" values. Every
-      #    driver below is a LOCAL/MOCK impl. Boot logs a loud warning listing
-      #    each mock (see server/src/config/env.validation.ts). Flip the ones you
-      #    need to demo for real and set the matching secrets further down.
-      #      KEY_MANAGEMENT_DRIVER: local (Node RSA)   → aws     (AWS KMS)
-      #      BLOCKCHAIN_DRIVER:     local (in-memory)  → amoy    (Polygon Amoy)
-      #      PAYMENT_DRIVER:        mock  (free)       → stripe  (real billing)
-      #      EMAIL_DRIVER:          console (stdout)   → ses     (real email)
-      #      STORAGE_DRIVER:        local (disk)       → s3
-      #      DNS_DRIVER:            local (BYPASSED)   → real    (TXT-record check)
+      #    driver below except BLOCKCHAIN_DRIVER is a LOCAL/MOCK impl. Boot logs a
+      #    loud warning listing each mock (see server/src/config/env.validation.ts).
+      #    Flip the ones you need to demo for real and set the matching secrets
+      #    further down.
+      #      KEY_MANAGEMENT_DRIVER: local (Node RSA)            → aws    (AWS KMS)
+      #      BLOCKCHAIN_DRIVER:     local (JSON ledger on disk) → amoy   (Polygon Amoy) — REAL here
+      #      PAYMENT_DRIVER:        mock  (free)                → stripe (real billing)
+      #      EMAIL_DRIVER:          console (stdout)            → ses    (real email)
+      #      STORAGE_DRIVER:        local (disk)                → s3
+      #      DNS_DRIVER:            local (BYPASSED)            → real   (TXT-record check)
       - key: KEY_MANAGEMENT_DRIVER
         value: local
+      # Real anchoring on Polygon Amoy. POLYGON_RPC_URL, ANCHOR_REGISTRY_ADDRESS and
+      # ANCHOR_PRIVATE_KEY (secrets below) MUST be set in the dashboard BEFORE this
+      # deploys: under amoy they are required, so boot validation fails without them.
       - key: BLOCKCHAIN_DRIVER
-        value: local
+        value: amoy
       - key: PAYMENT_DRIVER
         value: mock
       - key: EMAIL_DRIVER
@@ -75,10 +86,24 @@ services:
       # REQUIRED in production (the app refuses to boot without it). Base64, decoding to
       # exactly 32 bytes: openssl rand -base64 32
       # A hex value will NOT work — it decodes to 48 bytes and fails validation.
-      # Rotating this makes every existing org signing key unreadable; treat it as permanent.
+      # It wraps every org signing key and derives the key for the R10-encrypted DB fields
+      # and stored PDFs: losing or rotating it makes all of them unreadable. Treat it as
+      # permanent and keep an offline backup.
       - key: KMS_MASTER_KEY
         sync: false
       - key: GROQ_API_KEY            # enables LLM skill extraction
         sync: false
       - key: AI_SERVICE_SECRET        # shared secret between server and ai-service
+        sync: false
+      # Polygon anchoring (BLOCKCHAIN_DRIVER=amoy above). Chain id, confirmations and the
+      # fee floor keep their Amoy defaults (see server/.env.example).
+      - key: POLYGON_RPC_URL          # Amoy JSON-RPC endpoint; hosted URLs embed an API key
+        sync: false
+      - key: ANCHOR_REGISTRY_ADDRESS  # contracts/deployments/amoy.json → address
+        sync: false
+      - key: ANCHOR_PRIVATE_KEY       # 0x-prefixed key of the authorized, funded anchor wallet
+        sync: false
+      # contracts/deployments/amoy.json → blockNumber. Optional: lets a batch retry that finds
+      # its root already anchored look up the transaction; unset, it records none.
+      - key: ANCHOR_REGISTRY_DEPLOY_BLOCK
         sync: false

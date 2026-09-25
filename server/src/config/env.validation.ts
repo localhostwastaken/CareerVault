@@ -1,3 +1,4 @@
+import { getAddress } from 'ethers';
 import Joi from 'joi';
 
 // Boot-time honesty check: the trust model depends on REAL DNS TXT verification,
@@ -31,6 +32,18 @@ function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
         'of emailed (anyone reading logs can log in). Set EMAIL_DRIVER=gmail — ' +
         'the "ses" value is accepted by this schema but its adapter is not written yet.',
     );
+  if (((env.BLOCKCHAIN_DRIVER as string | undefined) ?? 'local') === 'local')
+    mocked.push(
+      'BLOCKCHAIN_DRIVER=local — anchoring is SIMULATED — Merkle roots go to a local JSON ' +
+        'ledger, not Polygon. Set BLOCKCHAIN_DRIVER=amoy (with POLYGON_RPC_URL, ' +
+        'ANCHOR_REGISTRY_ADDRESS and ANCHOR_PRIVATE_KEY) to anchor on Polygon Amoy.',
+    );
+  if (env.DEMO_MASTER_PASSWORD_ENABLED === true)
+    mocked.push(
+      'DEMO_MASTER_PASSWORD_ENABLED=true — ANY active account can be logged into with the ' +
+        "demo master password, bypassing that user's real password entirely. Set it to " +
+        'false (the default) for a real deploy.',
+    );
   // Not a mock, but the same class of silent trap: with the local driver the org signing
   // keys are FILES. If STORAGE_LOCAL_DIR is not a mounted volume they vanish on every
   // deploy while the database keeps pointing at them, and signing breaks org-wide.
@@ -43,6 +56,12 @@ function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
         'That path MUST be durable storage; on an ephemeral container every key is lost on ' +
         'redeploy and no document can be signed.',
     );
+  if (env.FIELD_ENCRYPTION_STRICT !== true)
+    mocked.push(
+      'FIELD_ENCRYPTION_STRICT=false — plaintext in an encrypted column is read back as legacy ' +
+        'data, so anyone with database write access can plant a self-signed document that ' +
+        'verifies and is then anchored by our wallet. Set it to true once no pre-R10 rows remain.',
+    );
   if (mocked.length === 0) return;
 
   const banner = '='.repeat(74);
@@ -52,6 +71,39 @@ function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
   for (const line of mocked) console.warn(`  * ${line}`);
   console.warn(`${banner}\n`);
 }
+
+// Required — and format-checked — only when anchoring for real, so a bad value stops the
+// boot instead of surfacing later as a failed transaction. The message never quotes the
+// value: Joi's default pattern error would echo ANCHOR_PRIVATE_KEY into the boot log.
+function requiredForAmoy(schema: Joi.StringSchema, format: string) {
+  return Joi.string().when('BLOCKCHAIN_DRIVER', {
+    is: 'amoy',
+    then: schema.required().messages({
+      'string.pattern.base': `{{#label}} must be ${format}`,
+      'string.uri': `{{#label}} must be ${format}`,
+      'string.uriCustomScheme': `{{#label}} must be ${format}`,
+    }),
+    otherwise: Joi.string().allow('').optional(),
+  });
+}
+
+// ethers accepts an all-lowercase address but rejects a mixed-case one whose EIP-55 checksum is
+// wrong, and only when the adapter first calls the contract. Its error quotes the value, so
+// the failure is reported by code, never by passing that message on.
+const contractAddress = Joi.string()
+  .pattern(/^0x[0-9a-fA-F]{40}$/)
+  .custom((value: string, helpers) => {
+    try {
+      getAddress(value);
+      return value;
+    } catch {
+      return helpers.error('address.checksum');
+    }
+  })
+  .messages({
+    'address.checksum':
+      '{{#label}} has a bad EIP-55 checksum; copy it exactly from contracts/deployments/amoy.json, or write it all lowercase',
+  });
 
 // Validated at startup (fail-fast). Secrets are optional in dev — adapters/auth
 // provision local dev keys when absent. DATABASE_URL is the only hard requirement.
@@ -63,6 +115,11 @@ export const envValidationSchema = Joi.object({
   CORS_ORIGIN: Joi.string().default('http://localhost:5173'),
   WORKER: Joi.boolean().truthy('true').falsy('false').default(false),
 
+  // Demo / investor walkthrough convenience: gates the master password in AuthService.
+  // Defaults off; when true in production, warnUnsafeProductionDrivers below shouts about it
+  // at boot rather than letting it be an accidental, undocumented backdoor.
+  DEMO_MASTER_PASSWORD_ENABLED: Joi.boolean().default(false),
+
   DATABASE_URL: Joi.string().required(),
 
   JWT_PRIVATE_KEY: Joi.string().allow('').optional(),
@@ -71,10 +128,13 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_TTL: Joi.string().default('7d'),
 
   // Required in production, optional elsewhere. LocalKmsService wraps every org signing key
-  // with this; when it is unset it mints a random one per process, so on a container without
-  // durable storage each deploy silently orphans every key it wrote — which is precisely how
-  // manager signing started failing with an unexplained 500. Failing to boot is the honest
-  // outcome: an unsigned deploy is worse than no deploy.
+  // with this; when it is unset the dev fallback keeps a generated key in
+  // STORAGE_LOCAL_DIR/kms/master.key, so on a container without durable storage each deploy
+  // silently orphans every key it wrote — which is precisely how manager signing started
+  // failing with an unexplained 500. Failing to boot is the honest outcome: an unsigned
+  // deploy is worse than no deploy. It is no longer only signing keys at stake either (R10):
+  // this same master key derives the field-encryption KEK, so losing it also makes every
+  // encrypted DB column and every stored PDF permanently unreadable. Back it up offline.
   KMS_MASTER_KEY: Joi.string()
     .custom((value: string) => {
       if (value && value.trim()) {
@@ -93,13 +153,19 @@ export const envValidationSchema = Joi.object({
         .required()
         .messages({
           'any.required':
-            'KMS_MASTER_KEY is required in production — without it every org signing key ' +
-            'becomes unreadable after a restart. Generate with: openssl rand -base64 32',
+            'KMS_MASTER_KEY is required in production — without it every org signing key, ' +
+            'every R10-encrypted database field and every stored PDF becomes unreadable ' +
+            'after a restart. Generate with: openssl rand -base64 32',
           'string.empty':
             'KMS_MASTER_KEY must not be empty in production. Generate with: openssl rand -base64 32',
         }),
       otherwise: Joi.string().allow('').optional(),
     }),
+
+  // R10 fail-closed reads: an encrypted column holding anything but an envelope is refused,
+  // not passed through as legacy plaintext. Off by default so dev databases seeded before R10
+  // still read; render.yaml turns it on for production.
+  FIELD_ENCRYPTION_STRICT: Joi.boolean().default(false),
 
   KEY_MANAGEMENT_DRIVER: Joi.string().valid('local', 'aws').default('local'),
   BLOCKCHAIN_DRIVER: Joi.string().valid('local', 'amoy').default('local'),
@@ -114,9 +180,28 @@ export const envValidationSchema = Joi.object({
   AI_SERVICE_URL: Joi.string().default('http://localhost:9910'),
   AI_SERVICE_SECRET: Joi.string().allow('').optional(),
 
-  POLYGON_RPC_URL: Joi.string().allow('').optional(),
-  ANCHOR_REGISTRY_ADDRESS: Joi.string().allow('').optional(),
-  ANCHOR_PRIVATE_KEY: Joi.string().allow('').optional(),
+  POLYGON_RPC_URL: requiredForAmoy(
+    Joi.string().uri({ scheme: ['http', 'https'] }),
+    'an http(s) JSON-RPC URL',
+  ),
+  ANCHOR_REGISTRY_ADDRESS: requiredForAmoy(
+    contractAddress,
+    'a 0x-prefixed 20-byte contract address',
+  ),
+  ANCHOR_PRIVATE_KEY: requiredForAmoy(
+    Joi.string().pattern(/^0x[0-9a-fA-F]{64}$/),
+    'a 0x-prefixed 32-byte hex private key',
+  ),
+  // Polygon Amoy by default; e2e's chain mode points these at a local Hardhat node.
+  ANCHOR_CHAIN_ID: Joi.number().integer().positive().default(80002),
+  ANCHOR_CONFIRMATIONS: Joi.number().integer().min(1).default(2),
+  // Polygon PoS nodes reject tips under 25 gwei; ethers' own Amoy fallback is 1 gwei.
+  ANCHOR_MIN_PRIORITY_FEE_GWEI: Joi.number().min(0).default(30),
+  ANCHOR_TX_TIMEOUT_MS: Joi.number().integer().positive().default(120000),
+  // The block the registry was deployed in (contracts/deployments/amoy.json → blockNumber).
+  // A batch retry that finds its root already anchored, but did not send it itself, looks
+  // the anchoring transaction up from here; unset, it records no transaction hash.
+  ANCHOR_REGISTRY_DEPLOY_BLOCK: Joi.number().integer().min(0).empty(''),
   STRIPE_SECRET_KEY: Joi.string().allow('').optional(),
   STRIPE_WEBHOOK_SECRET: Joi.string().allow('').optional(),
   STORAGE_LOCAL_DIR: Joi.string().default('./storage'),

@@ -1,0 +1,225 @@
+import { envValidationSchema } from './env.validation.js';
+
+/**
+ * Boot-time validation of the anchoring settings. With BLOCKCHAIN_DRIVER=amoy a missing or
+ * malformed setting must stop the boot rather than surface later as a failed transaction;
+ * with the local driver the same settings stay optional so the dev stack needs none of them.
+ */
+
+const DATABASE = { DATABASE_URL: 'postgresql://localhost:5432/careervault' };
+const AMOY = {
+  ...DATABASE,
+  BLOCKCHAIN_DRIVER: 'amoy',
+  POLYGON_RPC_URL: 'https://rpc-amoy.polygon.technology',
+  ANCHOR_REGISTRY_ADDRESS: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+  ANCHOR_PRIVATE_KEY: `0x${'1'.repeat(64)}`,
+};
+
+const validate = (env: Record<string, unknown>) => {
+  const result = envValidationSchema.validate(env, { abortEarly: false });
+  return {
+    error: result.error,
+    value: result.value as Record<string, unknown>,
+  };
+};
+
+describe('env validation — anchoring', () => {
+  it('keeps the chain settings optional, and allows them empty, on the local driver', () => {
+    const { error, value } = validate({
+      ...DATABASE,
+      POLYGON_RPC_URL: '',
+      ANCHOR_REGISTRY_ADDRESS: '',
+      ANCHOR_PRIVATE_KEY: '',
+    });
+
+    expect(error).toBeUndefined();
+    expect(value).toMatchObject({
+      BLOCKCHAIN_DRIVER: 'local',
+      ANCHOR_CHAIN_ID: 80002,
+      ANCHOR_CONFIRMATIONS: 2,
+      ANCHOR_MIN_PRIORITY_FEE_GWEI: 30,
+      ANCHOR_TX_TIMEOUT_MS: 120000,
+    });
+  });
+
+  it('accepts a complete amoy configuration', () => {
+    expect(validate(AMOY).error).toBeUndefined();
+  });
+
+  it.each(['POLYGON_RPC_URL', 'ANCHOR_REGISTRY_ADDRESS', 'ANCHOR_PRIVATE_KEY'])(
+    'requires %s on the amoy driver',
+    (key) => {
+      expect(validate({ ...AMOY, [key]: undefined }).error?.message).toContain(
+        key,
+      );
+      expect(validate({ ...AMOY, [key]: '' }).error?.message).toContain(key);
+    },
+  );
+
+  it.each([
+    ['POLYGON_RPC_URL', 'ws://localhost:8545'],
+    ['POLYGON_RPC_URL', 'rpc-amoy.polygon.technology'],
+    ['ANCHOR_REGISTRY_ADDRESS', '0x5FbDB2315678afecb367f032d93F642f64180aa'],
+    ['ANCHOR_REGISTRY_ADDRESS', '5FbDB2315678afecb367f032d93F642f64180aa3'],
+    ['ANCHOR_PRIVATE_KEY', '1'.repeat(64)],
+    ['ANCHOR_PRIVATE_KEY', `0x${'1'.repeat(63)}`],
+  ])('rejects a malformed %s (%s) on the amoy driver', (key, value) => {
+    expect(validate({ ...AMOY, [key]: value }).error?.message).toContain(key);
+  });
+
+  // ethers refuses a mixed-case address whose EIP-55 checksum is wrong, but only when the
+  // adapter first uses it; the boot should catch the typo instead.
+  describe('ANCHOR_REGISTRY_ADDRESS checksum', () => {
+    const CHECKSUMMED = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+    const BAD_CHECKSUM = '0x5FbDB2315678afecb367f032d93F642f64180AA3';
+
+    it.each([
+      ['checksummed', CHECKSUMMED],
+      ['all lowercase', CHECKSUMMED.toLowerCase()],
+    ])('accepts an %s address', (_, address) => {
+      expect(
+        validate({ ...AMOY, ANCHOR_REGISTRY_ADDRESS: address }).error,
+      ).toBeUndefined();
+    });
+
+    it('rejects a bad checksum without echoing the address', () => {
+      const message = validate({
+        ...AMOY,
+        ANCHOR_REGISTRY_ADDRESS: BAD_CHECKSUM,
+      }).error?.message;
+
+      expect(message).toContain('ANCHOR_REGISTRY_ADDRESS');
+      expect(message).toContain('checksum');
+      expect(message).not.toContain(BAD_CHECKSUM);
+      expect(message).not.toContain(BAD_CHECKSUM.toLowerCase().slice(2));
+    });
+  });
+
+  it('never echoes a malformed private key into the boot error', () => {
+    const key = 'ab'.repeat(32); // the right length, but missing its 0x prefix
+
+    const message = validate({ ...AMOY, ANCHOR_PRIVATE_KEY: key }).error
+      ?.message;
+
+    expect(message).toContain('ANCHOR_PRIVATE_KEY');
+    expect(message).not.toContain(key);
+  });
+
+  it('converts the numeric settings from their env strings', () => {
+    const { error, value } = validate({
+      ...AMOY,
+      ANCHOR_CHAIN_ID: '31337',
+      ANCHOR_CONFIRMATIONS: '1',
+      ANCHOR_MIN_PRIORITY_FEE_GWEI: '0',
+      ANCHOR_TX_TIMEOUT_MS: '5000',
+    });
+
+    expect(error).toBeUndefined();
+    expect(value).toMatchObject({
+      ANCHOR_CHAIN_ID: 31337,
+      ANCHOR_CONFIRMATIONS: 1,
+      ANCHOR_MIN_PRIORITY_FEE_GWEI: 0,
+      ANCHOR_TX_TIMEOUT_MS: 5000,
+    });
+  });
+
+  it.each([
+    ['ANCHOR_CHAIN_ID', '80002.5'],
+    ['ANCHOR_CONFIRMATIONS', '0'],
+    ['ANCHOR_MIN_PRIORITY_FEE_GWEI', '-1'],
+    ['ANCHOR_TX_TIMEOUT_MS', 'soon'],
+    ['ANCHOR_REGISTRY_DEPLOY_BLOCK', '-1'],
+    ['ANCHOR_REGISTRY_DEPLOY_BLOCK', '12.5'],
+  ])('rejects %s=%s', (key, value) => {
+    expect(validate({ ...AMOY, [key]: value }).error?.message).toContain(key);
+  });
+
+  // Only a retry that finds its root already on-chain uses it, to look the transaction up.
+  it('keeps ANCHOR_REGISTRY_DEPLOY_BLOCK optional, and reads an empty value as unset', () => {
+    expect(validate(AMOY).value.ANCHOR_REGISTRY_DEPLOY_BLOCK).toBeUndefined();
+    const { error, value } = validate({
+      ...AMOY,
+      ANCHOR_REGISTRY_DEPLOY_BLOCK: '',
+    });
+    expect(error).toBeUndefined();
+    expect(value.ANCHOR_REGISTRY_DEPLOY_BLOCK).toBeUndefined();
+    expect(
+      validate({ ...AMOY, ANCHOR_REGISTRY_DEPLOY_BLOCK: '27000000' }).value
+        .ANCHOR_REGISTRY_DEPLOY_BLOCK,
+    ).toBe(27000000);
+  });
+});
+
+describe('env validation — FIELD_ENCRYPTION_STRICT', () => {
+  it('defaults to false, so dev databases with pre-R10 rows still read', () => {
+    expect(validate(DATABASE).value.FIELD_ENCRYPTION_STRICT).toBe(false);
+  });
+
+  it.each([
+    ['true', true],
+    ['false', false],
+  ])('converts %s from its env string', (raw, parsed) => {
+    const { error, value } = validate({
+      ...DATABASE,
+      FIELD_ENCRYPTION_STRICT: raw,
+    });
+
+    expect(error).toBeUndefined();
+    expect(value.FIELD_ENCRYPTION_STRICT).toBe(parsed);
+  });
+
+  it('rejects a value that is not a boolean', () => {
+    expect(
+      validate({ ...DATABASE, FIELD_ENCRYPTION_STRICT: 'yes please' }).error
+        ?.message,
+    ).toContain('FIELD_ENCRYPTION_STRICT');
+  });
+});
+
+describe('env validation — production driver warning', () => {
+  const PRODUCTION = {
+    ...DATABASE,
+    NODE_ENV: 'production',
+    KMS_MASTER_KEY: Buffer.alloc(32, 7).toString('base64'),
+  };
+  const realWarn = console.warn;
+  let warnings: string[];
+
+  beforeEach(() => {
+    warnings = [];
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.join(' '));
+    };
+  });
+  afterEach(() => {
+    console.warn = realWarn;
+  });
+
+  it('flags simulated anchoring on the local driver', () => {
+    validate({ ...PRODUCTION, BLOCKCHAIN_DRIVER: 'local' });
+
+    expect(warnings.join('\n')).toContain(
+      'BLOCKCHAIN_DRIVER=local — anchoring is SIMULATED — Merkle roots go to a local JSON ledger, not Polygon',
+    );
+  });
+
+  it('does not flag anchoring on the amoy driver', () => {
+    validate({ ...PRODUCTION, ...AMOY });
+
+    expect(warnings.join('\n')).not.toContain('BLOCKCHAIN_DRIVER');
+  });
+
+  it('flags reads that still pass plaintext through when strict mode is off', () => {
+    validate(PRODUCTION);
+
+    expect(warnings.join('\n')).toContain(
+      'FIELD_ENCRYPTION_STRICT=false — plaintext in an encrypted column is read back as legacy data',
+    );
+  });
+
+  it('does not flag strict reads', () => {
+    validate({ ...PRODUCTION, FIELD_ENCRYPTION_STRICT: 'true' });
+
+    expect(warnings.join('\n')).not.toContain('FIELD_ENCRYPTION_STRICT');
+  });
+});

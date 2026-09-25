@@ -46,7 +46,17 @@ import { AuditModule } from './modules/audit/audit.module.js';
           process.env.NODE_ENV !== 'production'
             ? { target: 'pino-pretty', options: { singleLine: true } }
             : undefined,
-        redact: ['req.headers.authorization', 'req.headers.cookie'],
+        // WHY: pino-http's response serializer logs res.headers (pino-std-serializers'
+        // resSerializer calls res.getHeaders()), and auth.controller.ts sets the refresh
+        // token via a response Set-Cookie header (setRefreshCookie) — without this, every
+        // login/refresh/register request would leak a live refresh token into the logs, in
+        // production too. req.headers.cookie already covers the token coming back IN on
+        // later requests; this covers it going OUT.
+        redact: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'res.headers["set-cookie"]',
+        ],
       },
     }),
     EventEmitterModule.forRoot(),

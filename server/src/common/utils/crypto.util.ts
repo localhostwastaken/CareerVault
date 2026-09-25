@@ -73,9 +73,9 @@ export function normalizeSubject(value: unknown): unknown {
  * Per-role signing statement (C1 — dual-signature integrity).
  *
  * The manager and HR do NOT sign the bare document hash (that would produce two
- * byte-identical RS256 signatures under deterministic PKCS#1 padding). Each signs
- * a DISTINCT statement that binds the document hash to their role and membership,
- * so the two signatures differ and cryptographically attest separation of duties.
+ * byte-identical RS256 signatures under deterministic PKCS#1 padding). Each signs a
+ * DISTINCT statement binding the hash to their role and membership. Both are signed
+ * with the org's one key: RBAC enforces separation of duties; these statements record it.
  * Verification recomputes this statement from the stored signer/approver member ids.
  */
 export function signingStatementHash(

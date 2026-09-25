@@ -1,4 +1,3 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
@@ -8,6 +7,7 @@ import {
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
+  hkdfSync,
   randomBytes,
   sign as cryptoSign,
   verify as cryptoVerify,
@@ -15,19 +15,28 @@ import {
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  DataKey,
+  DataKeyUnavailableError,
   KeyManagementService,
   OrgKeyPair,
   SigningKeyUnavailableError,
 } from './key-management.service.js';
+import { loadMasterKey } from './master-key.js';
 
-// Real RSA-2048 / RS256 signing with per-org key pairs persisted to disk. Private
+const FIELD_KEK_INFO = 'careervault/field-kek/v1';
+const DEK_AAD = Buffer.from('careervault|dek|v1', 'utf8');
+
+// Real RSA-2048 / RS256 signing (R3) with per-org key pairs persisted to disk. Private
 // keys are wrapped with AES-256-GCM under a master key (envelope encryption), so
 // the architecture mirrors AWS KMS and swaps to AwsKmsService without caller changes.
+// R10 data keys wrap under an HKDF-derived KEK so no one key serves both purposes.
 @Injectable()
 export class LocalKmsService extends KeyManagementService {
   private readonly logger = new Logger(LocalKmsService.name);
   private readonly keysDir: string;
   private readonly masterKey: Buffer;
+  private readonly fieldKek: Buffer;
+  private readonly fieldKeyId: string;
 
   constructor(config: ConfigService) {
     super();
@@ -35,9 +44,16 @@ export class LocalKmsService extends KeyManagementService {
       config.get<string>('STORAGE_LOCAL_DIR') ?? './storage',
       'kms',
     );
-    this.masterKey = this.resolveMasterKey(
+    this.masterKey = loadMasterKey(
       config.get<string>('KMS_MASTER_KEY'),
+      this.keysDir,
+      this.logger,
     );
+    this.fieldKek = Buffer.from(
+      hkdfSync('sha256', this.masterKey, Buffer.alloc(0), FIELD_KEK_INFO, 32),
+    );
+    const kekHash = createHash('sha256').update(this.fieldKek).digest('hex');
+    this.fieldKeyId = kekHash.slice(0, 16);
   }
 
   async generateOrgKeyPair(orgId: string): Promise<OrgKeyPair> {
@@ -92,6 +108,43 @@ export class LocalKmsService extends KeyManagementService {
         Buffer.from(signatureB64, 'base64'),
       ),
     );
+  }
+
+  generateDataKey(): Promise<DataKey> {
+    const plaintext = randomBytes(32);
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.fieldKek, iv);
+    cipher.setAAD(DEK_AAD);
+    const enc = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const blob = Buffer.concat([iv, enc, cipher.getAuthTag()]);
+    const wrapped = blob.toString('base64url');
+    return Promise.resolve({ plaintext, wrapped, keyId: this.fieldKeyId });
+  }
+
+  decryptDataKey(wrapped: string, keyId: string): Promise<Buffer> {
+    const fail = (detail: string, cause?: unknown) =>
+      Promise.reject(
+        new DataKeyUnavailableError(keyId, this.fieldKeyId, detail, cause),
+      );
+    if (keyId !== this.fieldKeyId)
+      return fail(
+        `data key was wrapped under key ${keyId} but KMS_MASTER_KEY yields key ${this.fieldKeyId} — the deployment is using a different master key`,
+      );
+    const blob = Buffer.from(wrapped, 'base64url');
+    const iv = blob.subarray(0, 12);
+    try {
+      const decipher = createDecipheriv('aes-256-gcm', this.fieldKek, iv, {
+        authTagLength: 16,
+      });
+      decipher.setAAD(DEK_AAD);
+      decipher.setAuthTag(blob.subarray(-16));
+      const enc = blob.subarray(12, -16);
+      return Promise.resolve(
+        Buffer.concat([decipher.update(enc), decipher.final()]),
+      );
+    } catch (error) {
+      return fail(`data key failed authentication under key ${keyId}`, error);
+    }
   }
 
   private async persistPrivateKey(
@@ -150,53 +203,5 @@ export class LocalKmsService extends KeyManagementService {
       this.keysDir,
       `${createHash('sha256').update(kmsKeyId).digest('hex')}.key`,
     );
-  }
-
-  // Use KMS_MASTER_KEY if set; otherwise persist a generated dev key so signatures survive restarts.
-  // AES-256-GCM requires exactly 32 bytes; fail fast with clear error if misconfigured.
-  private resolveMasterKey(envKey?: string): Buffer {
-    // Try env var first (preferred for production).
-    if (envKey && envKey.trim()) {
-      const key = Buffer.from(envKey, 'base64');
-      if (key.length !== 32)
-        throw new Error(
-          `KMS_MASTER_KEY must decode to exactly 32 bytes (256 bits); got ${key.length}. ` +
-            `Generate with: openssl rand -base64 32`,
-        );
-      return key;
-    }
-
-    // Fall back to file-based key (dev).
-    const file = join(this.keysDir, 'master.key');
-    if (existsSync(file)) {
-      const key = Buffer.from(readFileSync(file, 'utf8'), 'base64');
-      if (key.length !== 32) {
-        this.logger.error(
-          `Corrupted master key file (${key.length} bytes, expected 32). Regenerating.`,
-        );
-        // Regenerate if file is corrupted.
-        const newKey = randomBytes(32);
-        writeFileSync(file, newKey.toString('base64'), {
-          encoding: 'utf8',
-          mode: 0o600,
-        });
-        return newKey;
-      }
-      return key;
-    }
-
-    // Generate new key if no env var and no file.
-    const key = randomBytes(32);
-    mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-    writeFileSync(file, key.toString('base64'), {
-      encoding: 'utf8',
-      mode: 0o600,
-    });
-    this.logger.warn(
-      `KMS_MASTER_KEY not set — generated a dev master key at ${file}. ` +
-        `Every org key wrapped with it is unreadable if this file is lost, so on ephemeral ` +
-        `storage (containers without a mounted disk) signing breaks after the next restart.`,
-    );
-    return key;
   }
 }

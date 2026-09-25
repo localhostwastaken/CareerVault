@@ -38,7 +38,7 @@
 | Document types (V1) | `EXPERIENCE_LETTER`, `LETTER_OF_RECOMMENDATION`, `SALARY_PROOF` |
 | Language | English only (V1). |
 | Notifications | Email + in-app. |
-| GDPR deletion | Full wipe: user row, PDF, shared links, salt. Hash stays on-chain but is dead (unlinkable). |
+| GDPR deletion | Full wipe: user row, PDF, shared links, salt. Hash stays on-chain but is dead (unlinkable). *As implemented (Sep 2026), see §4.16: the hash is dead, and "unlinkable" holds for the public lookup, which returns no content or name. Our DB keeps the issuer's record, tied to an anonymized user.* |
 | Audit retention | 7 years for issuance logs (`COMPLIANCE` tier), 90 days for system logs (`STANDARD` tier). |
 | Auth | Magic links (JWT, 15-min) for external managers. Email/password + JWT for holders/admins/HR. |
 
@@ -240,7 +240,7 @@ The Holder (Employee) is the primary consumer of CareerVault. They accumulate ve
 - **Request Documents:** The holder initiates a request by specifying the type, the target organization, and optionally a specific manager (required for LORs). This creates a `documents` row with `status = 'DRAFT'` and sends a notification/magic-link to the manager.
 - **Download PDF:** The holder can download the rendered PDF from S3 (`rendered_pdf_url`). The PDF contains the Merkle proof embedded in its metadata for offline verification.
 - **Share Links:** The holder generates a unique URL (`url_token`) for a document. Free-tier holders pay a per-link fee; premium ($5/mo) holders get unlimited links. Links can have `max_views` and `expires_at` constraints.
-- **GDPR Deletion:** The holder can invoke Right to be Forgotten. The system wipes: `users` row fields, all PDFs from S3, all `shared_links`, the `salt` from documents (rendering the on-chain hash unlinkable). The hash remains on-chain but is cryptographically dead.
+- **GDPR Deletion:** The holder can invoke Right to be Forgotten. The system wipes: `users` row fields, all PDFs from S3, all `shared_links`, the `salt` from documents (rendering the on-chain hash unlinkable). The hash remains on-chain but is cryptographically dead. *(As implemented, Sep 2026: see the note at the end of §4.16.)*
 - **Notifications:** Email and in-app notifications for every state change in document lifecycle, payment events, and link views.
 
 ---
@@ -2432,6 +2432,13 @@ GDPR deletion implements a comprehensive data wipe while preserving the integrit
 
 The transaction ensures atomicity -- either all steps complete or none do.
 
+> **As implemented (Sep 2026, LY final hardening).** The real flow is `DELETE /api/v1/users/me` (`UserService.deleteAccount`). It doesn't re-check the password; the JWT kill-switch trips on `gdprDeletedAt`. It differs from the design above in these ways:
+> - **One array transaction.** On every one of the holder's documents, issued, anchored, revoked and expired ones included, it nulls `salt` and `rendered_pdf_url` and scrubs `content_json` to `{}` (sealed as an R10 envelope, not `{"deleted": true}`). It scrubs every version snapshot, deactivates share links, revokes verifier API keys, anonymizes the user row (tombstoned, not deleted) and deactivates memberships. The same transaction writes the audit row, as `USER_ERASED` with actor `USER`, not `GDPR_DELETION` with actor `SYSTEM`.
+> - **Subscriptions aren't cancelled** by erasure; the tombstoned account simply can't sign in.
+> - **PDFs are deleted after the commit, not inside it.** Storage isn't transactional, so deletion is best effort: a failed delete is logged for manual removal and never rolls back the erasure.
+> - **"Dead hash" holds.** The hash, both signatures and the Merkle proof are kept as the issuer's record. With no salt and no content, nobody can recompute the hash.
+> - **"Unlinkable" holds for the public lookup, not for our database.** `/verify/hash/<hash>` returns `erased: true`, no document content, no name and no revocation reason text, and says the holder exercised their right to erasure. It still names the issuing organisation and shows the anchor. Our database still ties the row to the anonymized user, and audit rows keep the hash with member ids.
+
 ---
 
 ### 4.17 Magic Link Authentication
@@ -2939,7 +2946,7 @@ The verification decision tree has 13 possible outcomes:
 | `LINK_INACTIVE` | Soft | Share link has been manually deactivated |
 | `LINK_EXPIRED` | Soft | Share link has passed its expiry date |
 | `LINK_EXHAUSTED` | Soft | Share link has reached its max view count |
-| `GDPR_DELETED` | Info | User exercised Right to be Forgotten; hash is unlinkable |
+| `GDPR_DELETED` | Info | User exercised Right to be Forgotten; hash is unlinkable. *As implemented (Sep 2026): there is no separate outcome. An erased document reads `INVALID` (or `REVOKED`/`EXPIRED`), with `erased: true`, no content, and an integrity check naming erasure (§4.16 note).* |
 | `HASH_MISMATCH` | Critical | Document content has been tampered with |
 | `SIGNATURE_INVALID` | Critical | Manager's cryptographic signature does not verify |
 | `COSIGN_INVALID` | Critical | HR's cryptographic signature does not verify |
@@ -2992,7 +2999,7 @@ The GDPR deletion process ensures comprehensive data removal while preserving sy
 
 - **Transactional:** All database operations are wrapped in a single transaction for atomicity.
 - **S3 Cleanup:** PDFs are permanently deleted from object storage.
-- **Salt Removal:** This is the key GDPR mechanism -- without the salt, the on-chain hash cannot be linked back to the document content or the user.
+- **Salt Removal:** This is the key GDPR mechanism -- without the salt, the on-chain hash cannot be linked back to the document content or the user. *(As implemented, Sep 2026: the content is scrubbed too, and the link to the user is broken for the public lookup; see the §4.16 note.)*
 - **PII Wipe:** All personally identifiable information is replaced with non-identifying placeholders.
 - **JWT Invalidation:** All active sessions for the user are invalidated (via a token blacklist or short-lived JWTs with a user-level revocation timestamp).
 

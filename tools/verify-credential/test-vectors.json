@@ -1,0 +1,165 @@
+{
+  "description": "Known-answer vectors shared by server/src/common/utils/*.spec.ts and tools/verify-credential (--selftest). Generated once from the server's own crypto.util.ts / merkle.util.ts; both implementations must reproduce every value here. Do not hand-edit -- regenerate from those utils if the algorithms ever change. This file is kept pure ASCII (non-ASCII vector values are \\u-escaped) so it is unambiguous on any terminal or editor.",
+  "rfc8785": {
+    "numbers": [
+      {
+        "literal": "1e30",
+        "expected": "1e+30"
+      },
+      {
+        "literal": "4.50",
+        "expected": "4.5"
+      },
+      {
+        "literal": "2e-3",
+        "expected": "0.002"
+      },
+      {
+        "literal": "1e-7",
+        "expected": "1e-7"
+      },
+      {
+        "literal": "-0",
+        "expected": "0"
+      }
+    ],
+    "keySortingRfc": {
+      "source": "RFC 8785 section 3.2.3: property-name sorting is by UTF-16 code unit, not Unicode code point. U+1F600 (an astral character, leading surrogate 0xD83D) sorts before U+FB33 only under code-unit order -- a naive code-point-sorting JCS implementation gets this pair backwards.",
+      "input": {
+        "1": "One",
+        "\u20ac": "Euro Sign",
+        "\r": "Carriage Return",
+        "\ufb33": "Hebrew Letter Dalet With Dagesh",
+        "\ud83d\ude00": "Emoji: Grinning Face",
+        "\u0080": "Control",
+        "\u00f6": "Latin Small Letter O With Diaeresis"
+      },
+      "expected": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\u0080\":\"Control\",\"\u00f6\":\"Latin Small Letter O With Diaeresis\",\"\u20ac\":\"Euro Sign\",\"\ud83d\ude00\":\"Emoji: Grinning Face\",\"\ufb33\":\"Hebrew Letter Dalet With Dagesh\"}"
+    },
+    "keySortingReadmeExample": {
+      "source": "canonicalize@3 package README \"Crazy Example\" -- NOT from RFC 8785. ASCII-only keys (does not exercise UTF-16-vs-code-point ordering); kept for its own coverage of numeric-looking-string sorting (\"1\" < \"10\" < \"111\" lexicographically, not numerically) and case sensitivity (\"A\" < \"a\").",
+      "input": {
+        "1": {
+          "f": {
+            "f": "hi",
+            "F": 5
+          },
+          "\n": 56
+        },
+        "10": {},
+        "111": [
+          {
+            "e": "yes",
+            "E": "no"
+          }
+        ],
+        "": "empty",
+        "a": {},
+        "A": {}
+      },
+      "expected": "{\"\":\"empty\",\"1\":{\"\\n\":56,\"f\":{\"F\":5,\"f\":\"hi\"}},\"10\":{},\"111\":[{\"E\":\"no\",\"e\":\"yes\"}],\"A\":{},\"a\":{}}"
+    }
+  },
+  "pipeline": {
+    "documentHash": [
+      {
+        "content": {
+          "holderName": "Ada Lovelace",
+          "role": "Engineer",
+          "years": 3
+        },
+        "salt": "3f9a7c2b1e6d4a8f5c0b9e2d7a1f4c6b8e3d0a5f7c2b9e4d1a6f8c3b0e5d2a7f",
+        "expected": "03d514df97f72b82067128a2c79c3684eb51797447e37da2a7399929a4d09141"
+      },
+      {
+        "content": {
+          "nested": {
+            "a": 1,
+            "b": [
+              1,
+              2,
+              3
+            ]
+          },
+          "unicode": "caf\u00e9",
+          "flag": false,
+          "zero": 0
+        },
+        "salt": "9c1f6b3e8a2d5c7f0b4e9a1d6c8f3b5e7a0d2c9f4b6e1a8d3c5f7b9e2a4d6c8f",
+        "expected": "4db84be29ab4cc569934cefda9b6cc624970586806936705ec9547883defac05"
+      }
+    ],
+    "statementHash": [
+      {
+        "documentHash": "03d514df97f72b82067128a2c79c3684eb51797447e37da2a7399929a4d09141",
+        "role": "MANAGER",
+        "memberId": "mgr-member-001",
+        "expected": "0251d33dfd3c51a1d187ac63e95bfb689728ba31320b4f361e4606f381ee7e5d"
+      },
+      {
+        "documentHash": "03d514df97f72b82067128a2c79c3684eb51797447e37da2a7399929a4d09141",
+        "role": "HR",
+        "memberId": "hr-member-002",
+        "expected": "a231b82729f8b6ac0a3df7f05ca585588223db1a74b98f21d26c7a74dbdaf9ed"
+      }
+    ],
+    "merkle": [
+      {
+        "label": "1 leaf",
+        "leaves": [
+          "920a7c3107d4a2fbdbcfd658e237ad1e50ce7d618aa0da44757ee6e5979b51e2"
+        ],
+        "root": "920a7c3107d4a2fbdbcfd658e237ad1e50ce7d618aa0da44757ee6e5979b51e2",
+        "proof": {
+          "leaf": "920a7c3107d4a2fbdbcfd658e237ad1e50ce7d618aa0da44757ee6e5979b51e2",
+          "path": []
+        }
+      },
+      {
+        "label": "3 leaves",
+        "leaves": [
+          "d2dbf006f96dd05044a8f63d8f118f23925ba4cc5750f8b6c8e287fd506c8188",
+          "4140bf0e8569ed03ec838871ff2f190e9b3ea86bc083d7e9901049f75f00e855",
+          "649837ddcb7e1967086d7d35aaef7b975c513815d96fc6e70015e93a2bfe0f9a"
+        ],
+        "root": "60345a16e6d540ff9fd0af2163bc0692e7bcfd09d06aaa5dca143be9bc0b8e1c",
+        "proof": {
+          "leaf": "d2dbf006f96dd05044a8f63d8f118f23925ba4cc5750f8b6c8e287fd506c8188",
+          "path": [
+            {
+              "hash": "4140bf0e8569ed03ec838871ff2f190e9b3ea86bc083d7e9901049f75f00e855",
+              "position": "right"
+            },
+            {
+              "hash": "649837ddcb7e1967086d7d35aaef7b975c513815d96fc6e70015e93a2bfe0f9a",
+              "position": "right"
+            }
+          ]
+        }
+      },
+      {
+        "label": "4 leaves",
+        "leaves": [
+          "d2dbf006f96dd05044a8f63d8f118f23925ba4cc5750f8b6c8e287fd506c8188",
+          "4140bf0e8569ed03ec838871ff2f190e9b3ea86bc083d7e9901049f75f00e855",
+          "649837ddcb7e1967086d7d35aaef7b975c513815d96fc6e70015e93a2bfe0f9a",
+          "9fde56c376760bd399b82eb8569229a2dff19219411ac71154dfeab2cf502454"
+        ],
+        "root": "890382a01ba99b6bfad46faabc8d50e1311842a628f5df55ed86e895ea8672c5",
+        "proof": {
+          "leaf": "649837ddcb7e1967086d7d35aaef7b975c513815d96fc6e70015e93a2bfe0f9a",
+          "path": [
+            {
+              "hash": "9fde56c376760bd399b82eb8569229a2dff19219411ac71154dfeab2cf502454",
+              "position": "right"
+            },
+            {
+              "hash": "70eec33ec1e55edcf6150a2d90fc8f3e8441ebbecbcf9afb84fcb7a8b512a72e",
+              "position": "left"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

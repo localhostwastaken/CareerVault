@@ -5,6 +5,14 @@
 > client lint clean · runtime smoke tests passing end-to-end). The findings below are preserved as the original
 > audit record; see **Part G — Implementation record** at the end for what changed and how it was verified.
 
+> **STATUS UPDATE (2026-09-24, LY final hardening):** several items this report deferred are now done:
+> - real blockchain anchoring through a Polygon Amoy driver (the contract deploy itself is still pending and human-gated);
+> - field-level envelope encryption of document data (R10), plus encrypted PDFs;
+> - the demo master password is gated off by default;
+> - a standalone offline credential verifier.
+>
+> See **Part H** at the end, and [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.md) for the byte-exact spec.
+
 > **Prepared as:** an end-to-end business + technical review to make CareerVault a robust, credible **investor-demo POC**.
 > **Framing decisions (confirmed with the owner):** audience = **investor / pitch demo**; market = **India-first** (INR, real Indian document conventions); recruiter = **internal hiring member** who sees **public candidate profiles + applicants' documents only as granted**; the **cryptographic trust story is the core value proposition** (so crypto correctness is must-fix, not a simplification).
 > **Date:** 2026-08-10. Based on commit `30baae7` (branch `ui-ux-revamp`).
@@ -289,7 +297,7 @@ Sequenced for an **investor demo where the crypto trust story must survive scrut
 
 - **Security hardening:** `helmet` + headers, gate Swagger, refresh-token family revocation on reuse, revoke sessions on password change, stop leaking raw error messages, per-email rate limiting.
 - **GDPR completeness** (C8): scrub `DocumentVersion`, kill API keys + share links on erasure, reconsider nulling the issuer's salt.
-- **Production adapters:** real KMS (per-org keys), real blockchain anchoring (the `AnchorRegistry` contract is ready but never called from the server), S3 storage, SES email, Stripe with idempotent webhooks + a renewal/expiry cron + entitlement-on-cancel.
+- **Production adapters:** real KMS (per-org keys), real blockchain anchoring (the `AnchorRegistry` contract is ready but never called from the server), S3 storage, SES email, Stripe with idempotent webhooks + a renewal/expiry cron + entitlement-on-cancel. *(2026-09: blockchain anchoring is now done via the Amoy driver, with the deploy pending; see Part H. The rest is still roadmap.)*
 - **Concurrency:** atomic status-guarded transitions (C7), move bulk issuance + Merkle to a real queue (Redis/BullMQ — `REDIS_URL` is already in env, used nowhere), per-org Merkle batches.
 - **AI:** train the ranker on the captured `INTERESTED/NOT_INTERESTED` signal (or relabel it a hand-tuned heuristic and stop calling it learned), add a pgvector ANN index, fix the cross-org skill leak in `listMatches`, add PII redaction / sub-processor disclosure for the Groq call, fix the `LIMIT 30` candidate-starvation.
 - **Full recruiter grant model** (E5): `DocumentAccessGrant` + `Application`, view-only salary render (E6).
@@ -350,6 +358,13 @@ distinct statement `SHA-256(JCS({v:1, documentHash, role, memberId}))` binding t
 membership; verification recomputes both from the stored signer/approver ids.
 *Verified:* runtime credential shows two different signatures; 4 unit tests assert the statement
 differs per role, per member, and per document.
+
+> **Precision note (2026-09):** this implemented fix option 1 from C1: distinct role-bound
+> statements, **still signed with one org key**. The cryptography now proves two distinct statements
+> (MANAGER, then HR). Separation of duties is *enforced* by RBAC and *recorded* in those statements,
+> not proven by two personal keys. Option 2, per-member keys, remains roadmap. The implemented
+> statement binds role and membership, not a timestamp. Time is evidenced by the signed `issueDate`
+> and by the anchor's block timestamp.
 
 **D0/Part D — India-first content, server-enforced.** Three per-type `class-validator` DTOs
 (experience/relieving letter discriminated by `letterKind`; salary certificate with a reconciling
@@ -440,7 +455,43 @@ and enforced numbers were reconciled to the same unit.
 
 | Item | Why |
 |---|---|
-| Real cloud adapters (AWS KMS/S3/SES, live Stripe, Polygon RPC) | Require credentials that don't exist in this environment. Writing unverifiable cloud SDK code is a liability; the adapter seams are already in place, and the deploy now warns loudly when a mock driver is active in production. |
+| ~~Polygon RPC~~ **Done (2026-09)** | `PolygonAnchorService` (`BLOCKCHAIN_DRIVER=amoy`) anchors Merkle roots on Polygon Amoy and was verified end to end against a local Hardhat node. The contract deploy to Amoy is the remaining human-gated step. See Part H. |
+| Real cloud adapters (AWS KMS/S3/SES, live Stripe) | Still deferred (roadmap). They need credentials that don't exist in this environment, and writing unverifiable cloud SDK code is a liability. The adapter seams are already in place, and the deploy warns loudly when a mock driver is active in production. |
+| ~~Field-level encryption of sensitive DB fields~~ **Done (2026-09)** | R10 envelope encryption through a Prisma 7 query extension, with PDFs encrypted at rest too. See Part H. |
 | Stripe subscription **renewal** | Same reason. The expiry side is implemented; renewal must come from real webhooks. |
 | Full `DocumentAccessGrant` / `Application` model | The leak it was meant to fix is already closed, and share links serve as the POC grant path. This is a multi-table feature better scoped as its own piece of work. |
 | Backfilling historical documents to the new schema | Deliberate: re-hashing already-signed documents would invalidate their frozen signatures and anchors. New issuance is versioned (`schemaVersion`), so old and new coexist. |
+
+---
+
+## Part H — LY final hardening record (2026-09)
+
+Branch `ly-final-hardening`. It answers the mentor's three asks: genuine database encryption, a live
+Polygon Amoy deployment, and a byte-exact explanation of the hashing pipeline. The spec, with code
+references, is in [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.md).
+
+| Area | What changed | Evidence |
+|---|---|---|
+| Field encryption (R10) | KMS data keys (`generateDataKey`/`decryptDataKey`) and fail-safe master-key loading. `FieldCipher`: AES-256-GCM envelopes, per-field AAD, a boot self-test. A Prisma 7 query extension seals the `Document`/`DocumentVersion` fields at rest. Seeding goes through the extension. `npm run db:audit-encryption` added. | Unit and e2e specs. `test/encryption.e2e-spec.ts` asserts the envelopes with raw SQL. |
+| PDFs at rest | `EncryptedStorageService` wraps the storage driver (AAD label `file:<key>`). | The audit script's storage section |
+| Strict reads + batch gate | `FIELD_ENCRYPTION_STRICT` (on in `render.yaml`, off by default for dev) refuses plaintext in an encrypted column. Before anchoring, the Merkle batch re-reads each candidate and skips any that doesn't decrypt or recompute its hash, so our wallet can't anchor a DB writer's planted row. | Unit specs; `test/strict-encryption.e2e-spec.ts` plants a self-signed plaintext row |
+| GDPR erasure | Scrubs the content and salt of every one of the holder's documents, whatever their status, deletes stored PDFs after the commit and writes a `USER_ERASED` audit row. The public lookup of an erased document returns no content or name. | `test/erasure.e2e-spec.ts` |
+| Demo master password | Gated behind `DEMO_MASTER_PASSWORD_ENABLED`, default `false`, with a loud boot warning when on. | `auth.service.ts`, `env.validation.ts` |
+| Credential | Extracted into a pure `credential.builder.ts`. It ships the per-document `signingPublicKeyPem` (not the org's *current* key) and names the chain, contract and transaction in `anchor`. | Unit specs |
+| Contracts | NatSpec on every public function and event. Tests for batch ops, auth guards, ownership and lookups. The Amoy deploy script asserts the chain, waits 5 confirmations and writes a deployment record. `verify:amoy` runs through a validated script. `new-wallet` writes the key straight into the `.env` files and prints only the address. | `cd contracts && npm test` (18 passing) |
+| Anchoring | `PolygonAnchorService` (ethers v6): a 30 gwei tip floor, serialized writes, an adapter-owned confirmation poll, a 10 s RPC timeout, idempotent retries, a boot self-check. Merkle roots record their chain id and contract. Verification checks the proof first and degrades to pending when the chain is down. Revocation is fire-and-forget. The midnight cron runs in Asia/Kolkata. | e2e chain mode (`npm run test:chain`) against a local Hardhat node |
+| Client | Explorer links on the verify page; an admin "Anchor now" card with recent batches. | Playwright suite |
+| Offline verifier | `tools/verify-credential`: an independent re-implementation with registry pinning, the issuer key fingerprint and an honest summary. `test-vectors.json` is shared with the server specs. | `--selftest`; a real Hardhat run (correct registry: all ✓; wrong registry: ✗) |
+| Viva kit | The viva guide, plus this truth pass across the README and the design docs. | — |
+
+**Still pending (human-gated):**
+- deploying `AnchorRegistry` to Amoy, then filling `KNOWN_REGISTRIES[80002]` and the `<AMOY_REGISTRY_ADDRESS>` placeholders;
+- pinning Supabase's CA, enforcing SSL and turning off the Data API;
+- resetting and re-seeding Supabase with Render's `KMS_MASTER_KEY`, which strict mode needs before it deploys: any pre-R10 plaintext row would otherwise fail to read.
+
+**Roadmap:**
+- an AWS KMS driver and KEK rotation tooling;
+- per-member signing keys and a multisig registry owner;
+- an email blind index;
+- binding the envelope AAD to the row id, so a copied envelope fails in another row;
+- auditing or signing membership grants, so a DB writer can't grant themselves a signing role and issue through the app.
