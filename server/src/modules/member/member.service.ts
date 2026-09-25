@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +14,8 @@ import type { AddMemberDto } from './dto/add-member.dto.js';
 
 @Injectable()
 export class MemberService {
+  private readonly logger = new Logger(MemberService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
@@ -111,17 +114,25 @@ export class MemberService {
         });
 
     // R9: new users and existing passwordless users need a magic link to sign in.
-    // Users who already have a password just get a notification that they were added.
+    // Users who already have a password just get a notification that they were added. Notification delivery is best-effort: the membership is already committed above, so an SMTP failure here must never fail this request (it previously did, turning a successful invite into a 500 and a confusing 409 on retry).
     if (isNew || !user.passwordHash) {
-      await this.magicLink.request(dto.email, 'EMAIL_VERIFY');
+      await this.magicLink
+        .request(dto.email, 'EMAIL_VERIFY')
+        .catch((error) =>
+          this.logNotificationFailure(member.id, orgId, 'magic_link', error),
+        );
       // MagicLinkService sends its own email with the link; suppress the generic one
       // for passwordless users so they aren't confused by two emails.
     } else {
-      await this.email.send({
-        to: dto.email,
-        subject: `You were added to ${org.name} on CareerVault`,
-        html: `You've been added as <strong>${dto.role}</strong> to <strong>${org.name}</strong>. <a href="${this.configOrigin()}/auth/login">Sign in</a> to get started.`,
-      });
+      await this.email
+        .send({
+          to: dto.email,
+          subject: `You were added to ${org.name} on CareerVault`,
+          html: `You've been added as <strong>${dto.role}</strong> to <strong>${org.name}</strong>. <a href="${this.configOrigin()}/auth/login">Sign in</a> to get started.`,
+        })
+        .catch((error) =>
+          this.logNotificationFailure(member.id, orgId, 'email', error),
+        );
     }
 
     return {
@@ -164,5 +175,20 @@ export class MemberService {
 
   private configOrigin(): string {
     return this.config.get<string>('CORS_ORIGIN') ?? 'http://localhost:5173';
+  }
+
+  private logNotificationFailure(
+    memberId: string,
+    orgId: string,
+    channel: 'magic_link' | 'email',
+    error: unknown,
+  ) {
+    this.logger.warn({
+      event: 'member_invite_notification_failed',
+      memberId,
+      orgId,
+      channel,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }

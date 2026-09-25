@@ -54,7 +54,16 @@ function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
       'KEY_MANAGEMENT_DRIVER=local — org signing keys are files under ' +
         `STORAGE_LOCAL_DIR (${(env.STORAGE_LOCAL_DIR as string | undefined) ?? './storage'}). ` +
         'That path MUST be durable storage; on an ephemeral container every key is lost on ' +
-        'redeploy and no document can be signed.',
+        'redeploy and no document can be signed. Set KEY_MANAGEMENT_DRIVER=supabase (with ' +
+        'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY) for a durable alternative on platforms ' +
+        'without a persistent disk, such as Render\'s free tier.',
+    );
+  if (((env.STORAGE_DRIVER as string | undefined) ?? 'local') === 'local')
+    mocked.push(
+      'STORAGE_DRIVER=local — issued PDFs are files under ' +
+        `STORAGE_LOCAL_DIR (${(env.STORAGE_LOCAL_DIR as string | undefined) ?? './storage'}). ` +
+        'On an ephemeral container every PDF is lost on redeploy. Set STORAGE_DRIVER=supabase ' +
+        '(with SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY) for a durable alternative.',
     );
   if (env.FIELD_ENCRYPTION_STRICT !== true)
     mocked.push(
@@ -85,6 +94,27 @@ function requiredForAmoy(schema: Joi.StringSchema, format: string) {
     }),
     otherwise: Joi.string().allow('').optional(),
   });
+}
+
+// KEY_MANAGEMENT_DRIVER and STORAGE_DRIVER are switched independently, so either one alone set to "supabase" must require these credentials — not only when both happen to match. This can't be expressed as a per-field .when(), because chained .when().when() does not compose as OR (verified: the second clause overrides the first's effect) and a per-field .custom() never even runs when the key is entirely absent (Joi skips validators on missing optional keys before defaults from OTHER fields are known to it). So the actual check lives in the schema-level .custom() below (checkSupabaseCredentials), which runs after every field's own default is resolved and can see both driver values at once.
+function requiredForSupabase() {
+  return Joi.string().allow('').optional();
+}
+
+// Returns a Joi error to surface (via the caller's `return`), or null if credentials are satisfied — `helpers.error(...)` constructs an error object, it does not throw one.
+function checkSupabaseCredentials(
+  env: Record<string, unknown>,
+  helpers: Joi.CustomHelpers,
+): Joi.ErrorReport | null {
+  const usesSupabase =
+    env.KEY_MANAGEMENT_DRIVER === 'supabase' || env.STORAGE_DRIVER === 'supabase';
+  if (!usesSupabase) return null;
+  for (const key of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
+    if (!(env[key] as string | undefined)?.trim()) {
+      return helpers.error('supabase.required', { var: key });
+    }
+  }
+  return null;
 }
 
 // ethers accepts an all-lowercase address but rejects a mixed-case one whose EIP-55 checksum is
@@ -167,14 +197,24 @@ export const envValidationSchema = Joi.object({
   // still read; render.yaml turns it on for production.
   FIELD_ENCRYPTION_STRICT: Joi.boolean().default(false),
 
-  KEY_MANAGEMENT_DRIVER: Joi.string().valid('local', 'aws').default('local'),
+  KEY_MANAGEMENT_DRIVER: Joi.string()
+    .valid('local', 'aws', 'supabase')
+    .default('local'),
   BLOCKCHAIN_DRIVER: Joi.string().valid('local', 'amoy').default('local'),
   PAYMENT_DRIVER: Joi.string().valid('mock', 'stripe').default('mock'),
   EMAIL_DRIVER: Joi.string()
     .valid('console', 'gmail', 'ses')
     .default('console'),
-  STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
+  STORAGE_DRIVER: Joi.string()
+    .valid('local', 's3', 'supabase')
+    .default('local'),
   DNS_DRIVER: Joi.string().valid('local', 'real').default('local'),
+
+  // Required when either driver above is "supabase". Storage lives in a private Supabase Storage bucket in the same project as DATABASE_URL — org signing keys (already envelope-encrypted under KMS_MASTER_KEY) and issued PDFs (already encrypted by EncryptedStorageService), so this bucket only ever holds ciphertext. Needed on Render's free tier, which has no persistent disk: STORAGE_LOCAL_DIR is wiped on every redeploy under the "local" driver.
+  SUPABASE_URL: requiredForSupabase(),
+  // service_role key — bypasses RLS, full bucket access. Backend-only: never sent to the client, never logged, never a literal in render.yaml (dashboard secret only, like KMS_MASTER_KEY and ANCHOR_PRIVATE_KEY).
+  SUPABASE_SERVICE_ROLE_KEY: requiredForSupabase(),
+  SUPABASE_STORAGE_BUCKET: Joi.string().default('careervault-storage'),
 
   REDIS_URL: Joi.string().allow('').optional(),
   AI_SERVICE_URL: Joi.string().default('http://localhost:9910'),
@@ -207,9 +247,13 @@ export const envValidationSchema = Joi.object({
   STORAGE_LOCAL_DIR: Joi.string().default('./storage'),
 })
   .unknown(true)
-  // Runs after keys are validated + defaults applied; returns the value
-  // unchanged (warn-only, never a validation error).
-  .custom((value: Record<string, unknown>) => {
+  // Runs after keys are validated + defaults applied, so both driver values are known here regardless of which was actually set. warnUnsafeProductionDrivers is warn-only; the Supabase credential check below is fail-fast, same as KMS_MASTER_KEY and Amoy's required fields.
+  .custom((value: Record<string, unknown>, helpers) => {
     warnUnsafeProductionDrivers(value);
-    return value;
+    const supabaseError = checkSupabaseCredentials(value, helpers);
+    return supabaseError ?? value;
+  })
+  .messages({
+    'supabase.required':
+      '{{#var}} is required when KEY_MANAGEMENT_DRIVER or STORAGE_DRIVER is "supabase"',
   });

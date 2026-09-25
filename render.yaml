@@ -3,17 +3,8 @@ services:
     name: careervault-backend
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter          # upgrade to standard for more RAM 
+    plan: starter          # upgrade to standard for more RAM
     healthCheckPath: /api/v1/health
-
-    # NOT optional with KEY_MANAGEMENT_DRIVER=local. Org signing keys are files under
-    # STORAGE_LOCAL_DIR while the database only stores a POINTER to them, so without a
-    # mounted disk every deploy wipes the keys, leaves the pointers behind, and every
-    # attempt to sign a document fails. Issued PDFs live here too.
-    disk:
-      name: careervault-storage
-      mountPath: /app/server/storage
-      sizeGB: 1
 
     envVars:
       # ── Static config ───────────────────────────────────────────────────────
@@ -29,48 +20,37 @@ services:
         value: 7d
       - key: AI_SERVICE_URL
         value: http://localhost:9910   # internal; same container
-      # R10 fail-closed reads. A DB writer without KMS_MASTER_KEY can't make an envelope, so
-      # content they write straight into a document row is PLAINTEXT: refused on read, and
-      # skipped by the Merkle batch's integrity gate, so our wallet never anchors it. (Issuing
-      # through the app after granting themselves memberships is separate: viva guide L15.)
-      # Needs no pre-R10 rows left: `npm run db:audit-encryption` must PASS against it first.
+      # R10 fail-closed reads. A DB writer without KMS_MASTER_KEY can't make an envelope, so content they write straight into a document row is PLAINTEXT: refused on read, and skipped by the Merkle batch's integrity gate, so our wallet never anchors it. (Issuing through the app after granting themselves memberships is separate: viva guide L15.) Needs no pre-R10 rows left: `npm run db:audit-encryption` must PASS against it first.
       - key: FIELD_ENCRYPTION_STRICT
         value: "true"
       # ── Integration drivers ─────────────────────────────────────────────────
-      # ⚠  MOCKED IN THIS DEPLOY — the trust model (signed, domain-verified docs)
-      #    is only real when these are switched to their "real" values. Every
-      #    driver below except BLOCKCHAIN_DRIVER is a LOCAL/MOCK impl. Boot logs a
-      #    loud warning listing each mock (see server/src/config/env.validation.ts).
-      #    Flip the ones you need to demo for real and set the matching secrets
-      #    further down.
-      #      KEY_MANAGEMENT_DRIVER: local (Node RSA)            → aws    (AWS KMS)
+      # ⚠  MOCKED IN THIS DEPLOY — the trust model (signed, domain-verified docs) is only real when these are switched to their "real" values. Every driver below except BLOCKCHAIN_DRIVER is a LOCAL/MOCK impl. Boot logs a loud warning listing each mock (see server/src/config/env.validation.ts). Flip the ones you need to demo for real and set the matching secrets further down.
+      #      KEY_MANAGEMENT_DRIVER: local (Node RSA) | supabase (used here — Render's free plan has no persistent disk, so "local" loses every signing key on redeploy) → aws (AWS KMS)
       #      BLOCKCHAIN_DRIVER:     local (JSON ledger on disk) → amoy   (Polygon Amoy) — REAL here
       #      PAYMENT_DRIVER:        mock  (free)                → stripe (real billing)
       #      EMAIL_DRIVER:          console (stdout)            → ses    (real email)
-      #      STORAGE_DRIVER:        local (disk)                → s3
+      #      STORAGE_DRIVER:        local (disk) | supabase (used here — same free-plan reason as KEY_MANAGEMENT_DRIVER) → s3
       #      DNS_DRIVER:            local (BYPASSED)            → real   (TXT-record check)
+      #
+      # Org signing keys and issued PDFs live in a private Supabase Storage bucket instead of a local disk. Render's free tier does not support persistent Disks — confirmed unavailable on this plan — so STORAGE_LOCAL_DIR would be wiped on every redeploy under the "local" driver, silently orphaning every org's signing key. Supabase Storage is durable and reuses the same Supabase project as DATABASE_URL/DIRECT_URL, just a different bucket (SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY below). Everything written there is already ciphertext before it leaves this process — private keys are AES-256-GCM-encrypted under KMS_MASTER_KEY, PDFs are encrypted by EncryptedStorageService — so the storage backend is a transport choice, not a change to what protects the data.
       - key: KEY_MANAGEMENT_DRIVER
-        value: local
-      # Real anchoring on Polygon Amoy. POLYGON_RPC_URL, ANCHOR_REGISTRY_ADDRESS and
-      # ANCHOR_PRIVATE_KEY (secrets below) MUST be set in the dashboard BEFORE this
-      # deploys: under amoy they are required, so boot validation fails without them.
+        value: supabase
+      # Real anchoring on Polygon Amoy. POLYGON_RPC_URL, ANCHOR_REGISTRY_ADDRESS and ANCHOR_PRIVATE_KEY (secrets below) MUST be set in the dashboard BEFORE this deploys: under amoy they are required, so boot validation fails without them.
       - key: BLOCKCHAIN_DRIVER
         value: amoy
       - key: PAYMENT_DRIVER
         value: mock
+      # NOTE: this deploy's dashboard has historically overridden this to "gmail" so invited members receive a real email — that's a legitimate, intentional override, not drift to "fix." Check the Render dashboard's actual value before assuming this default is what's running.
       - key: EMAIL_DRIVER
         value: console
       - key: STORAGE_DRIVER
-        value: local
-      # DNS_DRIVER=local BYPASSES domain verification: EVERY domain "verifies", so
-      # signed documents can be issued as ANY organization. This is the core trust
-      # control. Set to "real" for genuine DNS TXT-record checks — required before
-      # this deploy can be trusted. Left "local" here only because the seeded demo
-      # uses example domains nobody controls; boot logs a warning either way.
+        value: supabase
+      # DNS_DRIVER=local BYPASSES domain verification: EVERY domain "verifies", so signed documents can be issued as ANY organization. This is the core trust control. Set to "real" for genuine DNS TXT-record checks — required before this deploy can be trusted. Left "local" here only because the seeded demo uses example domains nobody controls; boot logs a warning either way.
       - key: DNS_DRIVER
         value: local
+      # Only meaningful if KEY_MANAGEMENT_DRIVER or STORAGE_DRIVER is ever switched back to "local" on this service — with both set to "supabase" above, this path is unused except as the dev-fallback location for a generated KMS_MASTER_KEY, which isn't in play here since KMS_MASTER_KEY is set explicitly as a secret below. No Render Disk is mounted at this path (Render's free tier doesn't support persistent Disks), so nothing should rely on this directory surviving a redeploy.
       - key: STORAGE_LOCAL_DIR
-        value: /app/server/storage    # backed by the `disk:` above — must stay in sync
+        value: /app/server/storage
 
       # ── Secrets — set these in the Render dashboard, never commit values ────
       - key: DATABASE_URL            # Supabase transaction pooler (port 6543)
@@ -83,27 +63,25 @@ services:
         sync: false
       - key: JWT_PUBLIC_KEY          # contents of server/keys/jwt_public.pem with \n escaped as \\n
         sync: false
-      # REQUIRED in production (the app refuses to boot without it). Base64, decoding to
-      # exactly 32 bytes: openssl rand -base64 32
-      # A hex value will NOT work — it decodes to 48 bytes and fails validation.
-      # It wraps every org signing key and derives the key for the R10-encrypted DB fields
-      # and stored PDFs: losing or rotating it makes all of them unreadable. Treat it as
-      # permanent and keep an offline backup.
+      # REQUIRED in production (the app refuses to boot without it). Base64, decoding to exactly 32 bytes: openssl rand -base64 32 A hex value will NOT work — it decodes to 48 bytes and fails validation. It wraps every org signing key and derives the key for the R10-encrypted DB fields and stored PDFs: losing or rotating it makes all of them unreadable. Treat it as permanent and keep an offline backup.
       - key: KMS_MASTER_KEY
         sync: false
       - key: GROQ_API_KEY            # enables LLM skill extraction
         sync: false
       - key: AI_SERVICE_SECRET        # shared secret between server and ai-service
         sync: false
-      # Polygon anchoring (BLOCKCHAIN_DRIVER=amoy above). Chain id, confirmations and the
-      # fee floor keep their Amoy defaults (see server/.env.example).
+      # Required because KEY_MANAGEMENT_DRIVER and STORAGE_DRIVER above are both "supabase" (either one alone would trigger this requirement too). Same Supabase project as DATABASE_URL/DIRECT_URL, a different bucket (private Storage bucket, not the database). SUPABASE_SERVICE_ROLE_KEY is backend-only, same secrecy tier as KMS_MASTER_KEY — never a literal here, never sent to the client, never logged.
+      - key: SUPABASE_URL             # e.g. https://<ref>.supabase.co
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Polygon anchoring (BLOCKCHAIN_DRIVER=amoy above). Chain id, confirmations and the fee floor keep their Amoy defaults (see server/.env.example).
       - key: POLYGON_RPC_URL          # Amoy JSON-RPC endpoint; hosted URLs embed an API key
         sync: false
       - key: ANCHOR_REGISTRY_ADDRESS  # contracts/deployments/amoy.json → address
         sync: false
       - key: ANCHOR_PRIVATE_KEY       # 0x-prefixed key of the authorized, funded anchor wallet
         sync: false
-      # contracts/deployments/amoy.json → blockNumber. Optional: lets a batch retry that finds
-      # its root already anchored look up the transaction; unset, it records none.
+      # contracts/deployments/amoy.json → blockNumber. Optional: lets a batch retry that finds its root already anchored look up the transaction; unset, it records none.
       - key: ANCHOR_REGISTRY_DEPLOY_BLOCK
         sync: false

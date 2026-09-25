@@ -25,6 +25,10 @@ export class GmailEmailService extends EmailService {
       port: 587,
       secure: false, // STARTTLS
       auth: { user, pass },
+      // Nodemailer's defaults are ~120s each — on a PaaS with intermittent egress to Gmail's SMTP (seen on Render), that turns one hung connection into a two-minute request. Fail fast instead; callers that treat email as best-effort (see MemberService.add) still degrade gracefully.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 10_000,
     });
 
     this.logger.log(`Gmail transport ready for ${user}`);
