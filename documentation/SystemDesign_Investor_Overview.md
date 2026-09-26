@@ -405,7 +405,7 @@ The recruiter sees a clear **Verification Report** with pass/fail for each step 
 | Document integrity | SHA-256 hash of canonicalized content (JCS/RFC 8785) + a 256-bit random salt |
 | Digital signatures | RSA-2048 / RS256. Each org's private key is generated and used by the server, and stored as a file, AES-256-GCM-wrapped under a master key held as an environment secret (`KMS_MASTER_KEY`). **Roadmap:** AWS KMS/HSM custody, where keys would never leave the HSM. |
 | Dual-signature model | Every document requires both a manager signature and an HR co-signature. Each is over a distinct role-bound statement. Both are made with the organisation's single key: separation of duties is enforced by the application and recorded in the signed statements (per-member keys: roadmap). |
-| Blockchain anchoring | Merkle roots on the **Polygon Amoy testnet** (`AnchorRegistry` at `<AMOY_REGISTRY_ADDRESS>` after deployment) -- publicly verifiable, immutable. Mainnet is a deploy plus a configuration change. |
+| Blockchain anchoring | Merkle roots on the **Polygon Amoy testnet** (`AnchorRegistry` at [`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`](https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#code)) -- publicly verifiable, immutable. Mainnet is a deploy plus a configuration change. |
 | Key rotation | Each document records the public key it was signed under, so replacing an org key never invalidates issued documents; the server re-keys automatically if key material is lost. There is no admin "rotate key" action yet, and master-key (KEK) rotation tooling is **roadmap**. |
 | Field encryption (R10) | Sensitive document fields, version history and PDFs are envelope-encrypted by the application (AES-256-GCM, a data key per row payload, field-bound AAD), so the database, its backups and a live SQL console hold ciphertext. |
 
@@ -442,7 +442,7 @@ Companies must **prove domain ownership** via DNS TXT record before they can iss
 
 ## 15. Smart Contract (On-Chain)
 
-The `AnchorRegistry` smart contract on Polygon is intentionally minimal. It targets the Amoy testnet, at `<AMOY_REGISTRY_ADDRESS>` once the pending deploy runs, and only authorized anchor wallets can write to it:
+The `AnchorRegistry` smart contract on Polygon is intentionally minimal. It targets the Amoy testnet, at [`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`](https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#code) (source-verified), and only authorized anchor wallets can write to it:
 
 | Function | What It Does |
 |---|---|

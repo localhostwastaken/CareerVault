@@ -142,7 +142,7 @@ contract and transaction.
 | | |
 |---|---|
 | Network | Polygon Amoy testnet, chain id `80002` (`BLOCKCHAIN_DRIVER=amoy`) |
-| Contract | `<AMOY_REGISTRY_ADDRESS>`, filled in after deployment (`contracts/deployments/amoy.json`) |
+| Contract | [`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`](https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#code) (verified; deployed in block 48502677, record in `contracts/deployments/amoy.json`) |
 | Anchor wallet | `0x955cE8960A1Fb6fCCd9e5F42D81a844dEDf5056e` (it will be the deployer, and so the contract owner and first authorized anchor, once the registry is deployed) |
 | Explorer | [amoy.polygonscan.com](https://amoy.polygonscan.com). The verify page links the transaction and the contract; the admin's anchoring card links each batch's transaction. |
 
@@ -160,7 +160,7 @@ downloaded credential with its own code; it imports nothing from `server/`:
 cd tools/verify-credential && npm install
 node verify-credential.mjs --selftest                     # known-answer vectors, no network
 node verify-credential.mjs careervault-credential-<id>.jsonld --explain
-node verify-credential.mjs <file> --rpc <amoy-rpc-url> --registry <AMOY_REGISTRY_ADDRESS>
+node verify-credential.mjs <file> --rpc <amoy-rpc-url>   # Amoy registry is pinned in KNOWN_REGISTRIES
 ```
 
 It does five things:

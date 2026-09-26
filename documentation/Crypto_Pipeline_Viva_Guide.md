@@ -2,7 +2,7 @@
 
 > **For:** the four presenters, for the LY final evaluation (demo + viva).
 > **Branch:** `ly-final-hardening`. Every `file:line` link points at the code as of commit `b95a83c`, the end of the final-review fix wave. That wave came after Task 9's strict R10 reads, batch integrity gate and complete GDPR erasure. It fixed unreadable-record handling in public verification, revocation in the offline verifier, recovery of a retried batch's transaction hash, and the seeded demo password. The docs commits after it change no code, so the links still hold.
-> **Not deployed yet:** the Polygon Amoy `AnchorRegistry` goes live in a later, human-gated step. Until then, every contract address in this guide reads `<AMOY_REGISTRY_ADDRESS>`. The ordered deploy steps are in [Deploy_Runbook.md](Deploy_Runbook.md); section 10 lists what to fill in after the contract deploy.
+> **Deployed:** the Polygon Amoy `AnchorRegistry` is live and source-verified at [`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`](https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#code) (block 48502677, 2026-09-25), owned by the anchor wallet `0x955cE8960A1Fb6fCCd9e5F42D81a844dEDf5056e`. The remaining ordered deploy steps are in [Deploy_Runbook.md](Deploy_Runbook.md).
 
 **How to use this guide.** Sections 1–3 are the pipeline: learn them until you can say them without looking. Section 4 covers encryption, 5 the design reasons, and 6 the threat model. Section 7 is the question bank. Section 8 lists what we **say honestly before anyone asks**. Section 9 is the demo. Every claim links to the code that makes it true. When a question goes deeper than your answer, open the link.
 
@@ -570,7 +570,7 @@ Not by planting a row in our database, as long as production keeps strict mode o
   - If it names our registry, it gets ✓ Registry, but then ✗ On-chain root and exit 1.
   - If it names any other contract, it gets ✗ Registry ([verify-credential.mjs:210-235](../tools/verify-credential/verify-credential.mjs#L210-L235)).
   - If it claims `anchor: null` or the local simulator, it can still exit 0, but the summary says explicitly that there is no on-chain evidence ([verify-credential.mjs:314-329](../tools/verify-credential/verify-credential.mjs#L314-L329)). **That's why a verifier must read the summary, not just the exit code.**
-- **Until the deploy step fills `KNOWN_REGISTRIES[80002]`** (now `null`, [verify-credential.mjs:109-113](../tools/verify-credential/verify-credential.mjs#L109-L113)), Amoy is unpinned. Pass `--registry <AMOY_REGISTRY_ADDRESS>`.
+- **`KNOWN_REGISTRIES[80002]` is pinned** to `0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a` ([verify-credential.mjs:109-113](../tools/verify-credential/verify-credential.mjs#L109-L113)), so Amoy credentials are checked against CareerVault's registry with no extra flag.
 
 **Q21. How long is RSA-2048 safe?**
 - NIST SP 800-57 rates RSA-2048 at 112-bit security, acceptable for new signatures **through 2030**. After that, checking existing signatures counts as legacy use.
@@ -669,7 +669,7 @@ The deploy itself comes first, days before: fund the wallet, deploy the contract
    - contract code present;
    - wallet authorized;
    - balance at or above 0.05 POL (it warns below that, [anchor-self-check.ts:6](../server/src/services/blockchain/anchor-self-check.ts#L6)).
-5. PolygonScan shows the registry at `<AMOY_REGISTRY_ADDRESS>` as **verified source**.
+5. PolygonScan shows the registry at [`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`](https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#code) as **verified source**.
 6. **Run `cd server && npm run db:audit-encryption` from the laptop,** against Supabase, with Render's `KMS_MASTER_KEY` exported. It must print `PASS`, which is also the precondition for Render's strict mode.
    - Its **database** section audits Supabase.
    - Its **storage** section scans the *laptop's* `STORAGE_LOCAL_DIR/objects` ([audit-encryption.ts:91-94](../server/prisma/audit-encryption.ts#L91-L94)), not Render's disk. Point `STORAGE_LOCAL_DIR` at an empty directory for this run, so local PDFs sealed under a different key don't show up as undecryptable.
@@ -693,7 +693,7 @@ Every seeded account signs in with the team's `SEED_DEMO_PASSWORD` (runbook step
 | 6 | Anyone, on PolygonScan | Contract, Read Contract, `verifyRoot(0x<root>)` | "`exists = true`, straight from the chain, not from us" |
 | 7 | Anyone | Refresh `/verify/hash/<hash>` | `VERIFIED`, with "View on PolygonScan" and "View contract on PolygonScan" |
 | 8 | Holder | Document, **Download proof file** | "The holder owns an offline-verifiable file." |
-| 9 | Terminal | `node verify-credential.mjs careervault-credential-<id>.jsonld --explain` (plus `--registry <AMOY_REGISTRY_ADDRESS>` until the pin is filled) | Read out each ✓ **and the summary line** |
+| 9 | Terminal | `node verify-credential.mjs careervault-credential-<id>.jsonld --explain` (the Amoy registry is pinned, so no `--registry` needed) | Read out each ✓ **and the summary line** |
 | 10 | Terminal | Change one character of `credentialSubject` and run again | `✗ Integrity`, exit 1 |
 | 11 | Supabase | Table Editor, `documents` | `content_json`, `salt`, `manager_signature` and `hr_signature` start with `cvenc:v1:`; `document_hash` is plaintext (Q23) |
 | 12 | HR (optional) | Issued, **Revoke** | Public verify shows `REVOKED`; a `DocumentRevoked` event follows on PolygonScan |
@@ -716,6 +716,6 @@ The deploy step (`cd contracts && npm run deploy:amoy`, then `npm run verify:amo
 
 - `KNOWN_REGISTRIES[80002]` in [verify-credential.mjs:109-113](../tools/verify-credential/verify-credential.mjs#L109-L113);
 - Render's `ANCHOR_REGISTRY_ADDRESS`, exactly as `amoy.json` writes it (the boot rejects a mixed-case address with a bad checksum, [env.validation.ts:90-106](../server/src/config/env.validation.ts#L90-L106));
-- every `<AMOY_REGISTRY_ADDRESS>` placeholder: `grep -rn "<AMOY_REGISTRY_ADDRESS>" README.md documentation server/CLAUDE.md`.
+- the registry address placeholders: done 2026-09-25 (`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`).
 
 Also copy its `blockNumber` into Render's `ANCHOR_REGISTRY_DEPLOY_BLOCK`, which lets a retried batch recover its transaction hash (Step 8). [Deploy_Runbook.md](Deploy_Runbook.md), steps 3 and 4, has the commands.

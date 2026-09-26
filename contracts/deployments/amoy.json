@@ -1,0 +1,9 @@
+{
+  "network": "amoy",
+  "chainId": 80002,
+  "address": "0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a",
+  "txHash": "0xb591c493cd3ee64913b9541ca3dac808196c974bc7e2e6c5bc330915d6d09e74",
+  "blockNumber": 48502677,
+  "deployer": "0x955cE8960A1Fb6fCCd9e5F42D81a844dEDf5056e",
+  "deployedAt": "2026-09-25T08:31:32.490Z"
+}

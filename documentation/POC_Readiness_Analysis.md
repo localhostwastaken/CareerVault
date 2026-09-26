@@ -485,7 +485,7 @@ references, is in [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.m
 | Viva kit | The viva guide, plus this truth pass across the README and the design docs. | — |
 
 **Still pending (human-gated):**
-- deploying `AnchorRegistry` to Amoy, then filling `KNOWN_REGISTRIES[80002]` and the `<AMOY_REGISTRY_ADDRESS>` placeholders;
+- ~~deploying `AnchorRegistry` to Amoy and pinning it~~ (done 2026-09-25: `0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`);
 - pinning Supabase's CA, enforcing SSL and turning off the Data API;
 - resetting and re-seeding Supabase with Render's `KMS_MASTER_KEY`, which strict mode needs before it deploys: any pre-R10 plaintext row would otherwise fail to read.
 

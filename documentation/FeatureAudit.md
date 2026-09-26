@@ -143,7 +143,7 @@ Per R3 & R4 spec:
   - idempotent retries;
   - a boot self-check;
   - verification that degrades to "pending" when the RPC is down.
-- **Pending:** the contract deploy to Amoy is a human-gated step; the address will be `<AMOY_REGISTRY_ADDRESS>`.
+- **Deployed (2026-09-25):** `AnchorRegistry` on Amoy at [`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`](https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#code), source-verified on PolygonScan.
 - Merkle proofs are stored per document and included in the JSON-LD credential download, along with the chain id, contract and transaction.
 
 ---
