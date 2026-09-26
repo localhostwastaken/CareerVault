@@ -6,21 +6,16 @@ import { GmailEmailService } from './gmail-email.service.js';
 
 @Module({
   providers: [
-    ConsoleEmailService,
-    GmailEmailService,
     {
       provide: EmailService,
-      useFactory: (
-        config: ConfigService,
-        console: ConsoleEmailService,
-        gmail: GmailEmailService,
-      ): EmailService => {
+      // ConsoleEmailService/GmailEmailService are constructed here, not listed as ordinary providers — GmailEmailService's constructor requires GMAIL_USER/GMAIL_APP_PASSWORD, and Nest eagerly instantiates every provider in a module's list regardless of which one a factory picks, so EMAIL_DRIVER=console would still crash the app on boot if those Gmail vars were unset. Only build the driver actually selected.
+      useFactory: (config: ConfigService): EmailService => {
         const driver = config.get<string>('EMAIL_DRIVER');
-        if (driver === 'console') return console;
-        if (driver === 'gmail') return gmail;
+        if (driver === 'console') return new ConsoleEmailService();
+        if (driver === 'gmail') return new GmailEmailService(config);
         throw new Error(`EMAIL_DRIVER="${driver}" not implemented`);
       },
-      inject: [ConfigService, ConsoleEmailService, GmailEmailService],
+      inject: [ConfigService],
     },
   ],
   exports: [EmailService],
