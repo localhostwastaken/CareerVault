@@ -18,12 +18,9 @@ services:
         value: 15m
       - key: JWT_REFRESH_TTL
         value: 7d
-      # The AI service is a separate Render PRIVATE SERVICE (careervault-ai-service, below) — not reachable publicly, only from other services on this Render project's private network. `hostport` resolves to a bare "host:port" (no scheme); AiClientService prepends "http://" when one isn't already present.
+      # The AI service is a separate Render service (careervault-ai-service, below). Render's private services (type: pserv) require a paid plan, so this runs as a public `web` service instead — it IS reachable at its onrender.com URL by anyone who finds it. AI_SERVICE_SECRET (below, and on that service) is therefore the only thing standing between the internet and /extract, /embed, /rank — keep it set on both services and never let it drift out of sync between them.
       - key: AI_SERVICE_URL
-        fromService:
-          name: careervault-ai-service
-          type: pserv
-          property: hostport
+        value: https://careervault-ai-service.onrender.com
       # R10 fail-closed reads. A DB writer without KMS_MASTER_KEY can't make an envelope, so content they write straight into a document row is PLAINTEXT: refused on read, and skipped by the Merkle batch's integrity gate, so our wallet never anchors it. (Issuing through the app after granting themselves memberships is separate: viva guide L15.) Needs no pre-R10 rows left: `npm run db:audit-encryption` must PASS against it first.
       - key: FIELD_ENCRYPTION_STRICT
         value: "true"
@@ -90,13 +87,13 @@ services:
       - key: ANCHOR_REGISTRY_DEPLOY_BLOCK
         sync: false
 
-  # Python FastAPI service (skill extraction, embeddings, explainable ranking). A PRIVATE SERVICE: reachable only from other services in this Render project over the private network, never given a public onrender.com URL. Only careervault-backend calls it (AI_SERVICE_URL above, wired via fromService). Refuses to boot without AI_SERVICE_SECRET when NODE_ENV=production (app/config.py) — every request to /extract, /embed, /rank must carry a matching x-service-secret header; only /health is unauthenticated, for Render's health check.
-  - type: pserv
+  # Python FastAPI service (skill extraction, embeddings, explainable ranking). Deployed as `web` (public onrender.com URL) rather than `pserv` — Render's private services need a paid plan. Only careervault-backend is *meant* to call it, but nothing at the network layer enforces that here: AI_SERVICE_SECRET is the entire access control. Refuses to boot without it when NODE_ENV=production (app/config.py) — every request to /extract, /embed, /rank must carry a matching x-service-secret header; only /health is unauthenticated, for Render's health check.
+  - type: web
     name: careervault-ai-service
     runtime: docker
     dockerfilePath: ./ai-service/Dockerfile
     dockerContext: ./ai-service
-    plan: starter
+    plan: free
     healthCheckPath: /health
 
     envVars:
