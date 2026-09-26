@@ -22,6 +22,10 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# Fail fast at process startup, not on the first request: raises if NODE_ENV=production
+# and AI_SERVICE_SECRET is unset (see Settings._require_secret_in_production).
+get_settings()
+
 app = FastAPI(title="CareerVault AI Service", version="1.0.0", lifespan=lifespan)
 
 

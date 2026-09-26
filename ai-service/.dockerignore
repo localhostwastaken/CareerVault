@@ -1,0 +1,22 @@
+# Secrets — injected at runtime via Render env vars, never baked into the image
+.env
+.env.local
+!.env.example
+
+# Reinstalled/regenerated inside the image
+venv
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+
+# Fitted at container startup (see app/ranking.py) — never ship a stale local copy
+app/artifacts/
+
+# Not needed in the image
+tests/
+README.md
+Claude.md
+.claude/

@@ -26,8 +26,15 @@ export class AiClientService {
   private readonly serviceSecret?: string;
 
   constructor(config: ConfigService) {
-    this.baseUrl =
+    const configured =
       config.get<string>('AI_SERVICE_URL') ?? 'http://localhost:9910';
+    // Render's fromService `property: hostport` (used to reach the AI service over the
+    // private network) resolves to a bare "host:port", not a URL — fetch() requires a
+    // scheme, so add one when it's missing rather than requiring every deploy target to
+    // spell out "http://" itself.
+    this.baseUrl = /^https?:\/\//.test(configured)
+      ? configured
+      : `http://${configured}`;
     this.serviceSecret = config.get<string>('AI_SERVICE_SECRET') || undefined;
   }
 

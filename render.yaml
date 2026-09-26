@@ -18,8 +18,12 @@ services:
         value: 15m
       - key: JWT_REFRESH_TTL
         value: 7d
+      # The AI service is a separate Render PRIVATE SERVICE (careervault-ai-service, below) — not reachable publicly, only from other services on this Render project's private network. `hostport` resolves to a bare "host:port" (no scheme); AiClientService prepends "http://" when one isn't already present.
       - key: AI_SERVICE_URL
-        value: http://localhost:9910   # internal; same container
+        fromService:
+          name: careervault-ai-service
+          type: pserv
+          property: hostport
       # R10 fail-closed reads. A DB writer without KMS_MASTER_KEY can't make an envelope, so content they write straight into a document row is PLAINTEXT: refused on read, and skipped by the Merkle batch's integrity gate, so our wallet never anchors it. (Issuing through the app after granting themselves memberships is separate: viva guide L15.) Needs no pre-R10 rows left: `npm run db:audit-encryption` must PASS against it first.
       - key: FIELD_ENCRYPTION_STRICT
         value: "true"
@@ -85,3 +89,24 @@ services:
       # contracts/deployments/amoy.json → blockNumber. Optional: lets a batch retry that finds its root already anchored look up the transaction; unset, it records none.
       - key: ANCHOR_REGISTRY_DEPLOY_BLOCK
         sync: false
+
+  # Python FastAPI service (skill extraction, embeddings, explainable ranking). A PRIVATE SERVICE: reachable only from other services in this Render project over the private network, never given a public onrender.com URL. Only careervault-backend calls it (AI_SERVICE_URL above, wired via fromService). Refuses to boot without AI_SERVICE_SECRET when NODE_ENV=production (app/config.py) — every request to /extract, /embed, /rank must carry a matching x-service-secret header; only /health is unauthenticated, for Render's health check.
+  - type: pserv
+    name: careervault-ai-service
+    runtime: docker
+    dockerfilePath: ./ai-service/Dockerfile
+    dockerContext: ./ai-service
+    plan: starter
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "9910"
+      # Same value as careervault-backend's AI_SERVICE_SECRET (set both in the Render dashboard) — this is the shared secret the two services authenticate each other with, not a new secret.
+      - key: AI_SERVICE_SECRET
+        sync: false
+      - key: GROQ_API_KEY            # enables LLM skill extraction; empty falls back to the heuristic extractor
+        sync: false
+      # GROQ_MODEL, GROQ_BASE_URL, EMBEDDING_MODEL, EMBEDDING_DIM are intentionally not pinned here — left unset so app/config.py's existing defaults apply, unchanged from current behaviour. Only set one of these if the deploy needs to override it.
