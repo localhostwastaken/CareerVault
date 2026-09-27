@@ -8,26 +8,14 @@ RUN npm ci
 COPY server/ .
 RUN npx prisma generate && npm run build
 
-# ── Stage 2: Runtime (Node 22 + Python 3.11 in one container) ─────────────────
-FROM python:3.11-slim
+# ── Stage 2: Runtime (Node 22 only) ───────────────────────────────────────────
+# The AI workload (skill extraction, embeddings, ranking) now runs as its own Render service — see ai-service/Dockerfile — reached over HTTP via AI_SERVICE_URL (render.yaml). This image no longer bundles Python/Uvicorn/sentence-transformers.
+FROM node:22-slim
 
-# Install Node.js 22 + libgomp1 (LightGBM's compiled extension needs it at runtime; python:3.11-slim doesn't ship it, so ranking silently degrades to the weighted-sum fallback without this). Node 22+ required: see the build stage's FROM comment above.
+# openssl: Prisma's query engine dynamically links libssl at runtime and isn't present on the slim base by default (the classic "libssl.so.1.1 not found" failure — previously masked because the old Python base image pulled it in transitively). ca-certificates: TLS to Supabase/Groq/Gmail/Polygon RPC/the standalone ai-service.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates libgomp1 && \
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y --no-install-recommends nodejs && \
+    apt-get install -y --no-install-recommends openssl ca-certificates && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# ── AI service ─────────────────────────────────────────────────────────────────
-WORKDIR /app/ai-service
-COPY ai-service/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Pre-cache sentence-transformers model so cold starts are instant (~90 MB)
-ENV HF_HOME=/app/.cache/huggingface
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
-
-COPY ai-service/ .
 
 # ── NestJS server ──────────────────────────────────────────────────────────────
 WORKDIR /app/server
@@ -49,10 +37,6 @@ COPY server/certs ./certs
 # Storage directory (local adapter; mount a Render disk here for persistence)
 RUN mkdir -p /app/server/storage
 
-# ── Process supervisor ─────────────────────────────────────────────────────────
-RUN pip install --no-cache-dir supervisor
-
-COPY supervisord.conf /etc/supervisord.conf
 COPY start.sh /start.sh
 # Strip CRLF regardless of the checked-out file's line endings (e.g. git core.autocrlf=true on a Windows dev machine) — a CRLF shebang line breaks exec("/start.sh") in this Linux container with a misleading "no such file or directory".
 RUN sed -i 's/\r$//' /start.sh && chmod +x /start.sh

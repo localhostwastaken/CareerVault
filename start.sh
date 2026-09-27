@@ -4,5 +4,5 @@ set -e
 echo "==> Running Prisma migrations..."
 cd /app/server && npx prisma migrate deploy
 
-echo "==> Starting services via supervisord..."
-exec supervisord -n -c /etc/supervisord.conf
+echo "==> Starting NestJS..."
+exec node /app/server/dist/main.js

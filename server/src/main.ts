@@ -19,6 +19,8 @@ async function bootstrap(): Promise<void> {
     rawBody: true,
   });
   app.useLogger(app.get(Logger));
+  // Without this, Render's SIGTERM on every deploy kills the process immediately, dropping in-flight requests mid-response (e.g. a refresh-token rotation that committed in the DB but never got its response out) — the client retries with a now-stale cookie, which TokensService.rotate correctly reads as reuse and revokes the user's whole session family. This lets app.close() drain existing connections instead of severing them.
+  app.enableShutdownHooks();
   // Trust exactly one fronting proxy so per-IP throttling sees the real client IP
   // (X-Forwarded-For) instead of bucketing everyone under the proxy address.
   app.set('trust proxy', 1);
