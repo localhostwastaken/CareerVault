@@ -176,11 +176,56 @@ describe('env validation — FIELD_ENCRYPTION_STRICT', () => {
   });
 });
 
+describe('env validation — AI_SERVICE_URL', () => {
+  const PRODUCTION = {
+    ...DATABASE,
+    NODE_ENV: 'production',
+    KMS_MASTER_KEY: Buffer.alloc(32, 7).toString('base64'),
+  };
+
+  it('defaults to http://localhost:9910 outside production', () => {
+    expect(validate(DATABASE).value.AI_SERVICE_URL).toBe(
+      'http://localhost:9910',
+    );
+  });
+
+  it('keeps the localhost fallback in test', () => {
+    expect(
+      validate({ ...DATABASE, NODE_ENV: 'test' }).value.AI_SERVICE_URL,
+    ).toBe('http://localhost:9910');
+  });
+
+  it('requires AI_SERVICE_URL in production — missing must fail boot, not fall back', () => {
+    const { error } = validate(PRODUCTION);
+    expect(error?.message).toContain('AI_SERVICE_URL');
+    expect(error?.message).toContain('required in production');
+  });
+
+  it('rejects an empty AI_SERVICE_URL in production', () => {
+    const { error } = validate({ ...PRODUCTION, AI_SERVICE_URL: '' });
+    expect(error?.message).toContain('AI_SERVICE_URL');
+  });
+
+  it('accepts an explicit AI_SERVICE_URL in production, unchanged', () => {
+    const { error, value } = validate({
+      ...PRODUCTION,
+      AI_SERVICE_URL: 'https://ai.example.com',
+    });
+    expect(error).toBeUndefined();
+    expect(value.AI_SERVICE_URL).toBe('https://ai.example.com');
+  });
+});
+
 describe('env validation — production driver warning', () => {
   const PRODUCTION = {
     ...DATABASE,
     NODE_ENV: 'production',
     KMS_MASTER_KEY: Buffer.alloc(32, 7).toString('base64'),
+    // Now required in production (see the AI_SERVICE_URL describe block above) — without
+    // it these fixtures fail key validation, which stops the schema's object-level
+    // .custom() from running at all, and the warning banner these tests assert on
+    // never fires.
+    AI_SERVICE_URL: 'https://ai.example.com',
   };
   const realWarn = console.warn;
   let warnings: string[];

@@ -217,7 +217,20 @@ export const envValidationSchema = Joi.object({
   SUPABASE_STORAGE_BUCKET: Joi.string().default('careervault-storage'),
 
   REDIS_URL: Joi.string().allow('').optional(),
-  AI_SERVICE_URL: Joi.string().default('http://localhost:9910'),
+  // The ai-service runs as its own process (dev: co-located on :9910; prod: a separate Render service — render.yaml pins it to the deployed URL). The localhost default is only ever correct in dev/test; in production, an unset AI_SERVICE_URL would silently point AiClientService at a port nothing is listening on, and every skill-extraction/embedding/ ranking call would fail with a generic 503 instead of the boot itself explaining why.
+  AI_SERVICE_URL: Joi.string().when('NODE_ENV', {
+    is: 'production',
+    then: Joi.string()
+      .required()
+      .messages({
+        'any.required':
+          'AI_SERVICE_URL is required in production — without it the backend falls back to http://localhost:9910, which resolves to nothing once the ai-service runs as its own deployed service.' +
+          "Set it to that service's URL via the environment.",
+        'string.empty':
+          "AI_SERVICE_URL must not be empty in production. Set it to the ai-service's URL.",
+      }),
+    otherwise: Joi.string().default('http://localhost:9910'),
+  }),
   AI_SERVICE_SECRET: Joi.string().allow('').optional(),
 
   POLYGON_RPC_URL: requiredForAmoy(
