@@ -1,7 +1,7 @@
 # CareerVault — POC Readiness Analysis
 
 > **STATUS UPDATE (2026-08-10):** All 10 **Critical for POC** items and the **Fast-follows** below have since been
-> implemented and verified (server typecheck clean · 30 unit tests passing · server + client builds clean ·
+> IMPLEMENTED and verified (server typecheck clean · 30 unit tests passing · server + client builds clean ·
 > client lint clean · runtime smoke tests passing end-to-end). The findings below are preserved as the original
 > audit record; see **Part G — Implementation record** at the end for what changed and how it was verified.
 
@@ -11,7 +11,7 @@
 > - the demo master password is gated off by default;
 > - a standalone offline credential verifier.
 >
-> See **Part H** at the end, and [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.md) for the byte-exact spec.
+> See **Part H** at the end, and [`cryptography.md`](cryptography.md) for the byte-exact spec.
 
 > **Prepared as:** an end-to-end business + technical review to make CareerVault a robust, credible **investor-demo POC**.
 > **Framing decisions (confirmed with the owner):** audience = **investor / pitch demo**; market = **India-first** (INR, real Indian document conventions); recruiter = **internal hiring member** who sees **public candidate profiles + applicants' documents only as granted**; the **cryptographic trust story is the core value proposition** (so crypto correctness is must-fix, not a simplification).
@@ -47,7 +47,7 @@ Everything below is organized so you can act on it in priority order. **Part F i
 
 **Stack.** NestJS 11 / Prisma 7 / Postgres+pgvector API · React 19 / Vite / RTK Query client · FastAPI AI service · Hardhat/Solidity `AnchorRegistry`. The defining decision: **every heavy integration (KMS, blockchain, payments, email, storage, DNS) sits behind a swappable adapter, and the shipping config runs all six on local/mock** — which is what lets the stack run with zero cloud accounts, and also the source of most "not real yet" findings.
 
-**The document lifecycle (as implemented):** `REQUESTED → DRAFT → PENDING_HR → ISSUED → ANCHORED`, with `REVOKED`/`EXPIRED` terminal, plus manager-return and holder-resubmit loops. Dual approval = manager signs, HR co-signs. Verification recomputes hash → manager sig → HR sig → Merkle proof → on-chain root → revocation/expiry.
+**The document lifecycle (as IMPLEMENTED):** `REQUESTED → DRAFT → PENDING_HR → ISSUED → ANCHORED`, with `REVOKED`/`EXPIRED` terminal, plus manager-return and holder-resubmit loops. Dual approval = manager signs, HR co-signs. Verification recomputes hash → manager sig → HR sig → Merkle proof → on-chain root → revocation/expiry.
 
 **What's genuinely strong** (keep and lean on these):
 - Org-scoped document mutations are **solidly IDOR-proof** — every transition re-checks an *active* membership via `requireMember` ([document.service.ts](server/src/modules/document/document.service.ts)). This is the best code in the repo.
@@ -92,7 +92,7 @@ Covered in full in **Part D**. This is the single most visible product-surface g
 
 **B8. No password reset exists.** `PASSWORD_RESET` is a dead enum value; a user who sets a password and forgets it is permanently locked out of the password credential ([auth.service.ts](server/src/modules/auth/auth.service.ts)). Only relevant to the demo if you demo login recovery, but it's a glaring omission a reviewer may ask about.
 
-**B9. The AI ranker is trained on synthetic random data.** The LightGBM model is fit on `rng.random((2000,6))` — a noisy approximation of six hardcoded weights, containing zero real-world signal ([ranking.py](ai-service/app/ranking.py)). The SHAP explanations are real math over a fake model. For a demo this is fine **if framed honestly** ("explainable ranking, weights tuned by hand pending training data"); presenting it as a learned model invites a question you can't answer. The `INTERESTED/NOT_INTERESTED` replies are the obvious training label and are currently captured and ignored — worth mentioning as the roadmap.
+**B9. The AI ranker is trained on synthetic random data.** The LightGBM model is fit on `rng.random((2000,6))` — a noisy approximation of six hardcoded weights, containing zero real-world signal ([ranking.py](ai-service/app/ranking.py)). The SHAP explanations are real math over a fake model. For a demo this is fine **if framed honestly** ("explainable ranking, weights tuned by hand pending training data"); presenting it as a learned model invites a question you can't answer. The `INTERESTED/NOT_INTERESTED` replies are the obvious training label and are currently captured and ignored — worth mentioning as the PLANNED.
 
 ### 🟡 Fast-follows (business)
 
@@ -297,7 +297,7 @@ Sequenced for an **investor demo where the crypto trust story must survive scrut
 
 - **Security hardening:** `helmet` + headers, gate Swagger, refresh-token family revocation on reuse, revoke sessions on password change, stop leaking raw error messages, per-email rate limiting.
 - **GDPR completeness** (C8): scrub `DocumentVersion`, kill API keys + share links on erasure, reconsider nulling the issuer's salt.
-- **Production adapters:** real KMS (per-org keys), real blockchain anchoring (the `AnchorRegistry` contract is ready but never called from the server), S3 storage, SES email, Stripe with idempotent webhooks + a renewal/expiry cron + entitlement-on-cancel. *(2026-09: blockchain anchoring is now done via the Amoy driver, with the deploy pending; see Part H. The rest is still roadmap.)*
+- **Production adapters:** real KMS (per-org keys), real blockchain anchoring (the `AnchorRegistry` contract is ready but never called from the server), S3 storage, SES email, Stripe with idempotent webhooks + a renewal/expiry cron + entitlement-on-cancel. *(2026-09: blockchain anchoring is now done via the Amoy driver, with the deploy pending; see Part H. The rest is still PLANNED.)*
 - **Concurrency:** atomic status-guarded transitions (C7), move bulk issuance + Merkle to a real queue (Redis/BullMQ — `REDIS_URL` is already in env, used nowhere), per-org Merkle batches.
 - **AI:** train the ranker on the captured `INTERESTED/NOT_INTERESTED` signal (or relabel it a hand-tuned heuristic and stop calling it learned), add a pgvector ANN index, fix the cross-org skill leak in `listMatches`, add PII redaction / sub-processor disclosure for the Groq call, fix the `LIMIT 30` candidate-starvation.
 - **Full recruiter grant model** (E5): `DocumentAccessGrant` + `Application`, view-only salary render (E6).
@@ -336,7 +336,7 @@ Pick one canonical spec, align it with the code, and retire the rest before an i
 
 ## Part G — Implementation record (2026-08-10)
 
-Everything in the Critical list and the Fast-follows list was implemented. This section records
+Everything in the Critical list and the Fast-follows list was IMPLEMENTED. This section records
 what changed, why, and how each item was **verified** — not merely asserted.
 
 ### Verification gates (all green)
@@ -359,10 +359,10 @@ membership; verification recomputes both from the stored signer/approver ids.
 *Verified:* runtime credential shows two different signatures; 4 unit tests assert the statement
 differs per role, per member, and per document.
 
-> **Precision note (2026-09):** this implemented fix option 1 from C1: distinct role-bound
+> **Precision note (2026-09):** this IMPLEMENTED fix option 1 from C1: distinct role-bound
 > statements, **still signed with one org key**. The cryptography now proves two distinct statements
 > (MANAGER, then HR). Separation of duties is *enforced* by RBAC and *recorded* in those statements,
-> not proven by two personal keys. Option 2, per-member keys, remains roadmap. The implemented
+> not proven by two personal keys. Option 2, per-member keys, remains PLANNED. The IMPLEMENTED
 > statement binds role and membership, not a timestamp. Time is evidenced by the signed `issueDate`
 > and by the anchor's block timestamp.
 
@@ -456,9 +456,9 @@ and enforced numbers were reconciled to the same unit.
 | Item | Why |
 |---|---|
 | ~~Polygon RPC~~ **Done (2026-09)** | `PolygonAnchorService` (`BLOCKCHAIN_DRIVER=amoy`) anchors Merkle roots on Polygon Amoy and was verified end to end against a local Hardhat node. The contract deploy to Amoy is the remaining human-gated step. See Part H. |
-| Real cloud adapters (AWS KMS/S3/SES, live Stripe) | Still deferred (roadmap). They need credentials that don't exist in this environment, and writing unverifiable cloud SDK code is a liability. The adapter seams are already in place, and the deploy warns loudly when a mock driver is active in production. |
+| Real cloud adapters (AWS KMS/S3/SES, live Stripe) | Still deferred (PLANNED). They need credentials that don't exist in this environment, and writing unverifiable cloud SDK code is a liability. The adapter seams are already in place, and the deploy warns loudly when a mock driver is active in production. |
 | ~~Field-level encryption of sensitive DB fields~~ **Done (2026-09)** | R10 envelope encryption through a Prisma 7 query extension, with PDFs encrypted at rest too. See Part H. |
-| Stripe subscription **renewal** | Same reason. The expiry side is implemented; renewal must come from real webhooks. |
+| Stripe subscription **renewal** | Same reason. The expiry side is IMPLEMENTED; renewal must come from real webhooks. |
 | Full `DocumentAccessGrant` / `Application` model | The leak it was meant to fix is already closed, and share links serve as the POC grant path. This is a multi-table feature better scoped as its own piece of work. |
 | Backfilling historical documents to the new schema | Deliberate: re-hashing already-signed documents would invalidate their frozen signatures and anchors. New issuance is versioned (`schemaVersion`), so old and new coexist. |
 
@@ -468,7 +468,7 @@ and enforced numbers were reconciled to the same unit.
 
 Branch `ly-final-hardening`. It answers the mentor's three asks: genuine database encryption, a live
 Polygon Amoy deployment, and a byte-exact explanation of the hashing pipeline. The spec, with code
-references, is in [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.md).
+references, is in [`cryptography.md`](cryptography.md).
 
 | Area | What changed | Evidence |
 |---|---|---|
@@ -489,7 +489,7 @@ references, is in [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.m
 - pinning Supabase's CA, enforcing SSL and turning off the Data API;
 - resetting and re-seeding Supabase with Render's `KMS_MASTER_KEY`, which strict mode needs before it deploys: any pre-R10 plaintext row would otherwise fail to read.
 
-**Roadmap:**
+**PLANNED:**
 - an AWS KMS driver and KEK rotation tooling;
 - per-member signing keys and a multisig registry owner;
 - an email blind index;

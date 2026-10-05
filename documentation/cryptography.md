@@ -2,7 +2,7 @@
 
 > **For:** the four presenters, for the LY final evaluation (demo + viva).
 > **Branch:** `ly-final-hardening`. Every `file:line` link points at the code as of commit `b95a83c`, the end of the final-review fix wave. That wave came after Task 9's strict R10 reads, batch integrity gate and complete GDPR erasure. It fixed unreadable-record handling in public verification, revocation in the offline verifier, recovery of a retried batch's transaction hash, and the seeded demo password. The docs commits after it change no code, so the links still hold.
-> **Deployed:** the Polygon Amoy `AnchorRegistry` is live and source-verified at [`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`](https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#code) (block 48502677, 2026-09-25), owned by the anchor wallet `0x955cE8960A1Fb6fCCd9e5F42D81a844dEDf5056e`. The remaining ordered deploy steps are in [Deploy_Runbook.md](Deploy_Runbook.md).
+> **Deployed:** the Polygon Amoy `AnchorRegistry` is live and source-verified at [`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`](https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#code) (block 48502677, 2026-09-25), owned by the anchor wallet `0x955cE8960A1Fb6fCCd9e5F42D81a844dEDf5056e`. The remaining ordered deploy steps are in [deployment.md](deployment.md).
 
 **How to use this guide.** Sections 1–3 are the pipeline: learn them until you can say them without looking. Section 4 covers encryption, 5 the design reasons, and 6 the threat model. Section 7 is the question bank. Section 8 lists what we **say honestly before anyone asks**. Section 9 is the demo. Every claim links to the code that makes it true. When a question goes deeper than your answer, open the link.
 
@@ -303,11 +303,13 @@ The mentor's checklist is **JCS → 32-byte salt → SHA-256 → Merkle root →
 - **Browser ↔ client (Vercel) and browser ↔ API (Render)** use HTTPS. The platforms terminate TLS.
 - **API ↔ Polygon RPC** is an `https` JSON-RPC URL. Hosted RPC URLs carry an API key, which the adapter keeps out of logs and errors ([anchor-chain.util.ts:115-127](../server/src/services/blockchain/anchor-chain.util.ts#L115-L127)).
 - **API ↔ Supabase Postgres**: whether this leg is TLS depends on `sslmode` in `DATABASE_URL`, a Render secret that isn't in the repo. `PrismaService` passes the URL straight to `@prisma/adapter-pg` ([prisma.service.ts:13-19](../server/src/prisma/prisma.service.ts#L13-L19)).
-- **Not yet done:** pinning Supabase's CA (`sslmode=verify-full` + `sslrootcert`), then switching on Supabase "Enforce SSL" and turning off the auto-generated Data API. That step is **still pending and human-gated** ([Deploy_Runbook.md](Deploy_Runbook.md), step 8 and the optional last step). The code side is ready: `server/certs/` exists with instructions, and the Dockerfile copies it into the image ([Dockerfile:43-46](../Dockerfile#L43-L46)). No CA certificate is committed yet, though, and no connection string uses one. Confirm it before the demo (section 9). Until then, don't claim "TLS everywhere".
+- **Not yet done:** pinning Supabase's CA (`sslmode=verify-full` + `sslrootcert`), then switching on Supabase "Enforce SSL" and turning off the auto-generated Data API. That step is **still pending and human-gated** ([deployment.md](deployment.md), step 8 and the optional last step). The code side is ready: `server/certs/` exists with instructions, and the Dockerfile copies it into the image ([Dockerfile:43-46](../Dockerfile#L43-L46)). No CA certificate is committed yet, though, and no connection string uses one. Confirm it before the demo (section 9). Until then, don't claim "TLS everywhere".
 
 ### 4.3 Layer 3: R10 application envelope encryption (our code)
 
-This is the layer that makes **a live SQL view show ciphertext**. The Node process encrypts a value **before** the `INSERT`, so Postgres only ever receives `cvenc:v1:…`, and the key is never in the database.
+This is the layer that makes **a live SQL view show ciphertext**. Application-level envelope encryption is **IMPLEMENTED**. The Node process encrypts a value **before** the `INSERT`, so Postgres only ever receives `cvenc:v1:…`, and the key is never in the database.
+
+**Security Boundary Note:** Compromise of the database alone does not expose plaintext because ciphertext and key material are separated. However, `LocalKmsService` is not equivalent to a hardware security module (HSM). The master key is supplied as an environment secret. Compromise of both the protected key storage (the disk) and the master secret (environment variables) would compromise confidentiality.
 
 **Key hierarchy**
 
@@ -362,7 +364,7 @@ The envelope is self-contained: everything needed to open it except the master k
 |---|---|
 | `documentHash` | The public `/verify/hash/:hash` looks it up by equality, and the Merkle batch uses it as the leaf. Ciphertext can't serve either: the extension refuses any filter on an encrypted field ([field-encryption.extension.ts:282-297](../server/src/prisma/encryption/field-encryption.extension.ts#L282-L297)). It is salted and one-way, and printed on the PDF anyway. |
 | `signingPublicKeyPem` | A public key. Verification trusts it, which is why a DB writer who swaps it matters (Q14). |
-| `users.email`, `users.full_name` | Login looks users up by email equality, and lists sort by name. Encrypting them needs an HMAC **blind index**, which is roadmap. |
+| `users.email`, `users.full_name` | Login looks users up by email equality, and lists sort by name. Encrypting them needs an HMAC **blind index**, which is PLANNED. |
 | pgvector embeddings | Similarity search must read the vectors. |
 | Audit logs, notifications | Revocation and rejection reason text is copied there in plaintext ([document.service.ts:404-418](../server/src/modules/document/document.service.ts#L404-L418), [document.service.ts:453-457](../server/src/modules/document/document.service.ts#L453-L457)). This is a known gap (L5). |
 
@@ -424,7 +426,7 @@ The envelope is self-contained: everything needed to open it except the master k
 **Adversary 1: a compromised app server that holds `KMS_MASTER_KEY`.**
 - **What it gets.** It can decrypt every R10 field and PDF, unwrap every org signing key and so **sign new documents as any org**, and use the anchor key to anchor their roots.
 - **What it can't do.** It can't alter or delete a past anchor, back-date a document into an old root, or change a credential a holder already downloaded. The chain and the offline verifier expose all of those.
-- **Mitigations (roadmap).** A KMS/HSM so key material never sits in process memory or env vars, a multisig registry owner, and per-member keys.
+- **Mitigations (PLANNED).** A KMS/HSM so key material never sits in process memory or env vars, a multisig registry owner, and per-member keys.
 
 **Adversary 2: a malicious issuer.**
 - The cryptography proves **who signed** (the org's key) and that **nothing changed since**. It never proves the content is **true**. A dishonest employer can issue a false letter.
@@ -450,7 +452,7 @@ The envelope is self-contained: everything needed to open it except the master k
   - `npm run db:audit-encryption` reports planted values as plaintext.
   - The issuer-key fingerprint in the credential differs from the organisation's real key.
 - **What they can't do.** Make altered content verify under the existing anchor: the old hash stays on-chain, and the holder's downloaded copy still verifies. They could delete the proof row and re-queue changed content. Strict mode and the integrity gate block doing that directly in the database unless they hold the KEK; doing it through the app needs the role escalation above (L15).
-- **Roadmap.** Check the pinned key against the organisation's key history, bind the AAD to the row id (L14), and audit or sign membership grants (L15).
+- **PLANNED.** Check the pinned key against the organisation's key history, bind the AAD to the row id (L14), and audit or sign membership grants (L15).
 
 ---
 
@@ -480,7 +482,7 @@ RS256 (PKCS#1 v1.5) is deterministic. The same key over the same hash gives byte
 **No. Both are made with the organisation's single custodial key.** What the cryptography proves is that the org key signed two distinct, role-bound statements, MANAGER and then HR, each naming a membership id.
 - Separation of duties is **enforced** by the application: only the assigned manager can sign, only HR can approve, and the manager who signed can't approve ([document.service.ts:274-287](../server/src/modules/document/document.service.ts#L274-L287)).
 - It is **recorded** immutably inside the signed statements.
-- It is **not** proven by two independent personal keys. Per-member keys are roadmap.
+- It is **not** proven by two independent personal keys. Per-member keys are PLANNED.
 - Bulk issuance uses the HR member's id in both statements.
 
 **Q7. Why isn't the Merkle leaf or root RSA-signed, as the classic pipeline says?**
@@ -535,7 +537,7 @@ Sorted pairs make a proof a plain list of sibling hashes. The verifier orders ea
 - **Flipping a revoked document back to active in the DB:** the verdict follows the DB (R7). The on-chain flag is the evidence, **if the revocation's chain write landed**: it's fire-and-forget after the DB change, and nothing retries it ([document.service.ts:458-469](../server/src/modules/document/document.service.ts#L458-L469)). When it did land, the flag still shows as a note on the public page, and the offline verifier fails the credential against the pinned registry (✗, exit 1).
 
 **Q15. What if CareerVault itself is compromised or malicious?**
-See section 6, adversary 1. The operator could sign new documents, because the keys are custodial. It could not rewrite or back-date anchored history, or invalidate a credential a holder already downloaded. Roadmap: HSM-backed KMS, a multisig contract owner, per-member keys.
+See section 6, adversary 1. The operator could sign new documents, because the keys are custodial. It could not rewrite or back-date anchored history, or invalidate a credential a holder already downloaded. PLANNED: HSM-backed KMS, a multisig contract owner, per-member keys.
 
 **Q16. Why not store the documents on-chain?**
 - **Privacy:** a chain is public and permanent. Personal data there can never be erased, which is a direct GDPR conflict. The salt-deletion trick only works *because* the content isn't on-chain.
@@ -550,7 +552,7 @@ See section 6, adversary 1. The operator could sign new documents, because the k
 **Q18. Who is allowed to anchor?**
 - Only addresses in `authorizedAnchors` (`onlyAuthorized`).
 - The deployer becomes the owner and first authorized anchor ([AnchorRegistry.sol:65-71](../contracts/contracts/AnchorRegistry.sol#L65-L71)). The owner can add or remove anchors ([AnchorRegistry.sol:160-172](../contracts/contracts/AnchorRegistry.sol#L160-L172)).
-- Our anchor wallet is `0x955cE8960A1Fb6fCCd9e5F42D81a844dEDf5056e`. The deploy script signs with the same `ANCHOR_PRIVATE_KEY` ([hardhat.config.ts:12-16](../contracts/hardhat.config.ts#L12-L16)), so this wallet will also be the owner: a single key, with a multisig owner on the roadmap.
+- Our anchor wallet is `0x955cE8960A1Fb6fCCd9e5F42D81a844dEDf5056e`. The deploy script signs with the same `ANCHOR_PRIVATE_KEY` ([hardhat.config.ts:12-16](../contracts/hardhat.config.ts#L12-L16)), so this wallet will also be the owner: a single key, with a multisig owner on the PLANNED.
 - The server checks at boot that its wallet is authorized, and logs the result without crashing ([anchor-self-check.ts:12-43](../server/src/services/blockchain/anchor-self-check.ts#L12-L43)).
 - The private key lives only in `.env` files and Render secrets. The wallet script prints just the address ([new-wallet.ts:81-88](../contracts/scripts/new-wallet.ts#L81-L88)).
 
@@ -606,13 +608,13 @@ Not by planting a row in our database, as long as production keeps strict mode o
 It's the **public lookup key** (`/verify/hash/:hash`, an equality query ciphertext can't serve) and the **Merkle leaf**, and it's printed on the PDF. It's a salted one-way value, and the salt that could open it *is* encrypted.
 
 **Q24. Why aren't emails and names encrypted?**
-Login finds a user by exact email, and lists sort by name. Random-IV ciphertext supports neither. The standard fix is an HMAC **blind index** next to the ciphertext, which is on the roadmap. We don't claim these are encrypted.
+Login finds a user by exact email, and lists sort by name. Random-IV ciphertext supports neither. The standard fix is an HMAC **blind index** next to the ciphertext, which is on the PLANNED. We don't claim these are encrypted.
 
 **Q25. Supabase already encrypts at rest. Why add your own encryption?**
 Disk encryption is transparent to every logged-in session, so it never protects data from someone who can query it. Supabase's shared-responsibility model leaves application data protection to us. R10 encrypts before the data reaches Postgres, so the SQL console, dumps and the REST API see only `cvenc:v1:…`.
 
 **Q26. How do you rotate keys?**
-- **Master key:** envelope encryption makes rotation cheap by design. Re-wrap each DEK under the new KEK and rewrite `keyId` and `wrappedDek`; the data ciphertext is untouched. The org key files, which are wrapped directly under the master key, would be re-wrapped the same way. **The rotation tool isn't built**, and today `decryptDataKey` rejects a foreign `keyId` ([local-kms.service.ts:129-132](../server/src/services/key-management/local-kms.service.ts#L129-L132)). It's roadmap, and until then the master key is treated as permanent ([render.yaml:89-91](../render.yaml#L89-L91)).
+- **Master key:** envelope encryption makes rotation cheap by design. Re-wrap each DEK under the new KEK and rewrite `keyId` and `wrappedDek`; the data ciphertext is untouched. The org key files, which are wrapped directly under the master key, would be re-wrapped the same way. **The rotation tool isn't built**, and today `decryptDataKey` rejects a foreign `keyId` ([local-kms.service.ts:129-132](../server/src/services/key-management/local-kms.service.ts#L129-L132)). It's PLANNED, and until then the master key is treated as permanent ([render.yaml:89-91](../render.yaml#L89-L91)).
 - **Org signing keys:** each document pins the key it was signed under (`signingPublicKeyPem`), so replacing an org key never invalidates history ([document.service.ts:805-844](../server/src/modules/document/document.service.ts#L805-L844)).
 
 **Q27. What if the master key leaks, or is lost?**
@@ -631,22 +633,22 @@ In one transaction, the DB status becomes `REVOKED` and share links are deactiva
 
 | # | Limitation | Status |
 |---|---|---|
-| L1 | **Dual signatures ≠ two keys.** Both RS256 signatures are made with the org's single custodial key. The cryptography proves the org key signed two distinct role-bound statements, MANAGER then HR. Separation of duties is *enforced* by RBAC and *recorded* in the statements, not proven by two personal keys. | Per-member keys: roadmap |
+| L1 | **Dual signatures ≠ two keys.** Both RS256 signatures are made with the org's single custodial key. The cryptography proves the org key signed two distinct role-bound statements, MANAGER then HR. Separation of duties is *enforced* by RBAC and *recorded* in the statements, not proven by two personal keys. | Per-member keys: PLANNED |
 | L2 | **Bulk issuance** uses one HR member for both statements. Honest in the record, since both statements name the same `memberId` ([bulk-issuance.service.ts:37-42](../server/src/modules/bulk-issuance/bulk-issuance.service.ts#L37-L42)). | By design (CSV path) |
 | L3 | **`DNS_DRIVER=local` is demo mode.** Every domain "verifies", so org ↔ domain binding is not real in the demo deploy ([env.validation.ts:18-23](../server/src/config/env.validation.ts#L18-L23)). | Set `DNS_DRIVER=real` for production |
-| L4 | **The master key is an env var** (Render secret), not an HSM. The AWS KMS driver isn't implemented; the factory throws for anything but `local`. | AWS KMS: roadmap |
-| L5 | **Emails and names are plaintext.** Reason text is plaintext in audit logs and notifications. | Blind index / reason codes: roadmap |
-| L6 | **The anchor wallet is a single hot key**, and it's also the registry owner. | Multisig owner: roadmap |
-| L7 | **The `issuer` block (org name) is outside the hashed `credentialSubject`.** Attribution rests on the signing key. Offline, its binding to the organisation is checked out of band, by comparing the fingerprint the verifier prints; `/verify/hash` doesn't expose the fingerprint. Online, `/verify/hash` checks the signatures against the key CareerVault stores for that document, which is a DB value. With `FIELD_ENCRYPTION_STRICT=true` (production), a planted plaintext row is refused at read time and skipped by the batch gate, so our wallet can't anchor it. With strict mode off (dev), L13 applies. Role escalation (L15) gets a forgery signed with the real key in either mode, so its fingerprint matches. | Issuer DID / key registry: roadmap |
+| L4 | **The master key is an env var** (Render secret), not an HSM. The AWS KMS driver isn't IMPLEMENTED; the factory throws for anything but `local`. | AWS KMS: PLANNED |
+| L5 | **Emails and names are plaintext.** Reason text is plaintext in audit logs and notifications. | Blind index / reason codes: PLANNED |
+| L6 | **The anchor wallet is a single hot key**, and it's also the registry owner. | Multisig owner: PLANNED |
+| L7 | **The `issuer` block (org name) is outside the hashed `credentialSubject`.** Attribution rests on the signing key. Offline, its binding to the organisation is checked out of band, by comparing the fingerprint the verifier prints; `/verify/hash` doesn't expose the fingerprint. Online, `/verify/hash` checks the signatures against the key CareerVault stores for that document, which is a DB value. With `FIELD_ENCRYPTION_STRICT=true` (production), a planted plaintext row is refused at read time and skipped by the batch gate, so our wallet can't anchor it. With strict mode off (dev), L13 applies. Role escalation (L15) gets a forgery signed with the real key in either mode, so its fingerprint matches. | Issuer DID / key registry: PLANNED |
 | L8 | **`KNOWN_REGISTRIES[80002]` is `null`** until the Amoy deploy. Until then the offline verifier needs `--registry`. | Filled at deploy (section 10) |
-| L9 | **The DB-leg TLS pinning and the Supabase Data API shutdown aren't done yet** (4.2). `server/certs/` and the Dockerfile copy are ready; no CA is committed and no URL uses one. | Pending, human-gated ([Deploy_Runbook.md](Deploy_Runbook.md)) |
+| L9 | **The DB-leg TLS pinning and the Supabase Data API shutdown aren't done yet** (4.2). `server/certs/` and the Dockerfile copy are ready; no CA is committed and no URL uses one. | Pending, human-gated ([deployment.md](deployment.md)) |
 | L10 | **Fixed in code (Task 9, finished in the final fix wave): GDPR erasure is complete for documents.** It scrubs the content and salt of every one of the holder's documents, whatever their status, scrubs every version snapshot and its change summary, deletes stored PDFs after the commit, and writes a `USER_ERASED` audit row. The public lookup of the dead hash returns no content and no name, and says the holder exercised erasure; a credential download for it returns 410 Gone, saying the same (Q22). What remains is the issuer's record and the audit trail (L5). | Done. PDF deletion is best effort: a failure is logged for manual removal |
-| L11 | **There's no master-key rotation tooling.** The design supports it (Q26). | Roadmap |
+| L11 | **There's no master-key rotation tooling.** The design supports it (Q26). | PLANNED |
 | L12 | **The AAD binds the field, not the row.** Row *integrity* still rests on the hash and signatures, so a moved envelope can't make other content verify (4.3). For disclosure, see L14. | By design, for integrity |
-| L13 | **With strict mode off (dev), a DB writer can plant a forged document.** Verification trusts the plaintext `signingPublicKeyPem` column. With `FIELD_ENCRYPTION_STRICT=false`, R10 reads plaintext in encrypted columns as legacy data. So someone with DB write access can plant a self-consistent row signed with their own key: it verifies as pending, and the next batch anchors it. `db:audit-encryption` and the issuer-key fingerprint expose it (Q14, adversary 3). | **Fixed for production, for rows planted directly in the database (Task 9).** `render.yaml` turns strict mode on, which refuses the plaintext at read time, and the batch integrity gate skips the row. Dev stays non-strict for pre-R10 rows. Issuing through the app after role escalation is a separate gap (L15). A key-history check is roadmap |
-| L14 | **Envelopes are bound to the field, not the row** (AAD `careervault\|<field>\|v1`). A DB writer can copy a real envelope into another row, for example their own account's document, and the app will decrypt it for that row's holder. Strict mode doesn't catch this: the value *is* an envelope. | Binding the AAD to the row id: roadmap |
-| L15 | **Membership grants aren't signed or tamper-evident.** `organization_members` is plaintext, and each request reloads memberships from it ([jwt.strategy.ts:30-39](../server/src/modules/auth/strategies/jwt.strategy.ts#L30-L39)). So a DB writer can insert `MANAGER` and `HR` rows for their own accounts and issue through the app. The app seals every field and signs with the genuine org key, strict mode and the batch gate pass it, our wallet anchors it, and the offline verifier shows the organisation's real fingerprint (adversary 3, Q20). Member additions write no audit row and record no inviter ([member.service.ts:46-137](../server/src/modules/member/member.service.ts#L46-L137)), so nothing in the database marks a planted membership. It shows only in the organisation's member list and in the member ids its signed statements name. | Auditing or signing membership grants: roadmap |
-| L16 | **A DB writer can make one record's public lookup fail with a 503.** An envelope whose key id differs from this deployment's reads as `ENCRYPTION_KEY_UNAVAILABLE`, not `INVALID`, because a wrong `KMS_MASTER_KEY` looks exactly the same on every row, and calling genuine documents tampered would be worse (1.3). So editing one row's key id denies service for that record. It forges nothing, the error names no key, and a bulk request still answers for its other hashes. | By design. Telling the two apart needs a record of every key id the deployment has used: roadmap |
+| L13 | **With strict mode off (dev), a DB writer can plant a forged document.** Verification trusts the plaintext `signingPublicKeyPem` column. With `FIELD_ENCRYPTION_STRICT=false`, R10 reads plaintext in encrypted columns as legacy data. So someone with DB write access can plant a self-consistent row signed with their own key: it verifies as pending, and the next batch anchors it. `db:audit-encryption` and the issuer-key fingerprint expose it (Q14, adversary 3). | **Fixed for production, for rows planted directly in the database (Task 9).** `render.yaml` turns strict mode on, which refuses the plaintext at read time, and the batch integrity gate skips the row. Dev stays non-strict for pre-R10 rows. Issuing through the app after role escalation is a separate gap (L15). A key-history check is PLANNED |
+| L14 | **Envelopes are bound to the field, not the row** (AAD `careervault\|<field>\|v1`). A DB writer can copy a real envelope into another row, for example their own account's document, and the app will decrypt it for that row's holder. Strict mode doesn't catch this: the value *is* an envelope. | Binding the AAD to the row id: PLANNED |
+| L15 | **Membership grants aren't signed or tamper-evident.** `organization_members` is plaintext, and each request reloads memberships from it ([jwt.strategy.ts:30-39](../server/src/modules/auth/strategies/jwt.strategy.ts#L30-L39)). So a DB writer can insert `MANAGER` and `HR` rows for their own accounts and issue through the app. The app seals every field and signs with the genuine org key, strict mode and the batch gate pass it, our wallet anchors it, and the offline verifier shows the organisation's real fingerprint (adversary 3, Q20). Member additions write no audit row and record no inviter ([member.service.ts:46-137](../server/src/modules/member/member.service.ts#L46-L137)), so nothing in the database marks a planted membership. It shows only in the organisation's member list and in the member ids its signed statements name. | Auditing or signing membership grants: PLANNED |
+| L16 | **A DB writer can make one record's public lookup fail with a 503.** An envelope whose key id differs from this deployment's reads as `ENCRYPTION_KEY_UNAVAILABLE`, not `INVALID`, because a wrong `KMS_MASTER_KEY` looks exactly the same on every row, and calling genuine documents tampered would be worse (1.3). So editing one row's key id denies service for that record. It forges nothing, the error names no key, and a bulk request still answers for its other hashes. | By design. Telling the two apart needs a record of every key id the deployment has used: PLANNED |
 
 ---
 
@@ -654,7 +656,7 @@ In one transaction, the DB status becomes `REVOKED` and share links are deactiva
 
 ### 9.1 Pre-flight (T−60 min)
 
-The deploy itself comes first, days before: fund the wallet, deploy the contract, reset and re-seed Supabase, set Render, merge. It's a separate, ordered checklist with a go/no-go line per step: [Deploy_Runbook.md](Deploy_Runbook.md). This pre-flight assumes every box in it is ticked.
+The deploy itself comes first, days before: fund the wallet, deploy the contract, reset and re-seed Supabase, set Render, merge. It's a separate, ordered checklist with a go/no-go line per step: [deployment.md](deployment.md). This pre-flight assumes every box in it is ticked.
 
 1. `cd tools/verify-credential && npm install && node verify-credential.mjs --selftest`: 14 ✓ lines, exit 0.
 2. **Reset and re-seed Supabase under Render's master key.** This is destructive, user-approved and human-gated, and it's runbook steps 5–7 and 11; redo them if the database has been re-seeded since.
@@ -718,4 +720,4 @@ The deploy step (`cd contracts && npm run deploy:amoy`, then `npm run verify:amo
 - Render's `ANCHOR_REGISTRY_ADDRESS`, exactly as `amoy.json` writes it (the boot rejects a mixed-case address with a bad checksum, [env.validation.ts:90-106](../server/src/config/env.validation.ts#L90-L106));
 - the registry address placeholders: done 2026-09-25 (`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`).
 
-Also copy its `blockNumber` into Render's `ANCHOR_REGISTRY_DEPLOY_BLOCK`, which lets a retried batch recover its transaction hash (Step 8). [Deploy_Runbook.md](Deploy_Runbook.md), steps 3 and 4, has the commands.
+Also copy its `blockNumber` into Render's `ANCHOR_REGISTRY_DEPLOY_BLOCK`, which lets a retried batch recover its transaction hash (Step 8). [deployment.md](deployment.md), steps 3 and 4, has the commands.

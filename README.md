@@ -86,7 +86,7 @@ data — see [`e2e/README.md`](e2e/README.md).
 ## Deploying
 The deployed stack is Render (API), Vercel (client), Supabase (Postgres) and Polygon Amoy (the
 `AnchorRegistry`). Deploying this branch takes a contract deploy, a Supabase reset and Render
-settings, in that order. [`documentation/Deploy_Runbook.md`](documentation/Deploy_Runbook.md)
+settings, in that order. [`documentation/deployment.md`](documentation/deployment.md)
 lists the steps with the exact commands, expected output, go/no-go checks and rollback notes.
 Merging to `main` auto-deploys, so it is a step in that runbook, not before it.
 
@@ -131,13 +131,7 @@ for salary certificates — the holder's name. A holder who deliberately shares 
 link opts into full disclosure for that link. A freshly issued document verifies as
 `VERIFIED_PENDING_ANCHOR` (valid, awaiting the daily Merkle batch) and becomes `VERIFIED` once anchored.
 
-**On-chain anchoring.** Issued documents are batched into a SHA-256 Merkle tree: sorted pairs, the
-raw document hashes as leaves, and an odd node promoted rather than duplicated. A batch runs on a
-midnight (Asia/Kolkata) cron on the worker, or on demand when an org admin clicks **Anchor now** on
-the Analytics page (`POST /api/v1/merkle/run`). Only the 32-byte root goes on-chain, via
-`anchorRoot(bytes32 root, uint256 count)` on the [`AnchorRegistry`](contracts/contracts/AnchorRegistry.sol)
-contract. Each document stores its Merkle proof, and the credential's `anchor` block names the chain,
-contract and transaction.
+**On-chain anchoring.** Issued documents are batched into a SHA-256 Merkle tree. A batch runs on a midnight cron or on demand. Only the 32-byte root goes on-chain, via `anchorRoot` on the [`AnchorRegistry`](contracts/contracts/AnchorRegistry.sol) contract. IMPLEMENTED on Polygon Amoy testnet. Publishing roots to IPFS and GitHub is PLANNED.
 
 | | |
 |---|---|
@@ -182,7 +176,7 @@ exit code.
 
 ## Data protection
 Three layers, each with a different job. Details and evidence are in §4 of
-[`documentation/Crypto_Pipeline_Viva_Guide.md`](documentation/Crypto_Pipeline_Viva_Guide.md).
+[`documentation/cryptography.md`](documentation/cryptography.md).
 
 1. **Storage.** Supabase encrypts its disks and backups (AES-256, provider-managed). This is
    transparent to every SQL session, so it protects the media, not the data, from anyone who can query.
@@ -213,13 +207,13 @@ Three layers, each with a different job. Details and evidence are in §4 of
 - embeddings;
 - audit and notification text.
 
-The master key is an environment secret; an AWS KMS driver is on the roadmap.
+The master key is an environment secret. AWS KMS is PLANNED.
 
 ## Demo accounts
 After `npm run db:seed` on your own machine, sign in with password `Password123@`, the local-dev
 default. The seed uses `SEED_DEMO_PASSWORD` instead when it is set. The deployed demo is seeded with
 a non-public `SEED_DEMO_PASSWORD` that the team shares privately
-([deploy runbook](documentation/Deploy_Runbook.md), step 6), so the published password doesn't
+([deploy runbook](documentation/deployment.md), step 6), so the published password doesn't
 open these accounts there.
 
 | Email | Role | Organization |
@@ -234,6 +228,13 @@ open these accounts there.
 TechCorp and GlobalSolutions are seeded pre-verified. Holders have no org membership (every authenticated user is implicitly a holder).
 
 ## Status
-Feature-complete across all four packages: auth, org/membership, the full document lifecycle (request → sign → HR approval → issuance → Merkle anchoring → revoke/expire), bulk issuance, public verification, verifier API keys (Bulk API), sharing & payments, subscriptions, notifications & audit logging, recruiter talent matching (AI service, tested and hardened), skills extraction, and analytics. See [`documentation/FeatureAudit.md`](documentation/FeatureAudit.md) for the full route-by-route breakdown.
 
-Partial/upcoming: usage-based Stripe metering for the Bulk Verification API, and a verifier usage/analytics dashboard.
+- **Core Infrastructure (Auth, Org, Document Lifecycle):** IMPLEMENTED
+- **Public Verification & Offline Proof:** IMPLEMENTED
+- **Merkle Anchoring (Polygon Amoy):** IMPLEMENTED
+- **Recruiter Talent Matching (AI service with LightGBM TreeSHAP):** IMPLEMENTED
+- **Application Envelope Encryption (R10):** IMPLEMENTED
+- **Bulk Verification API:** IMPLEMENTED
+- **Payments / Stripe Metering:** DESIGNED (currently uses Mock driver)
+- **AWS KMS / Vault Key Management:** PLANNED
+- **IPFS / GitHub Merkle Mirrors:** PLANNED

@@ -1,9 +1,8 @@
-# CareerVault -- System Design, UML & Database Documentation
+# CareerVault Database and UML Models
 
-> **Version:** 1.0.0
-> **Last Updated:** 2026-03-22
+> **Version:** 1.0.1
+> **Last Updated:** 2026-10-05
 > **Platform:** Career Verification Platform (Web 2.5: SQL + Merkle Anchoring on Polygon)
-> **Stack:** NestJS / PostgreSQL / AWS KMS / Polygon PoS / Stripe / S3
 
 ---
 
@@ -22,15 +21,14 @@
 
 ---
 
-## Key Design Decisions (Locked-In)
+## Key Data Model Decisions
+
+> **Note:** For a complete list of implemented architectural decisions, see [DECISIONS.md](DECISIONS.md) and [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
 
 | Decision | Choice |
 |---|---|
 | Identity model | One unified `users` table; `organization_members` join table (userId, orgId, role). A person can be Holder AND Manager at different orgs. |
-| Key management | Custodial via AWS KMS / HashiCorp Vault. Platform holds keys on behalf of orgs. |
-| Resilience | Merkle proof embedded in PDF metadata; daily roots published to GitHub and IPFS. |
 | Canonicalization | JCS (RFC 8785) for deterministic JSON serialization before hashing. |
-| Monetization | Holders: free storage, $5/mo premium or per-link fee. Verifiers: paid bulk API. 50% discount for issuer-verifiers. |
 | Document expiry | Experience/Salary: 90 days. LOR: permanent (null `expires_at`). |
 | Bulk issuance | HR only, for experience/salary letters. |
 | Disputes | No mediation. Organization has absolute authority. |
@@ -38,7 +36,7 @@
 | Document types (V1) | `EXPERIENCE_LETTER`, `LETTER_OF_RECOMMENDATION`, `SALARY_PROOF` |
 | Language | English only (V1). |
 | Notifications | Email + in-app. |
-| GDPR deletion | Full wipe: user row, PDF, shared links, salt. Hash stays on-chain but is dead (unlinkable). *As implemented (Sep 2026), see §4.16: the hash is dead, and "unlinkable" holds for the public lookup, which returns no content or name. Our DB keeps the issuer's record, tied to an anonymized user.* |
+| GDPR deletion | Full wipe: user row, PDF, shared links, salt. Hash stays on-chain but is dead (unlinkable). **IMPLEMENTED:** the hash is dead, and "unlinkable" holds for the public lookup, which returns no content or name. Our DB keeps the issuer's record, tied to an anonymized user.* |
 | Audit retention | 7 years for issuance logs (`COMPLIANCE` tier), 90 days for system logs (`STANDARD` tier). |
 | Auth | Magic links (JWT, 15-min) for external managers. Email/password + JWT for holders/admins/HR. |
 
@@ -240,7 +238,7 @@ The Holder (Employee) is the primary consumer of CareerVault. They accumulate ve
 - **Request Documents:** The holder initiates a request by specifying the type, the target organization, and optionally a specific manager (required for LORs). This creates a `documents` row with `status = 'DRAFT'` and sends a notification/magic-link to the manager.
 - **Download PDF:** The holder can download the rendered PDF from S3 (`rendered_pdf_url`). The PDF contains the Merkle proof embedded in its metadata for offline verification.
 - **Share Links:** The holder generates a unique URL (`url_token`) for a document. Free-tier holders pay a per-link fee; premium ($5/mo) holders get unlimited links. Links can have `max_views` and `expires_at` constraints.
-- **GDPR Deletion:** The holder can invoke Right to be Forgotten. The system wipes: `users` row fields, all PDFs from S3, all `shared_links`, the `salt` from documents (rendering the on-chain hash unlinkable). The hash remains on-chain but is cryptographically dead. *(As implemented, Sep 2026: see the note at the end of §4.16.)*
+- **GDPR Deletion:** The holder can invoke Right to be Forgotten. The system wipes: `users` row fields, all PDFs from S3, all `shared_links`, the `salt` from documents (rendering the on-chain hash unlinkable). The hash remains on-chain but is cryptographically dead. **IMPLEMENTED:** see the note at the end of §4.16.)*
 - **Notifications:** Email and in-app notifications for every state change in document lifecycle, payment events, and link views.
 
 ---
@@ -295,8 +293,8 @@ graph LR
 
     UC1[Midnight Merkle Batching]
     UC2[Anchor Root to Polygon]
-    UC3[Publish Root to IPFS]
-    UC4[Publish Root to GitHub]
+    UC3[Publish Root to IPFS [PLANNED]]
+    UC4[Publish Root to GitHub [PLANNED]]
     UC5[Embed Proof in PDF Metadata]
     UC6[Check Document Expiry]
     UC7[Auto-expire Documents]
@@ -328,7 +326,7 @@ graph LR
 
 System (automated) use cases represent background jobs and cron tasks:
 
-- **Midnight Merkle Batching:** A daily cron job collects all documents with `status = 'ISSUED'` that have not yet been anchored. It builds a Merkle tree from their hashes, anchors the root on Polygon, publishes the root to IPFS and GitHub, and updates each document's status to `ANCHORED`. Individual proofs are stored in `document_merkle_proofs`.
+- **Midnight Merkle Batching:** A daily cron job collects all documents with `status = 'ISSUED'` that have not yet been anchored. It builds a Merkle tree from their hashes, anchors the root on Polygon, and updates each document's status to `ANCHORED`. Individual proofs are stored in `document_merkle_proofs`. (IPFS and GitHub publishing are PLANNED).
 - **Document Expiry Check:** A daily cron scans for documents where `expires_at < NOW()` and `status` is not already `EXPIRED` or `REVOKED`. Matching documents transition to `EXPIRED`.
 - **Audit Log Purge:** A daily cron deletes `audit_logs` rows where `retention_tier = 'STANDARD'` and `created_at < NOW() - 90 days`. `COMPLIANCE` tier logs are retained for 7 years.
 - **Stripe Webhooks:** Handles `payment_intent.succeeded`, `payment_intent.payment_failed`, `customer.subscription.updated`, `customer.subscription.deleted` events. Updates `payments` and `subscriptions` tables accordingly.
@@ -886,6 +884,8 @@ erDiagram
 ```
 
 #### Explanation
+
+> **Note on `merkle_roots` schema:** The `ipfs_cid` and `github_commit_url` fields are present in the Prisma schema and this ERD, but they are currently unused because the corresponding integrations are PLANNED.
 
 The ERD captures all 13 tables with their complete column definitions, primary keys, foreign keys, unique constraints, and inter-table relationships:
 
@@ -2432,8 +2432,7 @@ GDPR deletion implements a comprehensive data wipe while preserving the integrit
 
 The transaction ensures atomicity -- either all steps complete or none do.
 
-> **As implemented (Sep 2026, LY final hardening).** The real flow is `DELETE /api/v1/users/me` (`UserService.deleteAccount`). It doesn't re-check the password; the JWT kill-switch trips on `gdprDeletedAt`. It differs from the design above in these ways:
-> - **One array transaction.** On every one of the holder's documents, issued, anchored, revoked and expired ones included, it nulls `salt` and `rendered_pdf_url` and scrubs `content_json` to `{}` (sealed as an R10 envelope, not `{"deleted": true}`). It scrubs every version snapshot, deactivates share links, revokes verifier API keys, anonymizes the user row (tombstoned, not deleted) and deactivates memberships. The same transaction writes the audit row, as `USER_ERASED` with actor `USER`, not `GDPR_DELETION` with actor `SYSTEM`.
+> ***IMPLEMENTED:** > - **One array transaction.** On every one of the holder's documents, issued, anchored, revoked and expired ones included, it nulls `salt` and `rendered_pdf_url` and scrubs `content_json` to `{}` (sealed as an R10 envelope, not `{"deleted": true}`). It scrubs every version snapshot, deactivates share links, revokes verifier API keys, anonymizes the user row (tombstoned, not deleted) and deactivates memberships. The same transaction writes the audit row, as `USER_ERASED` with actor `USER`, not `GDPR_DELETION` with actor `SYSTEM`.
 > - **Subscriptions aren't cancelled** by erasure; the tombstoned account simply can't sign in.
 > - **PDFs are deleted after the commit, not inside it.** Storage isn't transactional, so deletion is best effort: a failed delete is logged for manual removal and never rolls back the erasure.
 > - **"Dead hash" holds.** The hash, both signatures and the Merkle proof are kept as the issuer's record. With no salt and no content, nobody can recompute the hash.
@@ -2946,7 +2945,7 @@ The verification decision tree has 13 possible outcomes:
 | `LINK_INACTIVE` | Soft | Share link has been manually deactivated |
 | `LINK_EXPIRED` | Soft | Share link has passed its expiry date |
 | `LINK_EXHAUSTED` | Soft | Share link has reached its max view count |
-| `GDPR_DELETED` | Info | User exercised Right to be Forgotten; hash is unlinkable. *As implemented (Sep 2026): there is no separate outcome. An erased document reads `INVALID` (or `REVOKED`/`EXPIRED`), with `erased: true`, no content, and an integrity check naming erasure (§4.16 note).* |
+| `GDPR_DELETED` | Info | User exercised Right to be Forgotten; hash is unlinkable. **IMPLEMENTED:** there is no separate outcome. An erased document reads `INVALID` (or `REVOKED`/`EXPIRED`), with `erased: true`, no content, and an integrity check naming erasure (§4.16 note).* |
 | `HASH_MISMATCH` | Critical | Document content has been tampered with |
 | `SIGNATURE_INVALID` | Critical | Manager's cryptographic signature does not verify |
 | `COSIGN_INVALID` | Critical | HR's cryptographic signature does not verify |
@@ -2999,7 +2998,7 @@ The GDPR deletion process ensures comprehensive data removal while preserving sy
 
 - **Transactional:** All database operations are wrapped in a single transaction for atomicity.
 - **S3 Cleanup:** PDFs are permanently deleted from object storage.
-- **Salt Removal:** This is the key GDPR mechanism -- without the salt, the on-chain hash cannot be linked back to the document content or the user. *(As implemented, Sep 2026: the content is scrubbed too, and the link to the user is broken for the public lookup; see the §4.16 note.)*
+- **Salt Removal:** This is the key GDPR mechanism -- without the salt, the on-chain hash cannot be linked back to the document content or the user. **IMPLEMENTED:** the content is scrubbed too, and the link to the user is broken for the public lookup; see the §4.16 note.)*
 - **PII Wipe:** All personally identifiable information is replaced with non-identifying placeholders.
 - **JWT Invalidation:** All active sessions for the user are invalidated (via a token blacklist or short-lived JWTs with a user-level revocation timestamp).
 
@@ -3471,7 +3470,7 @@ This Level 2 DFD breaks down the document issuance process (P3) into 11 sub-proc
     "performanceSummary": "Jane has been an exceptional contributor to the engineering team, consistently delivering high-quality work.",
     "responsibilities": [
       "Led a team of 5 engineers building microservices architecture",
-      "Designed and implemented the payment processing pipeline",
+      "Designed and IMPLEMENTED the payment processing pipeline",
       "Mentored junior developers and conducted code reviews"
     ],
     "location": "San Francisco, CA, USA"

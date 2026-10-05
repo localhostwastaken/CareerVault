@@ -1,6 +1,6 @@
 # CareerVault — Feature Audit
 
-> Status as of August 2026. Covers all implemented and working features across backend, frontend, and AI service.
+> Status as of August 2026. Covers all IMPLEMENTED and working features across backend, frontend, and AI service.
 >
 > **Updated September 2026 (LY final hardening):**
 > - field-level envelope encryption (R10) and encrypted PDFs;
@@ -8,7 +8,7 @@
 > - the standalone offline credential verifier;
 > - strict R10 reads (`FIELD_ENCRYPTION_STRICT`, on in production), a batch-time integrity gate before anchoring, and complete GDPR erasure of the holder's documents and PDFs.
 >
-> The byte-exact spec, with code references, is in [`Crypto_Pipeline_Viva_Guide.md`](Crypto_Pipeline_Viva_Guide.md).
+> The byte-exact spec, with code references, is in [`cryptography.md`](cryptography.md).
 
 ---
 
@@ -70,7 +70,7 @@
 
 ## Document Lifecycle ✅
 
-Full pipeline implemented end-to-end across all roles.
+Full pipeline IMPLEMENTED end-to-end across all roles.
 
 ```
 REQUESTED → DRAFT → PENDING_HR → ISSUED → ANCHORED
@@ -115,11 +115,11 @@ Plus a public marketing landing at `/`.
 Per R3 & R4 spec:
 
 - **Hash:** `SHA-256(JCS(contentJson) ++ salt)`. JCS is the JSON Canonicalization Scheme (RFC 8785). The salt is 32 random bytes, stored as 64 hex chars.
-- **Signatures:** RSA-2048 / RS256. The manager signs first, then HR (dual approval). Each signs a distinct role statement, `SHA-256(JCS({v:1, documentHash, role, memberId}))`, not the bare hash. Both use the org's **single custodial key**: separation of duties is enforced by RBAC and recorded in the statements, not proven by two personal keys (per-member keys are roadmap).
+- **Signatures:** RSA-2048 / RS256. The manager signs first, then HR (dual approval). Each signs a distinct role statement, `SHA-256(JCS({v:1, documentHash, role, memberId}))`, not the bare hash. Both use the org's **single custodial key**: separation of duties is enforced by RBAC and recorded in the statements, not proven by two personal keys (per-member keys are PLANNED).
 - **Key Management:** LocalKMS (Node crypto) in every environment.
   - Per-org RSA-2048 private keys are stored as files, AES-256-GCM-wrapped under `KMS_MASTER_KEY`, which is required in production.
   - It also provides R10 data keys via `generateDataKey`/`decryptDataKey`, which mirror AWS KMS.
-  - **Roadmap:** the AWS KMS driver. `KEY_MANAGEMENT_DRIVER=aws` throws "not implemented".
+  - **PLANNED:** the AWS KMS driver. `KEY_MANAGEMENT_DRIVER=aws` throws "not IMPLEMENTED".
 - **Key files:** JWT RS256 keys auto-generated under `server/keys/` if not set in `.env`; per-org signing keys under `storage/kms/` (owner-only, wrapped under the master key)
 - **Document versions:** each draft edit creates an auditable version record
 
@@ -136,7 +136,7 @@ Per R3 & R4 spec:
 - Merkle tree: SHA-256 over sorted pairs; leaves are the raw document hashes; an odd node is promoted, not duplicated.
 - Integrity gate: before a candidate joins the tree, its encrypted fields are re-read (strict mode applies) and its content and salt must recompute its hash. A failing document is skipped, logged without values and left `ISSUED`; the rest of the batch anchors.
 - LocalAnchor (a persistent JSON ledger at `./storage/chain/ledger.json`) is the dev default. Its anchors have no chain id and can't be checked independently.
-- **PolygonAnchorService is implemented** (`BLOCKCHAIN_DRIVER=amoy`, ethers v6). It calls `AnchorRegistry.anchorRoot` on Polygon Amoy (chain 80002) with:
+- **PolygonAnchorService is IMPLEMENTED** (`BLOCKCHAIN_DRIVER=amoy`, ethers v6). It calls `AnchorRegistry.anchorRoot` on Polygon Amoy (chain 80002) with:
   - a 30 gwei tip floor;
   - serialized writes;
   - confirmation polling (2 confirmations);
@@ -167,10 +167,10 @@ the sensitive document columns.
 - **Known gaps:**
   - reason text in audit logs and notifications is plaintext;
   - **dev only:** with strict mode off, plaintext found in an encrypted column is read back as legacy data. Verification also trusts the plaintext `signing_public_key_pem` column. Together, these let someone with DB write access plant a self-consistent forged row, which the batch then anchors; `db:audit-encryption` flags it. Production runs strict mode, which closes this;
-  - envelopes are bound to the field, not the row, so a DB writer can copy a real envelope into another row and the app decrypts it for that row's holder. Binding the AAD to the row id is roadmap;
-  - membership grants aren't signed or audited. A DB writer can insert `MANAGER`/`HR` rows for their own accounts and issue through the app, which signs with the real org key; strict mode and the batch gate don't stop that. Auditing or signing grants is roadmap;
+  - envelopes are bound to the field, not the row, so a DB writer can copy a real envelope into another row and the app decrypts it for that row's holder. Binding the AAD to the row id is PLANNED;
+  - membership grants aren't signed or audited. A DB writer can insert `MANAGER`/`HR` rows for their own accounts and issue through the app, which signs with the real org key; strict mode and the batch gate don't stop that. Auditing or signing grants is PLANNED;
   - there's no master-key rotation tooling;
-  - the master key is an environment secret. **Roadmap:** AWS KMS, and a blind index for email.
+  - the master key is an environment secret. **PLANNED:** AWS KMS, and a blind index for email.
 
 ---
 
@@ -226,7 +226,14 @@ No account required.
 
 ## Subscriptions & Billing ✅
 
-**Backend routes:**
+**IMPLEMENTED:**
+- Billing route and controller structure
+- Mock billing driver (`MockStripeService`)
+
+**DESIGNED/PLANNED:**
+- Real Stripe payment collection and metering
+
+**Backend routes (currently mock-backed):**
 - `GET /api/v1/subscriptions/me` — current subscription
 - `GET /api/v1/subscriptions/plans` — available plans
 - `POST /api/v1/subscriptions` — subscribe to tier
@@ -326,20 +333,20 @@ All external integrations are behind swappable adapters — local/mock by defaul
 
 | Adapter | Dev (wired) | Prod target | Wired? |
 |---------|-------------|-------------|--------|
-| Key Management | LocalKMS (Node crypto: RSA-2048 signing keys + R10 data keys) | AWS KMS | Local ✓ wired (all environments); AWS ✗ roadmap |
+| Key Management | LocalKMS (Node crypto: RSA-2048 signing keys + R10 data keys) | AWS KMS | Local ✓ wired (all environments); AWS ✗ PLANNED |
 | Blockchain | LocalAnchor (JSON ledger) | Polygon Amoy (ethers v6) | ✓ wired (`BLOCKCHAIN_DRIVER=amoy`); contract deploy to Amoy pending |
-| Payment | MockStripe | Stripe | ✗ roadmap |
-| Email | ConsoleEmail (stdout) / Gmail SMTP (nodemailer) | AWS SES | Gmail ✓ wired; SES ✗ roadmap |
-| Storage | LocalDisk (`./storage`), always wrapped by `EncryptedStorageService` (R10) | AWS S3 | Local ✓ wired (encrypted at rest); S3 ✗ roadmap |
+| Payment | MockStripe | Stripe | ✗ PLANNED |
+| Email | ConsoleEmail (stdout) / Gmail SMTP (nodemailer) | AWS SES | Gmail ✓ wired; SES ✗ PLANNED |
+| Storage | LocalDisk (`./storage`), always wrapped by `EncryptedStorageService` (R10) | AWS S3 | Local ✓ wired (encrypted at rest); S3 ✗ PLANNED |
 | DNS Verification | LocalDns (always passes) | Real TXT lookup | ✓ wired |
 
-> **Wired today:** all Dev implementations, the real DNS adapter, Gmail SMTP for email, and the Polygon Amoy anchoring driver (`BLOCKCHAIN_DRIVER=amoy`, which needs `POLYGON_RPC_URL`, `ANCHOR_REGISTRY_ADDRESS` and `ANCHOR_PRIVATE_KEY`). Gmail (`EMAIL_DRIVER=gmail`, via `GMAIL_USER`/`GMAIL_APP_PASSWORD` app password) sends real mail without a domain or cloud account — good for prototypes, capped at Gmail's ~500 recipients/day. Selecting any other prod driver (`aws`, `stripe`, `ses`, `s3`) throws `<DRIVER>="..." not implemented`; those remain roadmap, pending cloud accounts.
+> **Wired today:** all Dev implementations, the real DNS adapter, Gmail SMTP for email, and the Polygon Amoy anchoring driver (`BLOCKCHAIN_DRIVER=amoy`, which needs `POLYGON_RPC_URL`, `ANCHOR_REGISTRY_ADDRESS` and `ANCHOR_PRIVATE_KEY`). Gmail (`EMAIL_DRIVER=gmail`, via `GMAIL_USER`/`GMAIL_APP_PASSWORD` app password) sends real mail without a domain or cloud account — good for prototypes, capped at Gmail's ~500 recipients/day. Selecting any other prod driver (`aws`, `stripe`, `ses`, `s3`) throws `<DRIVER>="..." not IMPLEMENTED`; those remain PLANNED, pending cloud accounts.
 
 ---
 
 ## Seeded Demo Accounts
 
-Run `npm run db:seed` in `server/`. All accounts use the password in `SEED_DEMO_PASSWORD`, or the local-dev default `Password123@` when it's unset. The deployed stack is seeded with a non-public value (`documentation/Deploy_Runbook.md`).
+Run `npm run db:seed` in `server/`. All accounts use the password in `SEED_DEMO_PASSWORD`, or the local-dev default `Password123@` when it's unset. The deployed stack is seeded with a non-public value (`documentation/deployment.md`).
 
 | Name | Role | Org |
 |------|------|-----|
@@ -410,7 +417,7 @@ manage keys)
 | Verifier API keys UI polish | Functional; no usage/analytics dashboard yet |
 | Amoy contract deployment | Pending, human-gated. `AnchorRegistry` isn't deployed yet; the address and the verifier's `KNOWN_REGISTRIES[80002]` get filled in afterwards. |
 | Database TLS pinning + Supabase Data API off | Pending, human-gated. Pin Supabase's CA (`sslmode=verify-full`), then enforce SSL. Nothing in the repo does this yet. |
-| AWS KMS driver, KEK rotation tooling, email blind index | Roadmap |
-| Per-member signing keys, multisig registry owner | Roadmap |
-| Row-bound envelope AAD (so a copied envelope fails in another row) | Roadmap |
-| Audited or signed membership grants (so a DB writer can't grant themselves a signing role) | Roadmap |
+| AWS KMS driver, KEK rotation tooling, email blind index | PLANNED |
+| Per-member signing keys, multisig registry owner | PLANNED |
+| Row-bound envelope AAD (so a copied envelope fails in another row) | PLANNED |
+| Audited or signed membership grants (so a DB writer can't grant themselves a signing role) | PLANNED |
