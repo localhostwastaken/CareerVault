@@ -81,7 +81,7 @@ REQUESTED → DRAFT → PENDING_HR → ISSUED → ANCHORED
 **Backend routes:**
 - `POST /api/v1/documents/request` — holder requests document
 - `GET /api/v1/documents` — list documents (role-scoped)
-- `GET /api/v1/documents/:id` — document detail
+- `GET /api/v1/documents/:id` — document detail. Once anchored it carries an `anchor` block (Merkle root, transaction, block, chain id, network, contract, PolygonScan URLs, proof length), `null` before then
 - `PUT /api/v1/documents/:id` — update draft content
 - `POST /api/v1/documents/:id/sign` — manager signs (REQUESTED/DRAFT → PENDING_HR)
 - `POST /api/v1/documents/:id/approve` — HR approves (PENDING_HR → ISSUED)
@@ -145,6 +145,7 @@ Per R3 & R4 spec:
   - verification that degrades to "pending" when the RPC is down.
 - **Deployed (2026-09-25):** `AnchorRegistry` on Amoy at [`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`](https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#code), source-verified on PolygonScan.
 - Merkle proofs are stored per document and included in the JSON-LD credential download, along with the chain id, contract and transaction.
+- The document detail page shows the document's own anchor: root, transaction and contract with PolygonScan links, plus a "check it yourself" guide to calling `verifyRoot` on the contract's Read Contract tab. The admin card keeps the last run's result and transaction link on screen.
 
 ---
 
@@ -194,7 +195,9 @@ No account required.
 - A record whose stored fields can't be read (a failed envelope or wrapped data key, or plaintext under strict mode) reads `INVALID` with no content, by hash or by share link. An envelope naming a different key id returns a 503 (`ENCRYPTION_KEY_UNAVAILABLE`) instead, because that is what a wrong master key looks like
 - In a bulk call each hash gets its own result, or its own error entry if its lookup fails, so one hash never fails the whole call
 
-**Frontend pages:** `/verify`, `/verify/hash/:hash`, `/verify/:token`
+**Frontend pages:** `/verify`, `/verify/hash/:hash`, `/verify/:token`, `/verify/file`
+
+`/verify/file` is the offline verifier in the browser (`client/src/features/credential-check/`). It runs the same checks as `tools/verify-credential`, with the same labels and verdicts, on a dropped `.jsonld` file. It calls no CareerVault API; the on-chain reads go to public Amoy RPCs (publicnode, then drpc). A "try to tamper with it" editor re-runs the checks on edited content, which fails Integrity.
 
 **Offline verifier:** `tools/verify-credential` re-checks a downloaded credential with its own code, importing nothing from `server/`. It checks:
 - integrity and both RS256 statements;
@@ -323,6 +326,7 @@ No account required.
 ## Platform / Ops ✅
 
 - `GET /api/v1/health` — liveness + DB connectivity check (`SELECT 1`)
+- `GET /api/v1/health/status` — public, non-secret trust configuration: blockchain driver, network, chain id, registry contract, the anchor wallet's address and their PolygonScan URLs; whether strict reads are on and which fields are encrypted; whether the AI service URL is set. Read by the verify page, the admin anchoring card and the demo guide (`/demo`)
 - `GET /api/v1/` — root liveness message
 
 ---

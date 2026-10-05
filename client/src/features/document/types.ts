@@ -36,9 +36,27 @@ export interface DocumentDetail {
   /** HR member who approved. Null until approval. */
   approverName: string | null
   merkleStatus: 'PENDING_BATCH' | 'ANCHORED' | null
+  /** The batch that anchored this document. Optional: absent from servers that predate it. */
+  anchor?: DocumentAnchor | null
   renderedPdfUrl: string | null
   createdAt: string
   updatedAt: string
+}
+
+// Mirrors server/src/modules/document/document-anchor.ts. A null chainId is the local
+// simulator, which has no explorer, so every URL is null there.
+export interface DocumentAnchor {
+  merkleRoot: string
+  txHash: string | null
+  blockNumber: number | null
+  anchoredAt: string | null
+  chainId: number | null
+  network: string
+  contractAddress: string | null
+  explorerTxUrl: string | null
+  explorerContractUrl: string | null
+  explorerBlockUrl: string | null
+  proofLength: number
 }
 
 export interface RequestDocumentRequest {

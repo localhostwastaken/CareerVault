@@ -1,3 +1,4 @@
+import { ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -44,15 +45,24 @@ export function ShareLinkCard({ link, onDeactivate, isDeactivating }: ShareLinkC
           {link.expiresAt ? `expires ${formatDate(link.expiresAt)}` : 'no expiry'}
         </span>
         {link.isActive && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-mr-2 shrink-0 text-revoked hover:bg-revoked-soft hover:text-revoked"
-            onClick={() => onDeactivate(link.id)}
-            disabled={isDeactivating}
-          >
-            Deactivate
-          </Button>
+          <div className="-mr-2 flex shrink-0 items-center">
+            {/* Opening the link counts as a view, exactly as it would for a recruiter. */}
+            <Button asChild variant="ghost" size="sm">
+              <a href={url} target="_blank" rel="noopener noreferrer" title="Opens the public verification page (counts as a view)">
+                <ExternalLink />
+                Open
+              </a>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-revoked hover:bg-revoked-soft hover:text-revoked"
+              onClick={() => onDeactivate(link.id)}
+              disabled={isDeactivating}
+            >
+              Deactivate
+            </Button>
+          </div>
         )}
       </div>
     </Card>

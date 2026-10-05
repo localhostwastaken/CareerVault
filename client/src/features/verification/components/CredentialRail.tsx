@@ -27,7 +27,7 @@ export function CredentialRail({ document }: { document: VerificationDocument })
         </h2>
       </div>
       <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-        <Field label="Holder" value={document.holderName} />
+        <Field label="Holder" value={document.holderName ?? 'Withheld on a public lookup'} />
         <Field label="Issued by" value={document.organizationName} />
         <Field label="Issued" value={formatDate(document.issuedAt)} />
         <Field label="Expires" value={document.expiresAt ? formatDate(document.expiresAt) : 'No expiry'} />

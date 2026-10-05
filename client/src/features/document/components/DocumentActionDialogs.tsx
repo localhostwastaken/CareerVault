@@ -1,6 +1,8 @@
 import { SelectNative } from '@/components/ui/select-native'
 import { Textarea } from '@/components/ui/textarea'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
+import { Explainer } from '@/components/shared/Explainer'
+import { REVOCATION_STEPS } from '@/features/document/explainers'
 import type { RevocationCode } from '@/features/document/types'
 import type { ActionDialog } from '@/features/document/useDocumentActions'
 
@@ -119,6 +121,7 @@ export function DocumentActionDialogs({
             className="resize-none"
             aria-label="Note for the holder"
           />
+          <Explainer title="What revoking does" steps={REVOCATION_STEPS} />
         </div>
       </ConfirmDialog>
 

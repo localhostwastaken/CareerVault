@@ -30,7 +30,7 @@ function Verification({ document }: { document: DocumentDetail }) {
       <StatusBadge status={returned ? 'DRAFT' : document.status} label={returned ? 'Returned' : undefined} />
       {/* The ANCHORED badge already says it; the line matters when the status has moved
           on (e.g. revoked) but the anchor still stands. */}
-      {document.status === 'ANCHORED' ? null : document.merkleStatus === 'ANCHORED' ? (
+      {document.status === 'ANCHORED' ? null : document.anchor ? (
         <p className="flex items-center gap-1.5 text-label text-anchor">
           <Anchor className="size-3.5" aria-hidden />
           Anchored on-chain

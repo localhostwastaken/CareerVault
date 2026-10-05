@@ -73,3 +73,8 @@ export function truncateHash(hash: string | null | undefined, lead = 6, tail = 6
   if (hash.length <= lead + tail + 1) return hash
   return `${hash.slice(0, lead)}…${hash.slice(-tail)}`
 }
+
+/** A count with its noun, pluralised with a plain "s": `formatCount(1, 'document')` → "1 document". */
+export function formatCount(count: number, noun: string): string {
+  return `${formatNumber(count)} ${noun}${count === 1 ? '' : 's'}`
+}

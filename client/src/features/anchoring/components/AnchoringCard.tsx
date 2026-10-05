@@ -1,59 +1,63 @@
-import { Anchor, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { Anchor, ExternalLink, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { ExplorerLink } from '@/components/shared/ExplorerLink'
-import { HashDisplay } from '@/components/shared/HashDisplay'
+import { Explainer } from '@/components/shared/Explainer'
 import { ListSkeleton } from '@/components/shared/Skeletons'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { useListAnchorBatchesQuery, useRunAnchorBatchMutation } from '@/features/anchoring/api'
-import type { AnchorBatch, AnchorRunResult } from '@/features/anchoring/types'
-import { formatNumber, formatRelativeTime, truncateHash } from '@/lib/format'
-import { notify, toastApiError } from '@/lib/notify'
+import { ANCHORING_STEPS } from '@/features/anchoring/anchoringSteps'
+import { AnchoringInProgress } from '@/features/anchoring/components/AnchoringInProgress'
+import { AnchorRunNotice } from '@/features/anchoring/components/AnchorRunNotice'
+import { BatchRow } from '@/features/anchoring/components/BatchRow'
+import type { AnchorRunResult } from '@/features/anchoring/types'
+import { useGetSystemStatusQuery } from '@/features/system-status/api'
+import { contractTabUrl, networkLabel } from '@/lib/explorer'
+import { toastApiError } from '@/lib/notify'
 
-const documents = (count: number) => `${formatNumber(count)} document${count === 1 ? '' : 's'}`
-
-// "0 anchored" alone can mean a batch was already running, or that the integrity gate held
-// documents back, so neither may read as "everything is on-chain".
-function reportRun({ anchored, skipped, busy, txHash }: AnchorRunResult) {
-  if (busy) {
-    notify.info('A batch is already running. Try again once it finishes.')
-    return
+// Where "Anchor now" writes. Decorative context for the card, so while the status is
+// loading or unavailable it simply says nothing rather than a second error state.
+function TargetLine() {
+  const chain = useGetSystemStatusQuery().data?.blockchain
+  if (!chain) return null
+  if (chain.driver === 'local') {
+    return <p className="text-label text-pending">This environment anchors to a local simulated ledger, not Polygon.</p>
   }
-  if (anchored > 0) notify.success(`Anchored ${documents(anchored)}${txHash ? ` · tx ${truncateHash(txHash, 10, 8)}` : ''}`)
-  if (skipped > 0) {
-    notify.error(
-      `${documents(skipped)} failed the integrity check and ${skipped === 1 ? 'was' : 'were'} left un-anchored. The server log names ${skipped === 1 ? 'it' : 'them'}.`,
-    )
-  }
-  if (anchored === 0 && skipped === 0) notify.info('Nothing to anchor: no issued document is waiting for a batch.')
-}
-
-function BatchRow({ batch }: { batch: AnchorBatch }) {
+  const readUrl = contractTabUrl(chain.explorerContractUrl, 'readContract')
   return (
-    <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border py-3 last:border-b-0">
-      <div className="flex flex-wrap items-center gap-3">
-        <HashDisplay value={batch.rootHash} lead={10} tail={6} label="Copy Merkle root" />
-        <span className="text-label text-muted-foreground">{documents(batch.documentCount)}</span>
-      </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="tnum text-label text-muted-foreground">
-          {batch.blockNumber != null ? `Block #${batch.blockNumber}` : 'Block pending'}
-        </span>
-        <span className="text-label text-muted-foreground">{formatRelativeTime(batch.anchoredAt ?? batch.createdAt)}</span>
-        <ExplorerLink href={batch.explorerTxUrl} label="View" />
-      </div>
-    </li>
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-label text-muted-foreground">
+      <span>
+        Writes to {networkLabel(chain.network)} via the AnchorRegistry contract
+        {chain.contractAddress && (
+          <span className="tnum font-mono text-foreground"> {chain.contractAddress.slice(0, 8)}…{chain.contractAddress.slice(-6)}</span>
+        )}
+        .
+      </span>
+      {readUrl && (
+        <a
+          href={readUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="focus-ring inline-flex items-center gap-1.5 rounded font-medium text-seal hover:underline"
+        >
+          Check a root on PolygonScan
+          <ExternalLink className="size-3.5" aria-hidden />
+        </a>
+      )}
+    </p>
   )
 }
 
 export function AnchoringCard() {
   const query = useListAnchorBatchesQuery()
   const [runBatch, { isLoading }] = useRunAnchorBatchMutation()
+  const [lastRun, setLastRun] = useState<AnchorRunResult | null>(null)
+  const isSimulated = useGetSystemStatusQuery().data?.blockchain.driver === 'local'
 
   const onAnchor = async () => {
     try {
-      reportRun(await runBatch().unwrap())
+      setLastRun(await runBatch().unwrap())
     } catch (error) {
       toastApiError(error, 'Could not anchor the batch')
     }
@@ -62,14 +66,15 @@ export function AnchoringCard() {
   return (
     <Card className="flex flex-col gap-5 p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-2">
+        <div className="flex min-w-0 items-start gap-2">
           <Anchor className="mt-0.5 size-4 shrink-0 text-anchor" />
-          <div>
+          <div className="flex min-w-0 flex-col gap-1">
             <h2 className="text-h2 text-foreground">Blockchain anchoring</h2>
-            <p className="mt-0.5 max-w-md text-body text-muted-foreground">
-              Issued documents are batched into a Merkle tree; the 32-byte root is written to the
-              AnchorRegistry contract.
+            <p className="max-w-xl text-body text-muted-foreground">
+              Issued documents are batched into a Merkle tree and the 32-byte root is written on-chain. This runs every
+              midnight; &ldquo;Anchor now&rdquo; runs it immediately.
             </p>
+            <TargetLine />
           </div>
         </div>
         <Button onClick={onAnchor} disabled={isLoading}>
@@ -78,11 +83,8 @@ export function AnchoringCard() {
         </Button>
       </div>
 
-      {isLoading && (
-        <p role="status" className="-mt-2 text-label text-muted-foreground">
-          Submitting to Polygon — this can take up to a minute.
-        </p>
-      )}
+      {isLoading && <AnchoringInProgress isSimulated={isSimulated} />}
+      {!isLoading && lastRun && <AnchorRunNotice result={lastRun} batches={query.data} />}
 
       <QueryBoundary
         query={query}
@@ -99,13 +101,22 @@ export function AnchoringCard() {
         headingLevel={3}
       >
         {(batches) => (
-          <ul className="flex flex-col">
-            {batches.map((batch) => (
-              <BatchRow key={batch.id} batch={batch} />
-            ))}
-          </ul>
+          <div className="flex flex-col gap-1">
+            <p className="label-micro">Recent batches · newest first</p>
+            <ul className="flex flex-col">
+              {batches.map((batch) => (
+                <BatchRow key={batch.id} batch={batch} />
+              ))}
+            </ul>
+          </div>
         )}
       </QueryBoundary>
+
+      <Explainer
+        title="What “Anchor now” does"
+        summary="Five steps from issued documents to one root on the public ledger."
+        steps={ANCHORING_STEPS}
+      />
     </Card>
   )
 }

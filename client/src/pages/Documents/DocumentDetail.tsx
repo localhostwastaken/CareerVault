@@ -10,8 +10,10 @@ import { DetailSkeleton } from '@/components/shared/Skeletons'
 import { useGetDocumentQuery } from '@/features/document/api'
 import { AuthenticityCard } from '@/features/document/components/AuthenticityCard'
 import { DocumentActions } from '@/features/document/components/DocumentActions'
+import { DocumentAnchorCard } from '@/features/document/components/DocumentAnchorCard'
 import { DocumentPartiesSummary } from '@/features/document/components/DocumentPartiesSummary'
 import { DocumentProgress } from '@/features/document/components/DocumentProgress'
+import { DocumentStageHint } from '@/features/document/components/DocumentStageHint'
 import { ResubmitForm } from '@/features/document/components/ResubmitForm'
 import { extractContentFields } from '@/features/document/content'
 import { useDownloadCredential, useDownloadDocument } from '@/features/document/hooks'
@@ -121,6 +123,8 @@ function DocumentDetailView({ document }: { document: DocumentDetailType }) {
 
       <DocumentActions document={document} />
 
+      <DocumentStageHint document={document} />
+
       {returned && (
         <Notice tone="pending" title="Returned for revision" icon={FileWarning}>
           {(typeof content.note === 'string' && content.note) || 'The manager returned this request. Review and resubmit.'}
@@ -172,7 +176,10 @@ function DocumentDetailView({ document }: { document: DocumentDetailType }) {
       )}
 
       {!preIssue && (
-        <AuthenticityCard document={document} onDownloadCredential={() => downloadCredential(document.id)} />
+        <>
+          <AuthenticityCard document={document} onDownloadCredential={() => downloadCredential(document.id)} />
+          <DocumentAnchorCard document={document} />
+        </>
       )}
     </div>
   )

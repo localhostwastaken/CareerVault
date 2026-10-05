@@ -28,6 +28,15 @@ export interface AnchorTx {
   blockNumber: number;
 }
 
+// Where anchors are written, for the public trust-configuration endpoint. Public values
+// only: the wallet ADDRESS, never its key, and never the RPC URL (it can embed an API key).
+// All null for the local simulator, which has no chain, contract or wallet to point at.
+export interface AnchorTarget {
+  chainId: number | null;
+  contractAddress: string | null;
+  walletAddress: string | null;
+}
+
 export abstract class BlockchainService {
   abstract anchorRoot(
     rootHashHex: string,
@@ -44,4 +53,6 @@ export abstract class BlockchainService {
   abstract isRevoked(
     documentHashHex: string,
   ): Promise<{ revoked: boolean; revokedAt?: Date }>;
+  /** Configuration only, no I/O: safe to call from a public, unauthenticated route. */
+  abstract describe(): AnchorTarget;
 }

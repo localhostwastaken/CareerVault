@@ -592,6 +592,24 @@ describe('PolygonAnchorService', () => {
       }
     });
 
+    it('describes its target with the wallet address, never the key or RPC URL', () => {
+      // describe() feeds a public, unauthenticated endpoint.
+      const key = Wallet.createRandom().privateKey;
+      const service = new PolygonAnchorService(
+        settings({ ANCHOR_PRIVATE_KEY: key }) as never,
+      );
+
+      const target = service.describe();
+
+      expect(target).toEqual({
+        chainId: 80002,
+        contractAddress: REGISTRY,
+        walletAddress: new Wallet(key).address,
+      });
+      expect(JSON.stringify(target)).not.toContain(key.slice(2));
+      expect(JSON.stringify(target)).not.toContain('127.0.0.1');
+    });
+
     it('logs the wallet address during the self-check, never the private key', async () => {
       const rpc = await rpcServer();
       const key = Wallet.createRandom().privateKey;

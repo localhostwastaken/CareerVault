@@ -6,6 +6,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   AnchorReceipt,
+  AnchorTarget,
   AnchorTx,
   BlockchainService,
   RootStatus,
@@ -86,6 +87,10 @@ export class LocalAnchorService extends BlockchainService {
     ledger.revocations[documentHashHex] = anchoredAt.toISOString();
     await this.write(ledger);
     return { txHash, blockNumber, anchoredAt, ...SIMULATED };
+  }
+
+  describe(): AnchorTarget {
+    return { ...SIMULATED, walletAddress: null };
   }
 
   async isRevoked(

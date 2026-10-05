@@ -44,6 +44,9 @@
 | **Revocation** | Org-level revocation | IMPLEMENTED | `server/src/modules/document/document-revoke.spec.ts` | Fails verification immediately. |
 | **GDPR erasure** | Data & Salt wipe | IMPLEMENTED | `server/test/erasure.e2e-spec.ts` | Leaves on-chain hash cryptographically dead. |
 | **Offline verifier** | Zero-dependency checks | IMPLEMENTED | `tools/verify-credential/` | Command-line Node verifier. |
+| **Browser verifier** | Proof-file check at `/verify/file` | IMPLEMENTED | `client/src/features/credential-check/` | Same checks and verdicts as the CLI, run in the browser against public Amoy RPCs; includes a tamper test. |
+| **Trust status** | `GET /health/status` | IMPLEMENTED | `server/src/health/system-status.service.ts` | Public chain, contract, wallet and encryption settings for the UI. |
+| **Demo guide** | `/demo` | IMPLEMENTED | `client/src/pages/Demo/DemoGuide.tsx` | Live ledger and encryption facts, a browser chain pre-flight, seeded accounts and the click path. |
 | **Skill extraction** | NLP / Parsing | IMPLEMENTED | `ai-service/app/main.py` | Extracts `skillsJson` and embeddings. |
 | **Recruiter search** | pgvector L2/HNSW | IMPLEMENTED | `server/src/modules/recruiter/talent.service.ts` | Vector similarity. |
 | **Talent ranking** | ML Model Ranking | IMPLEMENTED | `ai-service/app/ranking.py` | LightGBM gradient boosting model. |

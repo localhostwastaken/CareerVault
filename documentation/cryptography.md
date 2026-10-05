@@ -683,6 +683,8 @@ The deploy itself comes first, days before: fund the wallet, deploy the contract
 
 ### 9.2 Click path (deployed stack)
 
+The app's own demo guide at `/demo` carries this click path, with a link to each screen and each PolygonScan page, a live chain pre-flight (registry code, wallet authorisation and gas balance, read from Polygon by the browser) and the seeded accounts. Steps 9 and 10 can also run in the browser at `/verify/file`, which has the same checks as the CLI plus a tamper editor.
+
 Every seeded account signs in with the team's `SEED_DEMO_PASSWORD` (runbook step 6), not `Password123@`.
 
 | # | Who (seeded account) | Action | What to say |

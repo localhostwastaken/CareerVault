@@ -4,6 +4,7 @@ import { ArrowLeft, FileWarning } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { Explainer } from '@/components/shared/Explainer'
 import { Notice } from '@/components/shared/Notice'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
@@ -14,6 +15,7 @@ import { useGetDocumentQuery } from '@/features/document/api'
 import { SignDocumentForm } from '@/features/document/components/SignDocumentForm'
 import { SignedConfirmation } from '@/features/document/components/SignedConfirmation'
 import { SigningCeremony } from '@/features/document/components/SigningCeremony'
+import { SIGNING_STEPS } from '@/features/document/explainers'
 import { DOCUMENT_TYPE_LABEL, type DocumentDetail } from '@/features/document/types'
 import { useAppDispatch, useAuth } from '@/hooks/useAuth'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
@@ -98,8 +100,9 @@ const ManagerSignDocument = () => {
                 // The ceremony rail sits beside the fields on wide screens and above them
                 // otherwise — either way it is read before anything is signed.
                 <div className="grid gap-8 xl:grid-cols-[18rem_minmax(0,1fr)]">
-                  <div className="xl:sticky xl:top-24 xl:self-start">
+                  <div className="flex flex-col gap-6 xl:sticky xl:top-24 xl:self-start">
                     <SigningCeremony document={document} signerName={user?.fullName ?? '—'} note={note} />
+                    <Explainer title="What signing does" summary="Under the hood, in order." steps={SIGNING_STEPS} />
                   </div>
                   <Card className="p-6">
                     <SignDocumentForm document={document} onSigned={setSigned} />
