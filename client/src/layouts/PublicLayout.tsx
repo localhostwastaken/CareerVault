@@ -5,8 +5,16 @@ import { cn } from '@/lib/utils'
 
 const FOOTER_LINKS = [
   { label: 'Verify a document', to: '/verify' },
+  { label: 'Check a proof file', to: '/verify/file' },
+  { label: 'Demo guide', to: '/demo' },
   { label: 'Sign in', to: '/auth/login' },
   { label: 'Create account', to: '/auth/register' },
+]
+
+// The guide drops out of a phone-width header (it stays in the footer) so the bar fits.
+const HEADER_LINKS = [
+  { label: 'Verify', to: '/verify', className: '' },
+  { label: 'Demo guide', to: '/demo', className: 'hidden sm:block' },
 ]
 
 export function PublicLayout() {
@@ -26,17 +34,23 @@ export function PublicLayout() {
             CareerVault
           </Link>
           <div className="flex items-center gap-1 sm:gap-2">
-            <NavLink
-              to="/verify"
-              className={({ isActive }) =>
-                cn(
-                  'focus-ring rounded-lg px-3 py-2 text-label font-medium transition-colors',
-                  isActive ? 'text-seal' : 'text-muted-foreground hover:text-foreground',
-                )
-              }
-            >
-              Verify
-            </NavLink>
+            {HEADER_LINKS.map((link) => (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                // "Verify" stays active on /verify/file and on results, but not on /demo.
+                end={link.to === '/demo'}
+                className={({ isActive }) =>
+                  cn(
+                    'focus-ring rounded-lg px-3 py-2 text-label font-medium transition-colors',
+                    link.className,
+                    isActive ? 'text-seal' : 'text-muted-foreground hover:text-foreground',
+                  )
+                }
+              >
+                {link.label}
+              </NavLink>
+            ))}
             <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
               <Link to="/auth/login">Sign in</Link>
             </Button>

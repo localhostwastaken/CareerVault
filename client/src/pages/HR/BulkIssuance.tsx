@@ -1,9 +1,11 @@
 import { Building2 } from 'lucide-react'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { Explainer } from '@/components/shared/Explainer'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Section } from '@/components/shared/Section'
 import { BatchList } from '@/features/bulk-issuance/components/BatchList'
 import { BulkUploadForm } from '@/features/bulk-issuance/components/BulkUploadForm'
+import { BULK_ISSUANCE_STEPS } from '@/features/bulk-issuance/bulkIssuanceSteps'
 import { useAuth } from '@/hooks/useAuth'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
@@ -30,6 +32,7 @@ const HrBulkIssuance = () => {
         <>
           <Section title="New batch" description="One row per person. Existing holders are matched by email.">
             <BulkUploadForm organizationId={activeOrgId} />
+            <Explainer title="What happens to each row" steps={BULK_ISSUANCE_STEPS} />
           </Section>
           <Section title="Batches">
             <BatchList organizationId={activeOrgId} />

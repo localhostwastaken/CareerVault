@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { KeyRound, Loader2 } from 'lucide-react'
@@ -15,11 +15,13 @@ import { toastApiError } from '@/lib/notify'
 const Login = () => {
   const dispatch = useAppDispatch()
   const [login, { isLoading }] = useLoginMutation()
+  // The demo guide's "Sign in as" links pass the account, so a presenter types only the password.
+  const [params] = useSearchParams()
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     // Validate on blur so a typo surfaces at the field, not after a failed submit.
     mode: 'onBlur',
-    defaultValues: { email: '', password: '' },
+    defaultValues: { email: params.get('email') ?? '', password: '' },
   })
 
   // No navigation here: storing credentials flips auth status to 'authenticated' and the
@@ -42,6 +44,10 @@ const Login = () => {
           No account?{' '}
           <Link to="/auth/register" className="focus-ring rounded font-medium text-seal hover:underline">
             Create one
+          </Link>
+          <span className="text-subtle"> · </span>
+          <Link to="/demo" className="focus-ring rounded font-medium text-seal hover:underline">
+            Demo accounts
           </Link>
         </p>
       }

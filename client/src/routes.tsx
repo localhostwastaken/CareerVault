@@ -15,6 +15,8 @@ import type { AppRole } from '@/features/auth/types'
 const Hero = lazy(() => import('@/pages/Hero/Hero'))
 const VerifyHome = lazy(() => import('@/pages/Verify/VerifyHome'))
 const VerifyResult = lazy(() => import('@/pages/Verify/VerifyResult'))
+const VerifyFile = lazy(() => import('@/pages/Verify/VerifyFile'))
+const DemoGuide = lazy(() => import('@/pages/Demo/DemoGuide'))
 const MockCheckout = lazy(() => import('@/pages/Payments/MockCheckout'))
 const Login = lazy(() => import('@/pages/Login/Login'))
 const MagicLink = lazy(() => import('@/pages/MagicLink/MagicLink'))
@@ -104,6 +106,9 @@ export const routes: RouteObject[] = [
     children: [
       { path: '/', element: suspense(<Hero />) },
       { path: '/verify', element: suspense(<VerifyHome />) },
+      // A static segment outranks /verify/:token, so "file" is never read as a share token.
+      { path: '/verify/file', element: suspense(<VerifyFile />) },
+      { path: '/demo', element: suspense(<DemoGuide />) },
       { path: '/verify/hash/:hash', element: suspense(<VerifyResult />) },
       { path: '/verify/:token', element: suspense(<VerifyResult />) },
     ],

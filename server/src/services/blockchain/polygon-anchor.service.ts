@@ -15,6 +15,7 @@ import type { FeeOverrides } from './anchor-registry.abi.js';
 import { anchorSelfCheck } from './anchor-self-check.js';
 import {
   AnchorReceipt,
+  AnchorTarget,
   AnchorTx,
   BlockchainService,
   RootStatus,
@@ -85,6 +86,15 @@ export class PolygonAnchorService
       { chainId, contractAddress },
       this.logger,
     );
+  }
+
+  describe(): AnchorTarget {
+    const { chainId, contractAddress } = this;
+    return {
+      chainId,
+      contractAddress,
+      walletAddress: this.chain.wallet.address,
+    };
   }
 
   async anchorRoot(

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ErrorState } from '@/components/shared/ErrorState'
+import { Explainer } from '@/components/shared/Explainer'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { ListSkeleton } from '@/components/shared/Skeletons'
@@ -13,6 +14,7 @@ import { CandidateCard, type CandidateView } from '@/features/recruiter/componen
 import { CreateJobOpeningDialog } from '@/features/recruiter/components/CreateJobOpeningDialog'
 import { JobOpeningList } from '@/features/recruiter/components/JobOpeningList'
 import { MessageDialog } from '@/features/recruiter/components/MessageDialog'
+import { TALENT_STEPS } from '@/features/recruiter/talentSteps'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { notify, toastApiError } from '@/lib/notify'
 
@@ -109,6 +111,11 @@ const RecruiterTalentSearch = () => {
                       ))}
                     </div>
                   )}
+                  <Explainer
+                    title="How candidates are ranked"
+                    summary="Verified-credential profiles, a LightGBM score, and a TreeSHAP breakdown of every score."
+                    steps={TALENT_STEPS}
+                  />
                 </Card>
               )}
 

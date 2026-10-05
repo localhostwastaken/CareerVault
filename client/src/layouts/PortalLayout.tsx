@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from 'react-router-dom'
-import { LogOut, ShieldCheck, User } from 'lucide-react'
+import { Compass, LogOut, ShieldCheck, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -11,29 +11,17 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { NotificationBell } from '@/features/notification/components/NotificationBell'
 import { PersonaSwitcher } from '@/features/auth/components/PersonaSwitcher'
-import { logout as logoutAction } from '@/features/auth/authSlice'
-import { useLogoutMutation } from '@/features/auth/authApi'
+import { useSignOut } from '@/features/auth/hooks'
 import { MobileNav } from '@/layouts/MobileNav'
 import { SidebarNav } from '@/layouts/SidebarNav'
-import { useAppDispatch, useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/hooks/useAuth'
 import { ROLE_CONFIG } from '@/lib/roles'
 
 export function PortalLayout() {
   const { user, role } = useAuth()
   const config = ROLE_CONFIG[role]
-  const dispatch = useAppDispatch()
   const navigate = useNavigate()
-  const [logout] = useLogoutMutation()
-
-  const handleLogout = async () => {
-    try {
-      await logout().unwrap()
-    } catch {
-      // ignore network errors — clearing local state still signs the user out
-    }
-    dispatch(logoutAction())
-    navigate('/auth/login', { replace: true })
-  }
+  const signOut = useSignOut()
 
   const initials = (user?.fullName ?? '?')
     .split(' ')
@@ -84,7 +72,11 @@ export function PortalLayout() {
                   <User />
                   Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={handleLogout}>
+                <DropdownMenuItem onSelect={() => navigate('/demo')}>
+                  <Compass />
+                  Demo guide
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => signOut()}>
                   <LogOut />
                   Sign out
                 </DropdownMenuItem>

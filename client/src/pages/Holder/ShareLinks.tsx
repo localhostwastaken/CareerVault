@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, Share2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { Explainer } from '@/components/shared/Explainer'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { QueryBoundary } from '@/components/shared/QueryBoundary'
 import { CardGridSkeleton } from '@/components/shared/Skeletons'
@@ -10,6 +11,7 @@ import { useDeactivateShareLinkMutation, useListShareLinksQuery } from '@/featur
 import { ShareLinkCard } from '@/features/share-link/components/ShareLinkCard'
 import { ShareLinkCreated } from '@/features/share-link/components/ShareLinkCreated'
 import { CreateShareLinkDialog } from '@/features/share-link/components/CreateShareLinkDialog'
+import { SHARE_LINK_STEPS } from '@/features/share-link/shareLinkSteps'
 import type { ShareLink } from '@/features/share-link/types'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { toastApiError } from '@/lib/notify'
@@ -58,6 +60,12 @@ const HolderShareLinks = () => {
       />
 
       {created && <ShareLinkCreated link={created} onDismiss={() => setCreated(null)} />}
+
+      <Explainer
+        title="What a share link discloses"
+        summary="Full disclosure of one document, verified on every view, under your control."
+        steps={SHARE_LINK_STEPS}
+      />
 
       <QueryBoundary
         query={query}

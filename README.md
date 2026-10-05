@@ -138,7 +138,7 @@ link opts into full disclosure for that link. A freshly issued document verifies
 | Network | Polygon Amoy testnet, chain id `80002` (`BLOCKCHAIN_DRIVER=amoy`) |
 | Contract | [`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`](https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#code) (verified; deployed in block 48502677, record in `contracts/deployments/amoy.json`) |
 | Anchor wallet | `0x955cE8960A1Fb6fCCd9e5F42D81a844dEDf5056e` (it will be the deployer, and so the contract owner and first authorized anchor, once the registry is deployed) |
-| Explorer | [amoy.polygonscan.com](https://amoy.polygonscan.com). The verify page links the transaction and the contract; the admin's anchoring card links each batch's transaction. |
+| Explorer | [amoy.polygonscan.com](https://amoy.polygonscan.com). The verify page and each document's detail page link the transaction and the contract and show how to call `verifyRoot` yourself; the admin's anchoring card links each batch's transaction. `/demo` collects every link the demo needs. |
 
 The database stays authoritative for revocation (R7):
 - an unreachable RPC degrades verification to `VERIFIED_PENDING_ANCHOR`, because the proof is still checked locally, instead of failing it;
@@ -148,7 +148,8 @@ The database stays authoritative for revocation (R7):
 `chainId: null` and can't be checked independently.
 
 **Offline verifier.** [`tools/verify-credential`](tools/verify-credential/README.md) re-checks a
-downloaded credential with its own code; it imports nothing from `server/`:
+downloaded credential with its own code; it imports nothing from `server/`. The same checks run in the
+browser at `/verify/file`, with no call to the API:
 
 ```bash
 cd tools/verify-credential && npm install

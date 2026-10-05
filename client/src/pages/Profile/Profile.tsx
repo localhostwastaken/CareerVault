@@ -5,9 +5,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
+import { Explainer } from '@/components/shared/Explainer'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Section } from '@/components/shared/Section'
 import { PasswordSection } from '@/features/auth/components/PasswordSection'
+import { ERASURE_STEPS } from '@/features/document/explainers'
 import { useDeleteAccountMutation } from '@/features/auth/authApi'
 import { logout as logoutAction } from '@/features/auth/authSlice'
 import { useAppDispatch, useAuth } from '@/hooks/useAuth'
@@ -93,10 +95,11 @@ const Profile = () => {
               <div>
                 <p className="text-label font-semibold text-revoked">Delete account</p>
                 <p className="mt-1 text-body text-muted-foreground">
-                  Erases your personal data and removes you from talent discovery. Documents already issued to you are
-                  retained by the organisations that issued them, as their records require. This cannot be undone.
+                  Erases your personal data and the content of every document issued to you. Issuers keep only a bare
+                  record that it existed, which can no longer be linked to you. This cannot be undone.
                 </p>
               </div>
+              <Explainer title="What erasure does" summary="Right to be forgotten, without touching the chain." steps={ERASURE_STEPS} />
               <Button variant="destructive" className="self-start" onClick={() => setConfirmOpen(true)}>
                 Delete my account
               </Button>

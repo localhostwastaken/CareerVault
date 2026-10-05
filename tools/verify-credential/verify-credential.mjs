@@ -92,7 +92,9 @@ const ANCHOR_REGISTRY_ABI = [
   'function isRevoked(bytes32 documentHash) view returns (bool revoked, uint256 revokedAt)',
   'event RootAnchored(bytes32 indexed rootHash, uint256 documentCount, uint256 anchoredAt, address indexed anchoredBy)',
 ];
-const DEFAULT_RPC = { 80002: 'https://rpc-amoy.polygon.technology' };
+// rpc-amoy.polygon.technology stopped resolving in Oct 2026; publicnode is keyless and also
+// what the in-browser checker tries first. --rpc still overrides it.
+const DEFAULT_RPC = { 80002: 'https://polygon-amoy-bor-rpc.publicnode.com' };
 const EXPLORER_BASE = { 80002: 'https://amoy.polygonscan.com' };
 // Only for display (Registry / On-chain root ✓ lines) — NEVER the file's own anchor.network,
 // which is untrusted text and could carry a misleading trust claim in plain sight of a ✓.

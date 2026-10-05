@@ -1,15 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
-
-// Mirrors the labels verification.service.ts returns, in the order it returns them.
-const CHECKS = [
-  'Document on record',
-  'Content integrity',
-  'Issuer signature',
-  'Approver signature',
-  'Blockchain anchor',
-  'Revocation status',
-] as const
+import { VERIFICATION_CHECKS } from '@/features/verification/checkExplanations'
 
 /**
  * The server answers every check in one round-trip, so there is no per-check progress
@@ -29,7 +20,7 @@ export function VerifyingProgress() {
         All six checks run together. Results appear when the whole verification completes.
       </p>
       <ol className="mt-4">
-        {CHECKS.map((check, index) => (
+        {VERIFICATION_CHECKS.map(({ label: check }, index) => (
           <li key={check} className="flex items-center gap-3 border-b border-border py-2.5 last:border-b-0">
             <span className="tnum flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-2 text-micro tracking-normal text-subtle">
               {index + 1}

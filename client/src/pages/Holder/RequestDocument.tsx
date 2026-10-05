@@ -3,9 +3,11 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Explainer } from '@/components/shared/Explainer'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SuccessPanel } from '@/components/shared/SuccessPanel'
 import { RequestDocumentForm } from '@/features/document/components/RequestDocumentForm'
+import { REQUEST_STEPS } from '@/features/document/explainers'
 import { DOCUMENT_TYPE_LABEL, type DocumentDetail } from '@/features/document/types'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
@@ -60,6 +62,11 @@ const HolderRequestDocument = () => {
       <Card className="p-6">
         <RequestDocumentForm onSent={setSent} />
       </Card>
+      <Explainer
+        title="What happens after you send it"
+        summary="Two people at the organisation sign before it reaches your wallet."
+        steps={REQUEST_STEPS}
+      />
     </div>
   )
 }

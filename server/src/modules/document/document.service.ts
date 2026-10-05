@@ -20,6 +20,7 @@ import {
   validateAndNormalizeSubject,
 } from './content-validation.js';
 import { stampSignerIdentity } from './signer-identity.js';
+import { presentAnchor } from './document-anchor.js';
 import {
   buildCredential,
   type VerifiableCredential,
@@ -50,17 +51,20 @@ type PresentedDocument = Prisma.DocumentGetPayload<{
     holder: { select: { fullName: true; email: true } };
     signerMember: { select: { user: { select: { fullName: true } } } };
     approverMember: { select: { user: { select: { fullName: true } } } };
+    merkleProof: { include: { merkleRoot: true } };
   };
 }>;
 
 // Single source for the relations every presented document needs: every read path must
 // select these or toPublic cannot name the people involved. Signer/approver names let
-// each portal show "who signed / who approved" without extra round-trips.
+// each portal show "who signed / who approved" without extra round-trips; the Merkle proof
+// and its root let the detail page link the document's own anchoring transaction.
 const PRESENT_INCLUDE = {
   organization: { select: { name: true } },
   holder: { select: { fullName: true, email: true } },
   signerMember: { select: { user: { select: { fullName: true } } } },
   approverMember: { select: { user: { select: { fullName: true } } } },
+  merkleProof: { include: { merkleRoot: true } },
 } as const;
 
 @Injectable()
@@ -984,6 +988,7 @@ export class DocumentService {
           : doc.status === 'ISSUED'
             ? 'PENDING_BATCH'
             : null,
+      anchor: presentAnchor(doc.merkleProof),
       renderedPdfUrl: doc.renderedPdfUrl,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,

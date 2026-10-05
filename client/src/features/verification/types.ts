@@ -26,7 +26,8 @@ export interface VerificationDocument {
   type: DocumentType
   status: DocumentStatus
   organizationName: string
-  holderName: string
+  // Null on an anonymous lookup of a salary proof: the public view withholds the name.
+  holderName: string | null
   issuedAt: string | null
   expiresAt: string | null
   documentHash: string | null
