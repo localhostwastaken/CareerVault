@@ -82,7 +82,7 @@ export function SignDocumentForm({ document, onSigned }: SignDocumentFormProps) 
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="flex flex-col gap-5">
+      <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} noValidate className="flex flex-col gap-5">
         {defaultFields.map((field) =>
           field.separationOnly && stillEmployed ? (
             <p key={field.name} className="inset-well p-4 text-body text-muted-foreground">

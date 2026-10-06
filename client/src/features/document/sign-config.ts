@@ -293,7 +293,10 @@ function fieldSchema(field: SignField): z.ZodType {
       return optional ? optionalWrap(base) : base
     }
     default: {
-      let base = z.string().trim().min(field.min ?? 1, field.min ? `Enter at least ${field.min} characters` : `${field.label} is required`)
+      let base = z
+        .string()
+        .trim()
+        .min(field.min ?? 1, field.min && field.min > 1 ? `Enter at least ${field.min} characters` : `${field.label} is required`)
       if (field.max) base = base.max(field.max)
       if (field.pattern) base = base.regex(field.pattern, field.patternMessage ?? 'Invalid format')
       return optional ? optionalWrap(base) : base

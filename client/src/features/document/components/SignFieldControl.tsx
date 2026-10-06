@@ -63,7 +63,7 @@ function Control({ field, rhf, ...slot }: { field: SignField; rhf: Rhf } & SlotP
             type="number"
             inputMode="decimal"
             min="0"
-            step="0.01"
+            step="100"
             placeholder={field.placeholder ?? '0'}
             className="pl-7 tnum"
           />
@@ -117,7 +117,15 @@ export function SignFieldControl({ field, control }: { field: SignField; control
                   onChange={(e) => rhf.onChange(e.currentTarget.checked)}
                 />
               </FormControl>
-              <span className="text-body text-foreground">{field.label}</span>
+              <span className="text-body text-foreground">
+                {field.label}
+                {!field.optional && !field.locked && (
+                  <span className="ml-1 text-destructive" aria-hidden="true">
+                    *
+                  </span>
+                )}
+                {field.optional && <span className="ml-1 text-label font-normal text-subtle">(optional)</span>}
+              </span>
             </label>
             <FormMessage />
           </FormItem>
@@ -134,6 +142,11 @@ export function SignFieldControl({ field, control }: { field: SignField; control
         <FormItem>
           <FormLabel>
             {field.label}
+            {!field.optional && !field.locked && (
+              <span className="ml-1 text-destructive" aria-hidden="true">
+                *
+              </span>
+            )}
             {field.optional && <span className="ml-1 text-label font-normal text-subtle">(optional)</span>}
             {field.locked && (
               <span className="ml-1.5 inline-flex items-center gap-1 align-middle text-micro text-subtle">
