@@ -46,47 +46,59 @@ export class SkillService {
     const text = buildText(doc.contentJson);
     if (!text.trim()) return;
 
-    const result = await this.ai.extractSkills(text);
-    const seniority =
-      result.seniority && SENIORITY.has(result.seniority)
-        ? (result.seniority as Seniority)
-        : null;
-    const data = {
-      skillsJson: result.skills as unknown as Prisma.InputJsonValue,
-      confidenceScores: (result.confidenceScores ??
-        {}) as Prisma.InputJsonValue,
-      jobTitle: result.jobTitle ?? null,
-      seniority,
-      yearsOfExperience: result.yearsOfExperience ?? null,
-      industriesJson: (result.industries ??
-        []) as unknown as Prisma.InputJsonValue,
-      nlpModelVersion: 'ai-service/extract',
-    };
-    const skill = await this.prisma.extractedSkill.upsert({
-      where: { documentId },
-      create: { documentId, ...data },
-      update: { ...data, extractedAt: new Date() },
-    });
-
-    // Embed the semantic profile (title + skills + industries) and store the vector.
-    const embedText =
-      [result.jobTitle, ...result.skills, ...(result.industries ?? [])]
-        .filter(Boolean)
-        .join(' ') || text;
-    const embedding = await this.ai.embed(embedText);
-    if (embedding.length !== EMBEDDING_DIM) {
-      // Don't write a wrong-length vector into the vector(384) column — leave it null
-      // (the holder simply isn't searchable until a valid embedding exists).
-      this.logger.warn(
-        `Skipping embedding for ${documentId}: got ${embedding.length} dims`,
-      );
-      return;
-    }
-    await this.prisma
-      .$executeRaw`UPDATE extracted_skills SET embedding = ${toVectorLiteral(embedding)}::vector WHERE id = ${skill.id}::uuid`;
     this.logger.log(
-      `Extracted ${result.skills.length} skill(s) for document ${documentId}`,
+      `Skill extraction started for ${documentId} (text length: ${text.length})`,
     );
+
+    try {
+      const result = await this.ai.extractSkills(text);
+      const seniority =
+        result.seniority && SENIORITY.has(result.seniority)
+          ? (result.seniority as Seniority)
+          : null;
+      const data = {
+        skillsJson: result.skills as unknown as Prisma.InputJsonValue,
+        confidenceScores: (result.confidenceScores ??
+          {}) as Prisma.InputJsonValue,
+        jobTitle: result.jobTitle ?? null,
+        seniority,
+        yearsOfExperience: result.yearsOfExperience ?? null,
+        industriesJson: (result.industries ??
+          []) as unknown as Prisma.InputJsonValue,
+        nlpModelVersion: 'ai-service/extract',
+      };
+      const skill = await this.prisma.extractedSkill.upsert({
+        where: { documentId },
+        create: { documentId, ...data },
+        update: { ...data, extractedAt: new Date() },
+      });
+
+      // Embed the semantic profile (title + skills + industries) and store the vector.
+      const embedText =
+        [result.jobTitle, ...result.skills, ...(result.industries ?? [])]
+          .filter(Boolean)
+          .join(' ') || text;
+      const embedding = await this.ai.embed(embedText);
+      if (embedding.length !== EMBEDDING_DIM) {
+        // Don't write a wrong-length vector into the vector(384) column — leave it null
+        // (the holder simply isn't searchable until a valid embedding exists).
+        this.logger.warn(
+          `Skipping embedding for ${documentId}: got ${embedding.length} dims`,
+        );
+      } else {
+        await this.prisma
+          .$executeRaw`UPDATE extracted_skills SET embedding = ${toVectorLiteral(embedding)}::vector WHERE id = ${skill.id}::uuid`;
+      }
+      this.logger.log(
+        `Skill extraction completed for ${documentId}: ${result.skills.length} skill(s) extracted`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Skill extraction failed for ${documentId}: ${message}`,
+      );
+      throw error;
+    }
   }
 
   async extractOwned(

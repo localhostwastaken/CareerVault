@@ -216,6 +216,31 @@ describe('env validation — AI_SERVICE_URL', () => {
   });
 });
 
+describe('env validation — AI_REQUEST_TIMEOUT_MS', () => {
+  it('defaults to 90000 when unset', () => {
+    const { error, value } = validate({ ...DATABASE });
+    expect(error).toBeUndefined();
+    expect(value.AI_REQUEST_TIMEOUT_MS).toBe(90000);
+  });
+
+  it('accepts an explicit positive number', () => {
+    const { error, value } = validate({
+      ...DATABASE,
+      AI_REQUEST_TIMEOUT_MS: 120000,
+    });
+    expect(error).toBeUndefined();
+    expect(value.AI_REQUEST_TIMEOUT_MS).toBe(120000);
+  });
+
+  it('rejects a non-positive timeout', () => {
+    const { error } = validate({
+      ...DATABASE,
+      AI_REQUEST_TIMEOUT_MS: -10,
+    });
+    expect(error?.message).toContain('AI_REQUEST_TIMEOUT_MS');
+  });
+});
+
 describe('env validation — production driver warning', () => {
   const PRODUCTION = {
     ...DATABASE,

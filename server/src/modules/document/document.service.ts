@@ -372,9 +372,7 @@ export class DocumentService {
       'Your document is ready',
       `Your ${TYPE_LABEL[doc.type]} from ${org.name} has been issued.`,
     );
-    // Consented skill extraction for talent matching (best-effort; AI downtime must
-    // never block issuance). Fire-and-forget: awaiting this would hold the HTTP response
-    // open for up to two AI-service timeouts (extractSkills + embed, 35s each).
+    // Consented skill extraction for talent matching (best-effort; AI downtime must never block issuance). Fire-and-forget: awaiting this would hold the HTTP response open for up to two AI-service timeouts (extractSkills + embed, 90s each).
     if (doc.enableSkillExtraction) {
       void this.skills
         .extractForDocument(id)

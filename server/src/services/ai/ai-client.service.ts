@@ -16,14 +16,15 @@ export interface ExtractedSkillResult {
   confidenceScores?: Record<string, number>;
 }
 
-// Just above the ai-service's own 30s Groq timeout (extraction.py), so a hung Groq call surfaces as a 503 from there first rather than hanging this request forever.
-const REQUEST_TIMEOUT_MS = 35_000;
+// Render's free tier spins down the standalone ai-service on idle, requiring up to 60-90s for container boot + model initialization. 90,000ms ensures cold starts can complete before the client aborts, while keeping timeouts configurable via AI_REQUEST_TIMEOUT_MS.
+export const DEFAULT_REQUEST_TIMEOUT_MS = 90_000;
 
 @Injectable()
 export class AiClientService {
   private readonly logger = new Logger(AiClientService.name);
   private readonly baseUrl: string;
   private readonly serviceSecret?: string;
+  private readonly requestTimeoutMs: number;
 
   constructor(config: ConfigService) {
     const configured =
@@ -36,6 +37,22 @@ export class AiClientService {
       ? configured
       : `http://${configured}`;
     this.serviceSecret = config.get<string>('AI_SERVICE_SECRET') || undefined;
+
+    const timeoutRaw = config.get<string | number>('AI_REQUEST_TIMEOUT_MS');
+    const parsedTimeout =
+      typeof timeoutRaw === 'number'
+        ? timeoutRaw
+        : typeof timeoutRaw === 'string' && timeoutRaw.trim() !== ''
+          ? Number(timeoutRaw)
+          : NaN;
+    this.requestTimeoutMs =
+      Number.isFinite(parsedTimeout) && parsedTimeout > 0
+        ? parsedTimeout
+        : DEFAULT_REQUEST_TIMEOUT_MS;
+  }
+
+  get timeoutMs(): number {
+    return this.requestTimeoutMs;
   }
 
   async extractSkills(text: string): Promise<ExtractedSkillResult> {
@@ -71,7 +88,7 @@ export class AiClientService {
 
   private async post<T>(path: string, body: unknown): Promise<T> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
     try {
       const res = await fetch(`${this.baseUrl}${path}`, {
         method: 'POST',

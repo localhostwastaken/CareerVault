@@ -1,4 +1,8 @@
-import { AiClientService } from './ai-client.service.js';
+import {
+  AiClientService,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+} from './ai-client.service.js';
+import { ServiceUnavailableException } from '@nestjs/common';
 
 /**
  * Render's fromService `property: hostport` (used to reach the AI service over the
@@ -51,5 +55,71 @@ describe('AiClientService base URL', () => {
     await expect(requestedUrl(service)).resolves.toBe(
       'http://localhost:9910/embed',
     );
+  });
+});
+
+describe('AiClientService timeout', () => {
+  it('defaults to 90,000 ms when AI_REQUEST_TIMEOUT_MS is unset', () => {
+    const service = new AiClientService({
+      get: () => undefined,
+    } as never);
+    expect(service.timeoutMs).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
+    expect(service.timeoutMs).toBe(90_000);
+  });
+
+  it('reads numeric AI_REQUEST_TIMEOUT_MS when configured', () => {
+    const service = new AiClientService({
+      get: (key: string) =>
+        key === 'AI_REQUEST_TIMEOUT_MS' ? 60000 : undefined,
+    } as never);
+    expect(service.timeoutMs).toBe(60_000);
+  });
+
+  it('parses string AI_REQUEST_TIMEOUT_MS when configured', () => {
+    const service = new AiClientService({
+      get: (key: string) =>
+        key === 'AI_REQUEST_TIMEOUT_MS' ? '120000' : undefined,
+    } as never);
+    expect(service.timeoutMs).toBe(120_000);
+  });
+
+  it('falls back to default when AI_REQUEST_TIMEOUT_MS is invalid or non-positive', () => {
+    const negativeService = new AiClientService({
+      get: (key: string) =>
+        key === 'AI_REQUEST_TIMEOUT_MS' ? -500 : undefined,
+    } as never);
+    expect(negativeService.timeoutMs).toBe(90_000);
+
+    const nonNumericService = new AiClientService({
+      get: (key: string) =>
+        key === 'AI_REQUEST_TIMEOUT_MS' ? 'invalid' : undefined,
+    } as never);
+    expect(nonNumericService.timeoutMs).toBe(90_000);
+  });
+
+  it('aborts request and throws ServiceUnavailableException when timeout triggers', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((_url: string, options?: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        if (options?.signal) {
+          options.signal.addEventListener('abort', () => {
+            reject(new DOMException('The operation was aborted', 'AbortError'));
+          });
+        }
+      });
+    }) as typeof fetch;
+
+    try {
+      const service = new AiClientService({
+        get: (key: string) =>
+          key === 'AI_REQUEST_TIMEOUT_MS' ? 20 : undefined,
+      } as never);
+
+      await expect(service.embed('test')).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

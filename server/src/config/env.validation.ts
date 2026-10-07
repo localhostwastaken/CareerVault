@@ -1,12 +1,7 @@
 import { getAddress } from 'ethers';
 import Joi from 'joi';
 
-// Boot-time honesty check: the trust model depends on REAL DNS TXT verification,
-// and real revenue/comms depend on real payment/email providers. Drivers stay
-// configurable (a demo may intentionally run mocks), so this NEVER hard-fails —
-// but in production it emits a LOUD, un-missable warning so a mocked deploy is
-// always a deliberate choice, never a silent accident. Runs during Joi
-// validation, i.e. at process boot alongside the fail-fast env check below.
+// Boot-time honesty check: the trust model depends on REAL DNS TXT verification, and real revenue/comms depend on real payment/email providers. Drivers stay configurable (a demo may intentionally run mocks), so this NEVER hard-fails — but in production it emits a LOUD, un-missable warning so a mocked deploy is always a deliberate choice, never a silent accident. Runs during Joi validation, i.e. at process boot alongside the fail-fast env check below.
 function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
   if (env.NODE_ENV !== 'production') return;
 
@@ -56,7 +51,7 @@ function warnUnsafeProductionDrivers(env: Record<string, unknown>): void {
         'That path MUST be durable storage; on an ephemeral container every key is lost on ' +
         'redeploy and no document can be signed. Set KEY_MANAGEMENT_DRIVER=supabase (with ' +
         'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY) for a durable alternative on platforms ' +
-        'without a persistent disk, such as Render\'s free tier.',
+        "without a persistent disk, such as Render's free tier.",
     );
   if (((env.STORAGE_DRIVER as string | undefined) ?? 'local') === 'local')
     mocked.push(
@@ -107,7 +102,8 @@ function checkSupabaseCredentials(
   helpers: Joi.CustomHelpers,
 ): Joi.ErrorReport | null {
   const usesSupabase =
-    env.KEY_MANAGEMENT_DRIVER === 'supabase' || env.STORAGE_DRIVER === 'supabase';
+    env.KEY_MANAGEMENT_DRIVER === 'supabase' ||
+    env.STORAGE_DRIVER === 'supabase';
   if (!usesSupabase) return null;
   for (const key of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
     if (!(env[key] as string | undefined)?.trim()) {
@@ -232,6 +228,7 @@ export const envValidationSchema = Joi.object({
     otherwise: Joi.string().default('http://localhost:9910'),
   }),
   AI_SERVICE_SECRET: Joi.string().allow('').optional(),
+  AI_REQUEST_TIMEOUT_MS: Joi.number().integer().positive().default(90000),
 
   POLYGON_RPC_URL: requiredForAmoy(
     Joi.string().uri({ scheme: ['http', 'https'] }),

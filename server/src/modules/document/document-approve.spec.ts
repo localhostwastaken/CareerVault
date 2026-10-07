@@ -3,7 +3,7 @@ import { DocumentService } from './document.service.js';
 /**
  * Skill extraction after approve() is explicitly best-effort (AI downtime must never
  * block issuance). It must be fire-and-forget: awaiting it would hold the HTTP response
- * open for up to two AI-service timeouts (extractSkills + embed, 35s each) — the cause of
+ * open for up to two AI-service timeouts (extractSkills + embed, 90s each) — the cause of
  * the production /approve latency spikes traced alongside PrismaPgAdapter EAUTHTIMEOUTs.
  */
 
