@@ -137,11 +137,6 @@ pre .bad { color: #F08A84; }
 .sql { background: var(--panel); color: var(--ink); border: 1px solid var(--rule-strong); }
 .sql .kw { color: var(--seal); font-weight: 500; }
 
-/* supabase mock of the user's own screenshot */
-.dbrow { font-family: var(--mono); font-size: 12px; }
-.dbrow td { white-space: nowrap; }
-.cipher { color: var(--anchor); }
-
 /* pipeline */
 .pipe { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: 4px; background: var(--panel); }
 .pipe-step { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 4px 14px; padding: 14px 16px; border-bottom: 1px solid var(--rule); }
@@ -154,6 +149,10 @@ pre .bad { color: #F08A84; }
 .qa > div { padding: 14px 0; border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; gap: 4px; }
 .qa .q { font-weight: 600; }
 .qa .a { color: var(--muted); max-width: 72ch; }
+
+.words { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
+.words div { border: 1px solid var(--rule); background: var(--panel); border-radius: 4px; padding: 10px 12px; font-size: 14px; color: var(--muted); }
+.words b { color: var(--ink); display: block; }
 
 .toc { display: flex; flex-wrap: wrap; gap: 8px; }
 .toc a { font-size: 13px; text-decoration: none; border: 1px solid var(--rule-strong); border-radius: 999px; padding: 3px 12px; color: var(--ink); background: var(--panel); }
@@ -170,70 +169,93 @@ pre .bad { color: #F08A84; }
 <div class="page">
 
   <header class="masthead">
-    <span class="eyebrow">CareerVault · LY final evaluation</span>
-    <h1>Evaluation run sheet</h1>
-    <p class="lede">The four fixes the evaluator asked for, checked against the code and the live site, plus a click-by-click demo of each one. Every screenshot below was taken from the live deployment on 15 Oct 2026.</p>
+    <span class="eyebrow">CareerVault · Final year evaluation</span>
+    <h1>Evaluation demo guide</h1>
+    <p class="lede">The evaluator asked us to fix 4 things. This page explains each one in simple words and tells you exactly what to click to show it. All screenshots are from the real live website (15 Oct 2026).</p>
     <div class="meta">
-      <span>Site <b><a href="https://career-vault-steel.vercel.app/demo" target="_blank" rel="noopener">career-vault-steel.vercel.app/demo</a></b></span>
-      <span>Chain <b>Polygon Amoy (80002)</b></span>
-      <span>Contract <b class="mono">0x483f9FF4…4b8Cb12a</b></span>
+      <span>Website <b><a href="https://career-vault-steel.vercel.app/demo" target="_blank" rel="noopener">career-vault-steel.vercel.app/demo</a></b></span>
+      <span>Blockchain <b>Polygon Amoy (a free public test blockchain)</b></span>
+      <span>Our contract <b class="mono">0x483f9FF4…4b8Cb12a</b></span>
     </div>
     <nav class="toc" aria-label="Sections">
-      <a href="#verdict">Verdict</a>
+      <a href="#verdict">Summary</a>
+      <a href="#words">Words to know</a>
       <a href="#before">Before you start</a>
-      <a href="#act1">1 · Trust setup</a>
-      <a href="#act2">2 · Issue live</a>
-      <a href="#act3">3 · Supabase</a>
-      <a href="#act4">4 · Anchor live</a>
-      <a href="#act5">5 · Offline proof</a>
-      <a href="#act6">6 · Viva pipeline</a>
-      <a href="#questions">Likely questions</a>
-      <a href="#fixes">Fix before the day</a>
+      <a href="#act1">1 · Show the setup</a>
+      <a href="#act2">2 · Make a document</a>
+      <a href="#act3">3 · Show the database</a>
+      <a href="#act4">4 · Put it on the blockchain</a>
+      <a href="#act5">5 · Check without our server</a>
+      <a href="#act6">6 · Explain the hashing</a>
+      <a href="#questions">Questions</a>
+      <a href="#fixes">Problems to avoid</a>
     </nav>
   </header>
 
-  <!-- VERDICT -->
+  <!-- SUMMARY -->
   <section id="verdict">
     <div class="section-head">
       <span class="eyebrow">Short answer</span>
-      <h2>All four points are implemented and live</h2>
+      <h2>All 4 points are done and working</h2>
     </div>
-    <p>Each point exists in the code and works on the deployed stack. A few details differ from how the feedback note words them, so brief everyone on the "Say it like this" column. If you repeat the note word for word, an evaluator who reads the code will catch the mismatch.</p>
+    <p>Everything the evaluator asked for is built and running on the live website. A few small details work differently from how the feedback note describes them. Use the words in the last column, so you don't say something that isn't true.</p>
     <div class="table-wrap">
       <table>
-        <thead><tr><th style="width:22%">Point</th><th style="width:12%">Status</th><th>What is actually built</th><th style="width:26%">Say it like this</th></tr></thead>
+        <thead><tr><th style="width:20%">Point</th><th style="width:11%">Done?</th><th>What we built (simple words)</th><th style="width:28%">What to say</th></tr></thead>
         <tbody>
           <tr>
-            <td><b>1 · Decentralisation defence</b><br><span class="mono" style="font-size:12px;color:var(--subtle)">Act 5</span></td>
-            <td><span class="status s-ok">Live</span></td>
-            <td>Holder downloads a W3C-style JSON-LD credential (<code>.jsonld</code>). It is verified in the browser at <code>/verify/file</code> or with the offline CLI <code>tools/verify-credential</code>, using only the file plus a public Polygon RPC. I ran the CLI on a production credential and all 8 checks passed.</td>
-            <td>"Verification needs the file and the public chain, not our server." Admit one limit: the file can't prove the issuer key belongs to TechCorp. That needs the key fingerprint out of band.</td>
+            <td><b>1 · Work even if our server dies</b><br><span class="mono" style="font-size:12px;color:var(--subtle)">Show in part 5</span></td>
+            <td><span class="status s-ok">Done</span></td>
+            <td>The employee can download a <b>proof file</b> (<code>.jsonld</code>) for each document. Anyone can check that file using only the file and the public blockchain. Our server and database are not needed. We tested it on a real document and all 8 checks passed.</td>
+            <td>"To check a document you only need the file and the blockchain, not our server." If they ask for a weakness: "The file alone can't prove the company's key really belongs to TechCorp. You confirm that with the company."</td>
           </tr>
           <tr>
-            <td><b>2 · Database encryption</b><br><span class="mono" style="font-size:12px;color:var(--subtle)">Act 3</span></td>
-            <td><span class="status s-ok">Live</span></td>
-            <td>AES-256-GCM envelope encryption in a <b>Prisma 7 query extension</b>. Covers <code>content_json</code>, <code>salt</code>, <code>manager_signature</code>, <code>hr_signature</code>, <code>revocation_reason_text</code>, both <code>document_versions</code> fields, and the PDFs. Strict reads are <b>on</b> in production. The key comes from <code>KMS_MASTER_KEY</code>.</td>
-            <td>Say "Prisma client extension", not "middleware" (Prisma 7 removed <code>$use</code>). The env var is <code>KMS_MASTER_KEY</code>, not <code>MASTER_ENCRYPTION_KEY</code>. Disk-level AES-256 at rest is Supabase's, not something you configured.</td>
+            <td><b>2 · Encrypt the database</b><br><span class="mono" style="font-size:12px;color:var(--subtle)">Show in part 3</span></td>
+            <td><span class="status s-ok">Done</span></td>
+            <td>Before saving, our server <b>locks (encrypts)</b> the sensitive columns with AES-256. The database only holds scrambled text starting with <code>cvenc:v1:</code>. Locked: the document content, the salt, both signatures, the cancel reason, and the PDFs. The secret key lives only on the server.</td>
+            <td>Say "<b>Prisma extension</b>", not "Prisma middleware". The key's name is <code>KMS_MASTER_KEY</code>. "Supabase also encrypts its whole disk, but that is Supabase's feature. Ours is an extra lock on top."</td>
           </tr>
           <tr>
-            <td><b>3 · Live smart contract</b><br><span class="mono" style="font-size:12px;color:var(--subtle)">Act 4</span></td>
-            <td><span class="status s-ok">Live</span></td>
-            <td><code>AnchorRegistry.sol</code> is deployed and source-verified at <code>0x483f…b12a</code>. It already holds 2 real anchors. An ethers v6 service sends <code>anchorRoot</code>, waits 2 confirmations, and saves <code>polygon_tx_hash</code>. It runs nightly at 00:00 IST, or on demand with <span class="ui">Anchor now</span>.</td>
-            <td>Writes are limited to <b>authorised anchor wallets</b>, and only the owner can change that list. The owner and anchor wallet are the same address, <code>0x955c…056e</code>.</td>
+            <td><b>3 · Use a real blockchain</b><br><span class="mono" style="font-size:12px;color:var(--subtle)">Show in part 4</span></td>
+            <td><span class="status s-ok">Done</span></td>
+            <td>We wrote a smart contract (<b>AnchorRegistry</b>) and put it on <b>Polygon Amoy</b>, a real public test blockchain. It already has 2 real entries. Every midnight, or when the admin clicks <span class="ui">Anchor now</span>, our server sends a real transaction and saves its ID in our database.</td>
+            <td>"Only our wallet is allowed to write to the contract. Anyone in the world can read it."</td>
           </tr>
           <tr>
-            <td><b>4 · Hashing pipeline</b><br><span class="mono" style="font-size:12px;color:var(--subtle)">Act 6</span></td>
-            <td><span class="status s-warn">Live, order differs</span></td>
-            <td>JCS (RFC 8785), then a 32-byte random salt <b>appended</b>, then SHA-256. RSA-2048 RS256 signatures, then a <code>merkletreejs</code> tree with sorted pairs. The known-answer self-test passes.</td>
-            <td>Signing happens <b>before</b> the Merkle tree, at Sign and Approve time. Each person signs a <b>role statement</b> over the hash, not the bare leaf. The salt goes <b>after</b> the JSON, not before.</td>
+            <td><b>4 · Explain the hashing</b><br><span class="mono" style="font-size:12px;color:var(--subtle)">Explain in part 6</span></td>
+            <td><span class="status s-warn">Done, order differs</span></td>
+            <td>Sort the data (JCS) → add a random salt at the end → make a SHA-256 fingerprint → manager and HR sign it with RSA → later, many fingerprints are combined into one Merkle root that goes on the blockchain.</td>
+            <td>"Signing happens <b>before</b> the Merkle tree. Each person signs a small statement that contains the hash and their role. The salt is added <b>after</b> the data, not before."</td>
           </tr>
         </tbody>
       </table>
     </div>
     <div class="note bad">
-      <h3>One thing on the live site will fail in front of the evaluator</h3>
-      <p>Bob Holder's two TechCorp documents (Experience Letter and Letter of Recommendation, 25 Sep) were anchored by the old <b>local simulator</b> before the Amoy switch. Public verification now says <b>"Verification failed: Merkle root not found on-chain" (5/6)</b>. The admin's batch list also shows a <b>"Local simulator · Block #1"</b> row. Don't open either during the demo, or fix them first. See <a href="#fixes">Fix before the day</a>.</p>
-      <figure class="mid"><a href="img/18-bob-fails.png" target="_blank" rel="noopener"><img src="img/18-bob-fails.png" alt="Public verification of Bob's Experience Letter showing Verification failed, 5 of 6 checks, Blockchain anchor failed: Merkle root not found on-chain" loading="lazy"></a><figcaption>Live today: Bob's Experience Letter, hash 5996bacf…7779.</figcaption></figure>
+      <h3>One thing on the live site will fail if you open it</h3>
+      <p>Bob Holder's two documents from 25 Sep were saved using our <b>old fake blockchain</b>, from before we switched to the real one. If you check them, the website says <b>"Verification failed" (5 of 6 checks)</b>. The admin page also shows an old row called <b>"Local simulator"</b>. <b>Don't open Bob's documents during the demo.</b> See <a href="#fixes">Problems to avoid</a>.</p>
+      <figure class="mid"><a href="img/18-bob-fails.png" target="_blank" rel="noopener"><img src="img/18-bob-fails.png" alt="Public verification of Bob's Experience Letter showing Verification failed, 5 of 6 checks, Blockchain anchor failed: Merkle root not found on-chain" loading="lazy"></a><figcaption>This is what happens today if you check Bob's Experience Letter.</figcaption></figure>
+    </div>
+  </section>
+
+  <!-- WORDS -->
+  <section id="words">
+    <div class="section-head">
+      <span class="eyebrow">Read this once</span>
+      <h2>Words to know</h2>
+    </div>
+    <div class="words">
+      <div><b>Hash / fingerprint</b>A short code made from the data. Change one letter and the code changes completely.</div>
+      <div><b>SHA-256</b>The method we use to make the hash. Always 64 characters.</div>
+      <div><b>JCS (RFC 8785)</b>A rule for sorting and formatting data, so the same data always gives the same text, and so the same hash.</div>
+      <div><b>Salt</b>32 random bytes added to the data before hashing, so nobody can guess the data from its hash.</div>
+      <div><b>RSA-2048 signature</b>A digital signature made with the company's secret key. Proves the company approved it.</div>
+      <div><b>Merkle tree / root</b>Many hashes combined, pair by pair, into one final hash (the root). We put only the root on the blockchain.</div>
+      <div><b>Anchoring</b>Writing the Merkle root onto the blockchain, so it can never be changed or deleted.</div>
+      <div><b>Smart contract</b>A small program living on the blockchain. Ours stores the roots and answers "does this root exist?".</div>
+      <div><b>Polygon Amoy</b>A real public blockchain used for testing. Its money (POL) is free.</div>
+      <div><b>PolygonScan</b>A public website where anyone can look at Polygon transactions and contracts.</div>
+      <div><b>AES-256-GCM</b>The lock we use to encrypt database columns. Without the key, the data is just scrambled text.</div>
+      <div><b>Proof file (.jsonld)</b>A file the employee downloads. It has the document, its hash, both signatures and the blockchain receipt.</div>
     </div>
   </section>
 
@@ -244,43 +266,43 @@ pre .bad { color: #F08A84; }
       <h2>Before you start</h2>
     </div>
     <div class="note warn">
-      <h3>The password is <code>Password123@</code>, not <code>Password@123</code></h3>
-      <p>The live API rejects <code>Password@123</code> for every demo account ("Invalid credentials"). <code>Password123@</code> works for all four.</p>
+      <h3>The password is <code>Password123@</code>, NOT <code>Password@123</code></h3>
+      <p><code>Password@123</code> does not work on the live website. <code>Password123@</code> works for all four accounts.</p>
     </div>
     <div class="accounts">
-      <div class="acct"><span class="role">Holder</span><span class="email">alice@holder.example.com</span><span class="what">Requests the document, downloads the proof file</span></div>
-      <div class="acct"><span class="role">Manager · TechCorp</span><span class="email">marcus@techcorp.example.com</span><span class="what">Fills in the facts and signs first</span></div>
-      <div class="acct"><span class="role">HR · TechCorp</span><span class="email">hr@techcorp.example.com</span><span class="what">Co-signs and issues; can revoke</span></div>
-      <div class="acct"><span class="role">Org admin · TechCorp</span><span class="email">admin@techcorp.example.com</span><span class="what">Presses <b>Anchor now</b></span></div>
+      <div class="acct"><span class="role">Employee (holder)</span><span class="email">alice@holder.example.com</span><span class="what">Asks for the document, downloads the proof file</span></div>
+      <div class="acct"><span class="role">Manager · TechCorp</span><span class="email">marcus@techcorp.example.com</span><span class="what">Fills in the details and signs first</span></div>
+      <div class="acct"><span class="role">HR · TechCorp</span><span class="email">hr@techcorp.example.com</span><span class="what">Checks, signs second, and issues it</span></div>
+      <div class="acct"><span class="role">Admin · TechCorp</span><span class="email">admin@techcorp.example.com</span><span class="what">Clicks <b>Anchor now</b></span></div>
     </div>
     <ol class="do">
-      <li><b>Open four separate browser sessions</b>, one per account. Use four Chrome profiles, or Chrome + Chrome Incognito + Safari + Firefox. One browser holds one signed-in user, and swapping accounts mid-demo wastes time.</li>
-      <li><b>Wake the backend.</b> Open <a href="https://career-vault-steel.vercel.app/demo" target="_blank" rel="noopener">/demo</a> and wait until the "Public ledger" card fills in. The API runs on Render, so the first request can take up to a minute.</li>
-      <li><b>Check the chain.</b> On <code>/demo</code>, the <b>Chain pre-flight</b> card should show four green ticks. Gas balance today is <b>0.0894 POL</b>. The last anchor cost about 0.0046 POL, so there is room, but top up from the Amoy faucet if it drops below ~0.03.</li>
-      <li><b>Pre-open these tabs:</b> <a href="https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#events" target="_blank" rel="noopener">contract Events</a>, <a href="https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#readContract" target="_blank" rel="noopener">Read Contract</a>, and Supabase → Table Editor → <code>documents</code>.</li>
-      <li><b>For the terminal part (optional):</b> clone the repo, then <code>cd tools/verify-credential &amp;&amp; npm install</code>.</li>
-      <li><b>Optional, for a real Merkle path:</b> on the morning of the evaluation, run one extra document through request → sign → approve, but don't anchor it. The live "Anchor now" then batches 2 documents, and the proof file shows a real sibling hash. With one document the root equals the leaf (see Act 6). Don't do this the day before, because the midnight job will anchor it.</li>
+      <li><b>Open 4 separate browser windows, one per person.</b> For example Chrome, Chrome Incognito, Safari and Firefox. One browser can only be logged in as one person at a time.</li>
+      <li><b>Wake up the server.</b> Open <a href="https://career-vault-steel.vercel.app/demo" target="_blank" rel="noopener">/demo</a> 10 minutes early and wait until the "Public ledger" box fills in. The server sleeps when nobody uses it, so the first load can take about a minute.</li>
+      <li><b>Check the blockchain is ready.</b> On <code>/demo</code>, the <b>Chain pre-flight</b> box should show 4 green ticks. The wallet has <b>0.0894 POL</b>; one anchor costs about 0.005, so that is plenty.</li>
+      <li><b>Keep these tabs open:</b> <a href="https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#events" target="_blank" rel="noopener">PolygonScan Events</a>, <a href="https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#readContract" target="_blank" rel="noopener">PolygonScan Read Contract</a>, and Supabase → Table Editor → <code>documents</code>.</li>
+      <li><b>Optional, terminal check:</b> run <code>cd tools/verify-credential &amp;&amp; npm install</code> once.</li>
+      <li><b>Optional, nicer Merkle tree:</b> this morning, make one practice document (request → sign → approve) but <b>don't</b> click Anchor now. In the demo, Anchor now will then put 2 documents together, which shows a real tree. Don't do this the day before: the midnight job would anchor it on its own.</li>
     </ol>
-    <figure class="narrow"><a href="img/19-preflight.png" target="_blank" rel="noopener"><img src="img/19-preflight.png" alt="Chain pre-flight card: Polygon Amoy reachable, registry contract deployed (2,775 bytes), anchor wallet authorised, gas balance 0.0894 POL" loading="lazy"></a><figcaption>/demo → Chain pre-flight. All four should be green before you start.</figcaption></figure>
+    <figure class="narrow"><a href="img/19-preflight.png" target="_blank" rel="noopener"><img src="img/19-preflight.png" alt="Chain pre-flight card: Polygon Amoy reachable, registry contract deployed (2,775 bytes), anchor wallet authorised, gas balance 0.0894 POL" loading="lazy"></a><figcaption>/demo → Chain pre-flight. All 4 should be green before you start.</figcaption></figure>
   </section>
 
   <!-- ACT 1 -->
   <section id="act1" class="act">
     <div class="section-head">
-      <div class="act-head"><span class="eyebrow">Act 1</span><span class="time">~1 min</span><span class="proves">Sets up points 2 &amp; 3</span></div>
-      <h2>Show the trust setup</h2>
+      <div class="act-head"><span class="eyebrow">Part 1</span><span class="time">about 1 min</span><span class="proves">Supports points 2 &amp; 3</span></div>
+      <h2>Show the setup</h2>
     </div>
     <div class="step">
       <div class="step-no">1.1</div>
       <div class="step-body">
-        <div class="who"><span class="actor">No login</span><span>career-vault-steel.vercel.app/demo</span></div>
+        <div class="who"><span class="actor">No login needed</span><span>career-vault-steel.vercel.app/demo</span></div>
         <ol class="do">
-          <li>Open <code>/demo</code> (or click <span class="ui">Demo guide</span> in the top bar).</li>
-          <li>Point at the left card, <b>Public ledger</b>: network <i>Polygon Amoy testnet · chain id 80002</i>, the contract, and the anchor wallet.</li>
-          <li>Point at the right card, <b>Encryption at rest</b>: badge <i>AES-256-GCM envelope (cvenc:v1)</i>, badge <i>Strict reads on</i>, and the 7 encrypted columns.</li>
+          <li>Open <code>/demo</code> (or click <span class="ui">Demo guide</span> at the top).</li>
+          <li>Left box, <b>Public ledger</b>: shows we use Polygon Amoy, our contract address, and our wallet.</li>
+          <li>Right box, <b>Encryption at rest</b>: shows the lock type (AES-256-GCM), "Strict reads on", and the 7 locked columns.</li>
         </ol>
-        <p class="say">The server reports this from its live configuration. Nothing here is hard-coded. Anchoring is real on Amoy, and these seven columns are encrypted before they reach Postgres.</p>
-        <figure><a href="img/01-demo-cockpit.png" target="_blank" rel="noopener"><img src="img/01-demo-cockpit.png" alt="Demo guide page showing the Public ledger card with network, contract and wallet, and the Encryption at rest card listing seven encrypted columns with Strict reads on" loading="lazy"></a><figcaption>/demo: what the evaluator sees first.</figcaption></figure>
+        <p class="say">This comes straight from the live server's settings. The blockchain is real, and these 7 columns are locked before they reach the database.</p>
+        <figure><a href="img/01-demo-cockpit.png" target="_blank" rel="noopener"><img src="img/01-demo-cockpit.png" alt="Demo guide page showing the Public ledger card with network, contract and wallet, and the Encryption at rest card listing seven encrypted columns with Strict reads on" loading="lazy"></a><figcaption>/demo: the first page to show.</figcaption></figure>
       </div>
     </div>
   </section>
@@ -288,25 +310,25 @@ pre .bad { color: #F08A84; }
   <!-- ACT 2 -->
   <section id="act2" class="act">
     <div class="section-head">
-      <div class="act-head"><span class="eyebrow">Act 2</span><span class="time">~4 min</span><span class="proves">Creates the document for points 2, 3, 4</span></div>
-      <h2>Issue a document live</h2>
-      <p>Today nothing is waiting: the manager inbox and HR approvals are empty. This act creates a fresh document that the next three acts use.</p>
+      <div class="act-head"><span class="eyebrow">Part 2</span><span class="time">about 4 min</span><span class="proves">Makes the document for parts 3, 4, 5</span></div>
+      <h2>Make a new document live</h2>
+      <p>Nothing is waiting in the inboxes today, so we create a fresh document in front of the evaluator. The next parts use it.</p>
     </div>
 
     <div class="step">
       <div class="step-no">2.1</div>
       <div class="step-body">
-        <div class="who"><span class="actor">Alice (holder)</span><span class="mono">alice@holder.example.com</span></div>
+        <div class="who"><span class="actor">Alice (employee)</span><span class="mono">alice@holder.example.com</span></div>
         <ol class="do">
-          <li>Go to <code>/auth/login</code>, enter the email and <code>Password123@</code>, then click <span class="ui">Sign in</span>. You land on <b>Wallet</b>.</li>
-          <li>Click <span class="ui">Request document</span> (top right of Wallet or Documents).</li>
-          <li>Pick <b>Experience Letter</b>. Under <b>Organisation</b> choose <b>TechCorp</b>, and leave <b>Manager</b> as "Any available manager". A note is optional. Leave AI skill extraction unticked.</li>
+          <li>Go to <code>/auth/login</code>, type the email and <code>Password123@</code>, click <span class="ui">Sign in</span>. You land on <b>Wallet</b>.</li>
+          <li>Click <span class="ui">Request document</span> (top right).</li>
+          <li>Choose <b>Experience Letter</b>. Organisation: <b>TechCorp</b>. Leave Manager as "Any available manager". Notes are optional. Leave "AI skill extraction" unticked.</li>
           <li>Click <span class="ui">Review &amp; send</span>, then confirm.</li>
         </ol>
-        <p class="say">The holder only sends a request. The employer writes the content, which is why a verifier can trust it.</p>
+        <p class="say">The employee only asks. The company writes the content, which is why it can be trusted.</p>
         <div class="pair">
-          <figure><a href="img/04-login.png" target="_blank" rel="noopener"><img src="img/04-login.png" alt="Sign-in form with Alice's email filled in" loading="lazy"></a><figcaption>Sign in.</figcaption></figure>
-          <figure><a href="img/05-request-form.png" target="_blank" rel="noopener"><img src="img/05-request-form.png" alt="Request a document form with Experience Letter selected, TechCorp chosen, and the Review and send button" loading="lazy"></a><figcaption>The request form, filled in (not sent).</figcaption></figure>
+          <figure><a href="img/04-login.png" target="_blank" rel="noopener"><img src="img/04-login.png" alt="Sign-in form with Alice's email filled in" loading="lazy"></a><figcaption>Log in.</figcaption></figure>
+          <figure><a href="img/05-request-form.png" target="_blank" rel="noopener"><img src="img/05-request-form.png" alt="Request a document form with Experience Letter selected, TechCorp chosen, and the Review and send button" loading="lazy"></a><figcaption>The request form, filled in.</figcaption></figure>
         </div>
       </div>
     </div>
@@ -316,13 +338,13 @@ pre .bad { color: #F08A84; }
       <div class="step-body">
         <div class="who"><span class="actor">Marcus (manager)</span><span class="mono">marcus@techcorp.example.com</span></div>
         <ol class="do">
-          <li>Sign in. You land on <b>Inbox</b>, which now lists Alice's request.</li>
+          <li>Log in. You land on <b>Inbox</b>, which now shows Alice's request.</li>
           <li>Open it and click <span class="ui">Draft &amp; sign</span>.</li>
-          <li>Fill in <b>Employee code</b> (e.g. <code>TC-0142</code>), <b>Designation</b> (<code>Software Engineering Intern</code>), <b>Date of joining</b>, and <b>Conduct summary</b>. Employee name, letter type, employment type and signatory are pre-filled.</li>
+          <li>Fill in <b>Employee code</b> (e.g. <code>TC-0142</code>), <b>Designation</b> (e.g. <code>Software Engineering Intern</code>), <b>Date of joining</b>, and <b>Conduct summary</b>. The other fields are already filled.</li>
           <li>Click <span class="ui">Sign &amp; send to HR</span>.</li>
         </ol>
-        <p class="say">On submit, the server canonicalises this JSON with JCS, appends a fresh 32-byte salt, and hashes it with SHA-256. It then signs a MANAGER statement over that hash with TechCorp's RSA-2048 key. Content, salt and signature are encrypted before they're written.</p>
-        <p class="expect">No screenshot: this screen only exists once there is a live request.</p>
+        <p class="say">When he clicks, the server sorts the data, adds a random salt, and makes a SHA-256 fingerprint. It signs that with TechCorp's RSA key, then locks everything before saving it.</p>
+        <p class="expect">No screenshot: this screen only appears when there is a real request.</p>
       </div>
     </div>
 
@@ -331,23 +353,23 @@ pre .bad { color: #F08A84; }
       <div class="step-body">
         <div class="who"><span class="actor">Hannah (HR)</span><span class="mono">hr@techcorp.example.com</span></div>
         <ol class="do">
-          <li>Sign in. You land on <b>Approvals</b>. Open the document Marcus just signed.</li>
-          <li>Click <span class="ui">Approve &amp; issue</span>. A dialog says "You co-sign this document and issue it…". Click <span class="ui">Approve &amp; issue</span> again.</li>
-          <li>The document is now <b>Issued</b>. It appears under <b>Issued</b> in HR's menu.</li>
+          <li>Log in. You land on <b>Approvals</b>. Open the document Marcus just signed.</li>
+          <li>Click <span class="ui">Approve &amp; issue</span>. A popup opens. Click <span class="ui">Approve &amp; issue</span> again.</li>
+          <li>The document is now <b>Issued</b>. You can see it under <b>Issued</b> in the menu.</li>
         </ol>
-        <p class="say">HR signs a second, different statement: role HR plus her membership id. Two people, two signatures, and the PDF is encrypted before storage.</p>
-        <figure><a href="img/10-hr-issued.png" target="_blank" rel="noopener"><img src="img/10-hr-issued.png" alt="HR Issued list showing three TechCorp documents" loading="lazy"></a><figcaption>HR → Issued (today, before your live document). Your new one will sit on top.</figcaption></figure>
+        <p class="say">HR signs a second time, separately. Two different people approved this document.</p>
+        <figure><a href="img/10-hr-issued.png" target="_blank" rel="noopener"><img src="img/10-hr-issued.png" alt="HR Issued list showing three TechCorp documents" loading="lazy"></a><figcaption>HR → Issued (today). Your new document will appear at the top.</figcaption></figure>
       </div>
     </div>
 
     <div class="step">
       <div class="step-no">2.4</div>
       <div class="step-body">
-        <div class="who"><span class="actor">Anyone</span><span>document page</span></div>
+        <div class="who"><span class="actor">Anyone</span><span>the document page</span></div>
         <ol class="do">
-          <li>On the document page, scroll to <b>On-chain proof</b> and click <span class="ui">Run public verification</span>. It opens <code>/verify/hash/&lt;hash&gt;</code>, which needs no login.</li>
-          <li>Expect <b>"Verified — anchoring pending"</b>: hash and both signatures pass, and the blockchain check is pending until Act 4.</li>
-          <li>Keep this tab open. You'll refresh it after anchoring.</li>
+          <li>On the document page, find the <b>On-chain proof</b> box and click <span class="ui">Run public verification</span>. Anyone can open this page without logging in.</li>
+          <li>You should see <b>"Verified — anchoring pending"</b>. Everything passes except the blockchain step, which we do in part 4.</li>
+          <li>Keep this tab open. You will refresh it later.</li>
         </ol>
       </div>
     </div>
@@ -356,9 +378,9 @@ pre .bad { color: #F08A84; }
   <!-- ACT 3 -->
   <section id="act3" class="act">
     <div class="section-head">
-      <div class="act-head"><span class="eyebrow">Act 3</span><span class="time">~2 min</span><span class="proves">Proves point 2</span></div>
-      <h2>Show ciphertext in Supabase</h2>
-      <p>Do this right after HR issues the document, so the evaluator sees the row that was just created.</p>
+      <div class="act-head"><span class="eyebrow">Part 3</span><span class="time">about 2 min</span><span class="proves">Proves point 2</span></div>
+      <h2>Show that the database is locked</h2>
+      <p>Do this right after HR issues the document, so the evaluator sees the brand-new row.</p>
     </div>
 
     <div class="step">
@@ -366,39 +388,28 @@ pre .bad { color: #F08A84; }
       <div class="step-body">
         <div class="who"><span class="actor">Supabase</span><span>Table Editor → schema public</span></div>
         <ol class="do">
-          <li>Open table <code>documents</code>. Click the column header <code>created_at</code> and sort descending, so your new row is first.</li>
-          <li>Scroll right to <code>content_json</code>, <code>salt</code>, <code>manager_signature</code>, <code>hr_signature</code>. Every value starts with <code>cvenc:v1:f22de41b6236d112:</code>.</li>
-          <li>Then point at <code>document_hash</code>: plain 64-character hex. Copy it and show it matches the hash on the app's Authenticity card.</li>
-          <li>Open <code>document_versions</code>: <code>content_json</code> is ciphertext too. Your screenshot already shows this.</li>
+          <li>Open the table <code>documents</code>. Click the <code>created_at</code> column and sort newest first, so the new row is on top.</li>
+          <li>Scroll right to <code>content_json</code>, <code>salt</code>, <code>manager_signature</code>, <code>hr_signature</code>. They all start with <code>cvenc:v1:f22de41b6236d112:</code>. That is locked text.</li>
+          <li>Now point at <code>document_hash</code>: it is normal readable text. Copy it and show it is the same hash the app shows in the "Authenticity" box.</li>
+          <li>Open <code>document_versions</code>: <code>content_json</code> and <code>change_summary</code> are locked too (screenshot below).</li>
         </ol>
-        <p class="say">The database only holds sealed envelopes. Without the master key, which lives only in the server's environment, a dump or backup reveals nothing. The hash is public by design: it's what a verifier looks up, and it reveals nothing without the salt.</p>
-        <div class="table-wrap">
-          <table class="dbrow">
-            <thead><tr><th>document_id</th><th>version_number</th><th>content_json (jsonb)</th></tr></thead>
-            <tbody>
-              <tr><td>53bc9dd8-36dd-45af…</td><td>2</td><td class="cipher">"cvenc:v1:f22de41b6236d112:9dTQq-1…</td></tr>
-              <tr><td>03f167e2-59cd-46dc…</td><td>2</td><td class="cipher">"cvenc:v1:f22de41b6236d112:9UtzPmi…</td></tr>
-              <tr><td>ec775677-9407-4a97…</td><td>2</td><td class="cipher">"cvenc:v1:f22de41b6236d112:TOA4s37…</td></tr>
-              <tr><td>74635f41-fe16-4f08…</td><td>2</td><td class="cipher">"cvenc:v1:f22de41b6236d112:Cv6-_nS…</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="expect">Rows transcribed from your production <code>document_versions</code> screenshot.</p>
+        <p class="say">The database only stores locked text. The key is only on our server, so a stolen copy of the database is useless. The hash is public on purpose: people use it to look up a document, and it reveals nothing.</p>
+        <figure><a href="img/23-supabase-document-versions.png" target="_blank" rel="noopener"><img src="img/23-supabase-document-versions.png" alt="Supabase production table document_versions: content_json and change_summary hold cvenc:v1 ciphertext on every row" loading="lazy"></a><figcaption>Our real production Supabase, table <code>document_versions</code>. Every row is locked.</figcaption></figure>
       </div>
     </div>
 
     <div class="step">
       <div class="step-no">3.2</div>
       <div class="step-body">
-        <div class="who"><span class="actor">Explain one envelope</span></div>
-        <pre><span class="ok">cvenc:v1</span> : <span class="ok">f22de41b6236d112</span> : <span class="ok">&lt;wrapped data key&gt;</span> : <span class="ok">&lt;12-byte IV&gt;</span> : <span class="ok">&lt;ciphertext ‖ GCM tag&gt;</span>
-<span class="dim">  format     key id            this row's AES     fresh per    AES-256-GCM, with AAD
-  + version  (first 16 hex     key, sealed        field        "careervault|&lt;column&gt;|v1"
-             of SHA-256(KEK))  under the KEK</span></pre>
+        <div class="who"><span class="actor">Only if they ask</span><span>what the locked text means</span></div>
+        <pre><span class="ok">cvenc:v1</span> : <span class="ok">f22de41b6236d112</span> : <span class="ok">&lt;row key&gt;</span> : <span class="ok">&lt;IV&gt;</span> : <span class="ok">&lt;locked data&gt;</span>
+<span class="dim">  our         name of the      this row's own   random      the content,
+  format      master key       key, locked by   starting    locked with
+              (not the key)    the master key   value       AES-256-GCM</span></pre>
         <ul class="do">
-          <li><b>Same key id on every row</b> is expected. It names the key-encryption key, derived from <code>KMS_MASTER_KEY</code> with HKDF-SHA256. It isn't secret.</li>
-          <li><b>Different wrapped key and IV on every row</b>: each row gets its own random AES-256 data key. That is envelope encryption.</li>
-          <li><b>The column name is bound in (AAD)</b>, so a ciphertext pasted into a different column fails authentication.</li>
+          <li><b>The same <code>f22de41b…</code> on every row is normal.</b> It is only the name of the master key, not the key itself.</li>
+          <li><b>Everything after it is different on every row.</b> Each row gets its own new random key. This is called envelope encryption.</li>
+          <li><b>The column name is mixed into the lock.</b> If someone copies locked text into a different column, it won't open.</li>
         </ul>
       </div>
     </div>
@@ -406,8 +417,8 @@ pre .bad { color: #F08A84; }
     <div class="step">
       <div class="step-no">3.3</div>
       <div class="step-body">
-        <div class="who"><span class="actor">Supabase</span><span>SQL Editor (read-only queries)</span></div>
-        <p>If the evaluator wants it all on one screen, paste this:</p>
+        <div class="who"><span class="actor">Supabase</span><span>SQL Editor (optional)</span></div>
+        <p>If they want to see everything in one place, paste this. It only reads, it changes nothing:</p>
 <pre class="sql"><span class="kw">select</span> status, document_hash,
        left(content_json::text, 48)  <span class="kw">as</span> content_json,
        left(salt, 40)                <span class="kw">as</span> salt,
@@ -417,10 +428,10 @@ pre .bad { color: #F08A84; }
 <span class="kw">order by</span> created_at <span class="kw">desc</span>
 <span class="kw">limit</span> 5;</pre>
         <div class="note warn">
-          <h3>Don't edit any cell in production</h3>
-          <p>Strict reads are on. Any plaintext typed into an encrypted column makes that document unreadable ("refused on read") until the exact envelope is restored. Use sorting, filters and <code>select</code> only.</p>
+          <h3>Never edit a cell in Supabase</h3>
+          <p>If you type normal text into a locked column, the server refuses to read that document anymore. Only look, sort and filter.</p>
         </div>
-        <p class="expect"><b>On disk-level encryption:</b> Supabase encrypts the whole database at rest (AES-256) and in transit (TLS). That is the provider's layer and there is no toggle to show. Present field encryption as your layer on top. It protects against anyone with dashboard, backup or dump access, including Supabase.</p>
+        <p class="expect"><b>About "encryption at rest":</b> Supabase also encrypts its whole disk (AES-256) and uses secure connections (TLS). That is Supabase's own feature. Ours is an extra lock on top, so even someone who can log into Supabase can't read the data.</p>
       </div>
     </div>
   </section>
@@ -428,27 +439,27 @@ pre .bad { color: #F08A84; }
   <!-- ACT 4 -->
   <section id="act4" class="act">
     <div class="section-head">
-      <div class="act-head"><span class="eyebrow">Act 4</span><span class="time">~3 min</span><span class="proves">Proves point 3</span></div>
-      <h2>Anchor it live on Polygon</h2>
+      <div class="act-head"><span class="eyebrow">Part 4</span><span class="time">about 3 min</span><span class="proves">Proves point 3</span></div>
+      <h2>Put it on the blockchain live</h2>
     </div>
 
     <div class="step">
       <div class="step-no">4.1</div>
       <div class="step-body">
-        <div class="who"><span class="actor">Olivia (org admin)</span><span class="mono">admin@techcorp.example.com</span></div>
+        <div class="who"><span class="actor">Olivia (admin)</span><span class="mono">admin@techcorp.example.com</span></div>
         <ol class="do">
-          <li>Sign in (you land on <b>Organization</b>). Click <b>Analytics</b> in the left menu.</li>
-          <li>The first card is <b>Blockchain anchoring</b>. Optionally expand <b>What "Anchor now" does</b> to show the five steps.</li>
-          <li>Click <span class="ui">Anchor now</span>. The button shows "Anchoring…" while the server sends the transaction and waits for 2 confirmations (roughly 10–30 s).</li>
-          <li>A green notice appears: <b>"Anchored 1 document on-chain"</b> with <span class="ui">Open the transaction on PolygonScan</span>. A new row appears at the top of Recent batches.</li>
+          <li>Log in (you land on <b>Organization</b>). Click <b>Analytics</b> in the left menu.</li>
+          <li>The first box is <b>Blockchain anchoring</b>. You can open <b>What "Anchor now" does</b> to show the 5 steps.</li>
+          <li>Click <span class="ui">Anchor now</span>. It shows "Anchoring…" for about 10 to 30 seconds while it waits for the blockchain.</li>
+          <li>A green message appears: <b>"Anchored 1 document on-chain"</b>, with a link <span class="ui">Open the transaction on PolygonScan</span>. A new row appears at the top of the list.</li>
         </ol>
-        <p class="say">The server decrypts each issued document, re-hashes it, and checks it still matches. That's the integrity gate. It then builds the Merkle tree and our wallet calls anchorRoot on the contract. Only the 32-byte root goes on-chain, no personal data.</p>
-        <figure><a href="img/09-anchoring-card.png" target="_blank" rel="noopener"><img src="img/09-anchoring-card.png" alt="Blockchain anchoring card with the Anchor now button and two recent batches, one on Polygon Amoy and one labelled Local simulator" loading="lazy"></a><figcaption>Analytics → Blockchain anchoring. Keep attention on the new top row; the "Local simulator" row is the old batch (see <a href="#fixes">fixes</a>).</figcaption></figure>
+        <p class="say">First the server re-checks that every document is untouched. Then it combines their fingerprints into one Merkle root, and our wallet sends that root to our contract. Only that 32-byte root goes on the blockchain: no names, no personal data.</p>
+        <figure><a href="img/09-anchoring-card.png" target="_blank" rel="noopener"><img src="img/09-anchoring-card.png" alt="Blockchain anchoring card with the Anchor now button and two recent batches, one on Polygon Amoy and one labelled Local simulator" loading="lazy"></a><figcaption>Analytics → Blockchain anchoring. Look only at the new top row. The "Local simulator" row is the old fake one; ignore it.</figcaption></figure>
         <div class="note">
-          <h3>If the notice says something else</h3>
+          <h3>If you see a different message</h3>
           <ul>
-            <li><b>"Nothing to anchor"</b>: no document is in Issued state. HR hasn't approved, or someone already anchored it.</li>
-            <li><b>"… failed the integrity gate"</b>: a document's stored content no longer reproduces its hash. Don't demo it; investigate later.</li>
+            <li><b>"Nothing to anchor"</b>: no document is waiting. HR hasn't approved yet, or it was already anchored.</li>
+            <li><b>"… failed the integrity gate"</b>: that document's stored data was changed. Don't show it.</li>
           </ul>
         </div>
       </div>
@@ -457,13 +468,13 @@ pre .bad { color: #F08A84; }
     <div class="step">
       <div class="step-no">4.2</div>
       <div class="step-body">
-        <div class="who"><span class="actor">PolygonScan</span><span>transaction page</span></div>
+        <div class="who"><span class="actor">PolygonScan</span><span>the transaction page</span></div>
         <ol class="do">
-          <li>Click <span class="ui">Open the transaction on PolygonScan</span> (or <span class="ui">View transaction</span> on the batch row).</li>
-          <li>Point at: <b>Status: Success</b> · Transaction action <b>"Call Anchor Root Function"</b> · <b>From</b> <code>0x955cE896…</code> (our wallet) · <b>To</b> <code>0x483f9FF4…</code> (the registry, with the green verified tick) · Block number.</li>
-          <li>Open the <b>Logs</b> tab: a <code>RootAnchored</code> event with your root.</li>
+          <li>Click <span class="ui">Open the transaction on PolygonScan</span> (or <span class="ui">View transaction</span> on the row).</li>
+          <li>Point at: <b>Status: Success</b> · <b>"Call Anchor Root Function"</b> · <b>From</b> <code>0x955cE896…</code> (our wallet) · <b>To</b> <code>0x483f9FF4…</code> (our contract; the green tick means its code is public and verified).</li>
+          <li>Open the <b>Logs</b> tab: there is a <code>RootAnchored</code> entry with your root.</li>
         </ol>
-        <figure><a href="img/20-polygonscan-tx.png" target="_blank" rel="noopener"><img src="img/20-polygonscan-tx.png" alt="PolygonScan transaction details: Success, Anchor Root function call from the CareerVault wallet to the AnchorRegistry contract, block 49449192" loading="lazy"></a><figcaption>The existing 6 Oct anchor. Yours will look the same with a new hash.</figcaption></figure>
+        <figure><a href="img/20-polygonscan-tx.png" target="_blank" rel="noopener"><img src="img/20-polygonscan-tx.png" alt="PolygonScan transaction details: Success, Anchor Root function call from the CareerVault wallet to the AnchorRegistry contract, block 49449192" loading="lazy"></a><figcaption>Our real anchor from 6 Oct. Yours will look the same, with a new ID.</figcaption></figure>
       </div>
     </div>
 
@@ -472,25 +483,25 @@ pre .bad { color: #F08A84; }
       <div class="step-body">
         <div class="who"><span class="actor">PolygonScan</span><span>Contract → Read Contract</span></div>
         <ol class="do">
-          <li>Copy the new root from the batch row (copy icon next to <code>0x…</code>), or from the document's On-chain proof card. That card shows it already in <code>0x</code> bytes32 form.</li>
-          <li>On the contract page open <b>Contract → Read Contract</b>, expand <b>8. verifyRoot</b>, paste the root, click <span class="ui">Query</span>.</li>
-          <li>Result: <code>exists (bool) : true</code> with <code>documentCount</code>, <code>anchoredAt</code> and <code>anchoredBy</code> = our wallet.</li>
+          <li>Copy the new root: use the copy button next to the <code>0x…</code> on the new row, or copy it from the document's "On-chain proof" box.</li>
+          <li>On PolygonScan open <b>Contract → Read Contract</b>, open <b>8. verifyRoot</b>, paste the root, click <span class="ui">Query</span>.</li>
+          <li>It answers <code>exists : true</code>, plus how many documents, the time, and our wallet.</li>
         </ol>
-        <p class="say">This answer comes straight from Polygon, not from CareerVault. Anyone can ask the contract.</p>
-        <figure><a href="img/22-polygonscan-verifyroot.png" target="_blank" rel="noopener"><img src="img/22-polygonscan-verifyroot.png" alt="PolygonScan Read Contract verifyRoot query returning exists true, documentCount 1, anchoredBy the CareerVault wallet" loading="lazy"></a><figcaption>verifyRoot for root 0x4290e4b0…17f5.</figcaption></figure>
-        <figure><a href="img/21-polygonscan-events.png" target="_blank" rel="noopener"><img src="img/21-polygonscan-events.png" alt="PolygonScan Events tab listing RootAnchored events with root hash and anchoring wallet" loading="lazy"></a><figcaption>Events tab: every anchor the registry has ever recorded. The "Source Code" badge shows the contract is verified.</figcaption></figure>
+        <p class="say">This answer comes from the blockchain itself, not from us. Anyone can ask it.</p>
+        <figure><a href="img/22-polygonscan-verifyroot.png" target="_blank" rel="noopener"><img src="img/22-polygonscan-verifyroot.png" alt="PolygonScan Read Contract verifyRoot query returning exists true, documentCount 1, anchoredBy the CareerVault wallet" loading="lazy"></a><figcaption>verifyRoot says the root exists.</figcaption></figure>
+        <figure><a href="img/21-polygonscan-events.png" target="_blank" rel="noopener"><img src="img/21-polygonscan-events.png" alt="PolygonScan Events tab listing RootAnchored events with root hash and anchoring wallet" loading="lazy"></a><figcaption>Events tab: every root ever written to our contract. The "Source Code" badge means anyone can read the contract's code.</figcaption></figure>
       </div>
     </div>
 
     <div class="step">
       <div class="step-no">4.4</div>
       <div class="step-body">
-        <div class="who"><span class="actor">Close the loop</span></div>
+        <div class="who"><span class="actor">Finish</span></div>
         <ol class="do">
-          <li>Supabase → <code>merkle_roots</code>, newest row: <code>root_hash</code>, <code>polygon_tx_hash</code>, <code>polygon_block_number</code>, <code>chain_id = 80002</code>, <code>contract_address</code>. These are the same values as on PolygonScan. This answers "save the tx hash back to the database".</li>
-          <li>Refresh the public verification tab from 2.4. It now shows <b>Document verified · 6/6 · Anchored on-chain</b>.</li>
+          <li>Supabase → <code>merkle_roots</code>, newest row: <code>root_hash</code>, <code>polygon_tx_hash</code>, <code>polygon_block_number</code>, <code>chain_id = 80002</code>, <code>contract_address</code>. These match PolygonScan, which shows we save the transaction ID back into our database.</li>
+          <li>Go back to the verification tab from 2.4 and refresh. It now says <b>Document verified · 6/6 · Anchored on-chain</b>.</li>
         </ol>
-        <figure><a href="img/11-verify-top.png" target="_blank" rel="noopener"><img src="img/11-verify-top.png" alt="Public verification result: Document verified, 6 of 6 checks passed including Blockchain anchor on polygon-amoy" loading="lazy"></a><figcaption>Public verification after anchoring. The holder name is withheld on a public lookup.</figcaption></figure>
+        <figure><a href="img/11-verify-top.png" target="_blank" rel="noopener"><img src="img/11-verify-top.png" alt="Public verification result: Document verified, 6 of 6 checks passed including Blockchain anchor on polygon-amoy" loading="lazy"></a><figcaption>After anchoring: all 6 checks pass. The employee's name is hidden on the public page.</figcaption></figure>
       </div>
     </div>
   </section>
@@ -498,22 +509,22 @@ pre .bad { color: #F08A84; }
   <!-- ACT 5 -->
   <section id="act5" class="act">
     <div class="section-head">
-      <div class="act-head"><span class="eyebrow">Act 5</span><span class="time">~3 min</span><span class="proves">Proves point 1</span></div>
-      <h2>Verify without CareerVault</h2>
+      <div class="act-head"><span class="eyebrow">Part 5</span><span class="time">about 3 min</span><span class="proves">Proves point 1</span></div>
+      <h2>Check the document without our server</h2>
     </div>
 
     <div class="step">
       <div class="step-no">5.1</div>
       <div class="step-body">
-        <div class="who"><span class="actor">Alice (holder)</span></div>
+        <div class="who"><span class="actor">Alice (employee)</span></div>
         <ol class="do">
-          <li><b>Documents</b> → open the new Experience Letter.</li>
-          <li>In the <b>Authenticity</b> card click <span class="ui">Download proof file</span>. It saves <code>careervault-credential-&lt;id&gt;.jsonld</code>.</li>
-          <li>Optionally open the file: it has a W3C <code>@context</code>, <code>credentialSubject</code>, <code>proof</code> (salt, hash, both signatures, member ids) and <code>anchor</code> (root, proof path, tx, contract).</li>
+          <li>Go to <b>Documents</b> and open the new Experience Letter.</li>
+          <li>In the <b>Authenticity</b> box, click <span class="ui">Download proof file</span>. A file called <code>careervault-credential-….jsonld</code> downloads.</li>
+          <li>If asked what's inside: the content, the salt, the hash, both signatures, and the blockchain receipt.</li>
         </ol>
         <div class="pair">
-          <figure><a href="img/07-authenticity-card.png" target="_blank" rel="noopener"><img src="img/07-authenticity-card.png" alt="Authenticity card with manager and HR signatures, document hash and the Download proof file button" loading="lazy"></a><figcaption>Authenticity card → Download proof file.</figcaption></figure>
-          <figure><a href="img/08-onchain-proof-card.png" target="_blank" rel="noopener"><img src="img/08-onchain-proof-card.png" alt="On-chain proof card with network, block, registry contract, Merkle root, transaction and PolygonScan links" loading="lazy"></a><figcaption>On-chain proof card on the same page.</figcaption></figure>
+          <figure><a href="img/07-authenticity-card.png" target="_blank" rel="noopener"><img src="img/07-authenticity-card.png" alt="Authenticity card with manager and HR signatures, document hash and the Download proof file button" loading="lazy"></a><figcaption>Authenticity box → Download proof file.</figcaption></figure>
+          <figure><a href="img/08-onchain-proof-card.png" target="_blank" rel="noopener"><img src="img/08-onchain-proof-card.png" alt="On-chain proof card with network, block, registry contract, Merkle root, transaction and PolygonScan links" loading="lazy"></a><figcaption>On-chain proof box, on the same page.</figcaption></figure>
         </div>
       </div>
     </div>
@@ -523,15 +534,15 @@ pre .bad { color: #F08A84; }
       <div class="step-body">
         <div class="who"><span class="actor">Anyone</span><span>/verify/file</span></div>
         <ol class="do">
-          <li>Open DevTools → <b>Network</b> and clear it. This makes the next point visible.</li>
+          <li>Open the browser's DevTools → <b>Network</b> tab and clear it. This lets you prove our server is never called.</li>
           <li>Go to <code>/verify/file</code> (top bar: <span class="ui">Check a proof file</span>) and drop the <code>.jsonld</code> file in.</li>
-          <li>Expect <b>"Proof file verified"</b> and eight passing checks. The card says "No CareerVault API was called". The Network tab shows only calls to a public Polygon RPC (publicnode / drpc).</li>
-          <li>Fully offline variant: untick <b>"Also confirm the anchor on Polygon Amoy"</b> and turn Wi-Fi off. Integrity, both signatures and Merkle still pass. Rehearse this once first.</li>
+          <li>You should see <b>"Proof file verified"</b> and 8 green checks. The page says "No CareerVault API was called". The Network tab shows only calls to a public Polygon server (publicnode or drpc).</li>
+          <li><b>Fully offline version:</b> untick "Also confirm the anchor on Polygon Amoy" and turn off Wi-Fi. The hash, signature and Merkle checks still pass. Try this once before the demo.</li>
         </ol>
-        <p class="say">If our Postgres were deleted tomorrow, this file plus the public chain would still prove the document. That's the difference from a centralised eLocker.</p>
+        <p class="say">If our database was deleted tomorrow, this file plus the public blockchain would still prove the document is real. That is the difference from a central system like eLocker.</p>
         <div class="pair">
-          <figure><a href="img/13-file-ok-top.png" target="_blank" rel="noopener"><img src="img/13-file-ok-top.png" alt="Check a proof file page showing Proof file verified for the Salary Proof credential" loading="lazy"></a><figcaption>Verdict.</figcaption></figure>
-          <figure><a href="img/14-file-ok-checks.png" target="_blank" rel="noopener"><img src="img/14-file-ok-checks.png" alt="Checks run in your browser: integrity, manager and HR signatures, Merkle, registry, on-chain root, revocation and receipt all passed" loading="lazy"></a><figcaption>The eight checks, all run in the browser.</figcaption></figure>
+          <figure><a href="img/13-file-ok-top.png" target="_blank" rel="noopener"><img src="img/13-file-ok-top.png" alt="Check a proof file page showing Proof file verified for the Salary Proof credential" loading="lazy"></a><figcaption>The result.</figcaption></figure>
+          <figure><a href="img/14-file-ok-checks.png" target="_blank" rel="noopener"><img src="img/14-file-ok-checks.png" alt="Checks run in your browser: integrity, manager and HR signatures, Merkle, registry, on-chain root, revocation and receipt all passed" loading="lazy"></a><figcaption>All 8 checks run inside the browser.</figcaption></figure>
         </div>
       </div>
     </div>
@@ -541,14 +552,14 @@ pre .bad { color: #F08A84; }
       <div class="step-body">
         <div class="who"><span class="actor">Anyone</span><span>tamper test, same page</span></div>
         <ol class="do">
-          <li>Scroll to <b>Try to tamper with it</b>. Change one value, e.g. <code>"designation": "Intern"</code> → <code>"CEO"</code>.</li>
-          <li>Click <span class="ui">Re-run with my edit</span>. <b>Integrity fails</b>: "computed 1f01c656…, credential says 4290e4b0…".</li>
-          <li>Click <span class="ui">Restore and re-run original</span> to get back to green.</li>
+          <li>Scroll to <b>Try to tamper with it</b>. Change one word, e.g. <code>"designation": "Intern"</code> → <code>"CEO"</code>.</li>
+          <li>Click <span class="ui">Re-run with my edit</span>. <b>Integrity fails</b>: the new fingerprint doesn't match the signed one.</li>
+          <li>Click <span class="ui">Restore and re-run original</span> to go back to all green.</li>
         </ol>
-        <p class="say">The signatures still pass because they sign the recorded hash. But the edited content no longer produces that hash, so any change is caught at once.</p>
+        <p class="say">The signatures still pass because they signed the original fingerprint. But the changed data makes a different fingerprint, so any change is caught immediately.</p>
         <div class="pair">
-          <figure><a href="img/15-tamper-edit.png" target="_blank" rel="noopener"><img src="img/15-tamper-edit.png" alt="Try to tamper with it panel with the signed content editable and Re-run with my edit button" loading="lazy"></a><figcaption>Edit one value.</figcaption></figure>
-          <figure><a href="img/17-file-tampered-checks.png" target="_blank" rel="noopener"><img src="img/17-file-tampered-checks.png" alt="Checks after tampering: Integrity failed with computed hash differing from the credential's hash, other checks passed" loading="lazy"></a><figcaption>Integrity fails, red, first row.</figcaption></figure>
+          <figure><a href="img/15-tamper-edit.png" target="_blank" rel="noopener"><img src="img/15-tamper-edit.png" alt="Try to tamper with it panel with the signed content editable and Re-run with my edit button" loading="lazy"></a><figcaption>Change one word.</figcaption></figure>
+          <figure><a href="img/17-file-tampered-checks.png" target="_blank" rel="noopener"><img src="img/17-file-tampered-checks.png" alt="Checks after tampering: Integrity failed with computed hash differing from the credential's hash, other checks passed" loading="lazy"></a><figcaption>Integrity fails (red, first row).</figcaption></figure>
         </div>
       </div>
     </div>
@@ -557,7 +568,7 @@ pre .bad { color: #F08A84; }
       <div class="step-no">5.4</div>
       <div class="step-body">
         <div class="who"><span class="actor">Terminal (optional)</span><span>tools/verify-credential</span></div>
-        <p>The same checks from code that imports nothing from the server. Real output on Alice's production Salary Proof, 15 Oct:</p>
+        <p>The same checks, from a small command-line tool that doesn't use our server at all. This is the real output for Alice's Salary Proof (15 Oct):</p>
 <pre><span class="dim">$ node verify-credential.mjs careervault-credential-ec775677-….jsonld --explain</span>
 Verifying SALARY_PROOF urn:careervault:document:ec775677-9407-4a97-9fbd-e2d541bcc93a
     JCS(credentialSubject) = {"basicPaise":3000000,"currency":"INR", …}
@@ -572,7 +583,7 @@ Verifying SALARY_PROOF urn:careervault:document:ec775677-9407-4a97-9fbd-e2d541bc
 <span class="ok">✓ On-chain revocation</span> — not revoked
 <span class="ok">✓ On-chain receipt</span> — tx 0xdd9c…b797 contains RootAnchored for this root
 <span class="dim">EXIT 0</span></pre>
-        <p class="expect">For a no-network demo: <code>node verify-credential.mjs --selftest</code> runs the known-answer vectors (RFC 8785 samples, document hash, both statements, Merkle roots for 1, 3 and 4 leaves). All pass today.</p>
+        <p class="expect">With no internet at all: <code>node verify-credential.mjs --selftest</code> runs fixed test examples and checks every answer is correct. All pass today.</p>
       </div>
     </div>
   </section>
@@ -580,22 +591,22 @@ Verifying SALARY_PROOF urn:careervault:document:ec775677-9407-4a97-9fbd-e2d541bc
   <!-- ACT 6 -->
   <section id="act6" class="act">
     <div class="section-head">
-      <div class="act-head"><span class="eyebrow">Act 6</span><span class="time">viva</span><span class="proves">Point 4</span></div>
-      <h2>The hashing pipeline, as the code does it</h2>
-      <p>Memorise this order. Each value is real, from Alice's anchored Salary Proof, so you can point to it in the proof file or the CLI output.</p>
+      <div class="act-head"><span class="eyebrow">Part 6</span><span class="time">for the viva</span><span class="proves">Point 4</span></div>
+      <h2>Explain the hashing, step by step</h2>
+      <p>Learn this order. The grey values are real, from Alice's Salary Proof, so you can point to them in the proof file.</p>
     </div>
     <div class="pipe">
-      <div class="pipe-step"><span class="n">1</span><div class="body"><h3>Normalise, then canonicalise with JCS (RFC 8785)</h3><p>Empty and null fields are dropped (<code>normalizeSubject</code>), then keys are sorted and numbers and strings serialised deterministically. Money is stored as integer paise, so there are no float surprises.</p><div class="val">{"basicPaise":3000000,"currency":"INR","dateOfJoining":"2024-12-06",…,"totalDeductionsPaise":679984}</div></div></div>
-      <div class="pipe-step"><span class="n">2</span><div class="body"><h3>Append a 32-byte random salt</h3><p><code>randomBytes(32)</code>, written as 64 hex characters and appended <b>after</b> the JSON text. It stops anyone guessing low-entropy fields (a salary) from the public hash. For GDPR, <code>DELETE /users/me</code> sets <code>salt = null</code> and blanks the content, so the hash can never be linked back.</p><div class="val">salt = c3d61d706c96cdf36d2e32ccce14d3f8061030a9f3b34df80f8ebbafc77f0fcb</div></div></div>
-      <div class="pipe-step"><span class="n">3</span><div class="body"><h3>SHA-256 → document hash</h3><p><code>document_hash = SHA-256( JCS(content) ‖ salt )</code>, lowercase hex. One function computes it: <code>server/src/common/utils/crypto.util.ts</code>.</p><div class="val">4290e4b048911c77126a423cc827c2f1545ac859d3d3c21a687a3d60c15517f5</div></div></div>
-      <div class="pipe-step"><span class="n">4</span><div class="body"><h3>Sign: RSA-2048, RS256, over a role statement</h3><p>The manager (at Sign) and HR (at Approve) each sign <code>SHA-256(JCS({v:1, documentHash, role, memberId}))</code>, not the bare hash. With one org key and deterministic PKCS#1 v1.5, signing the bare hash twice would give two identical signatures. The statement binds who signed and in which role.</p><div class="val">MANAGER statement = fac1833d458f68eaca5d55f3f27f07dd163955aab6eb4a551d6bd4cbec83a7aa<br>HR statement      = 50b48694ce5c7b42a09928e43b360af2139f64e2422dcf04e944a3626f2161e2</div></div></div>
-      <div class="pipe-step"><span class="n">5</span><div class="body"><h3>Merkle tree → 32-byte root → Polygon</h3><p>At anchoring time (midnight IST or Anchor now): <code>merkletreejs</code>, SHA-256, <b>sorted pairs</b>. Leaves are the raw 32-byte document hashes (not re-hashed), and an odd node is promoted, not duplicated. The root goes on-chain via <code>anchorRoot(root, count)</code>. Each document keeps its proof path.</p><div class="val">1-document batch → root = leaf = 4290e4b0…17f5 · tx 0xdd9c5fc8…f5b797 · block 49449192</div></div></div>
+      <div class="pipe-step"><span class="n">1</span><div class="body"><h3>Sort the data (JCS, RFC 8785)</h3><p>Remove empty fields, then sort the keys alphabetically in a fixed format. Same data → exactly the same text, every time. Money is stored in paise (whole numbers) so there are no decimal problems.</p><div class="val">{"basicPaise":3000000,"currency":"INR","dateOfJoining":"2024-12-06",…,"totalDeductionsPaise":679984}</div></div></div>
+      <div class="pipe-step"><span class="n">2</span><div class="body"><h3>Add a random salt at the end</h3><p>32 random bytes (written as 64 characters) are added <b>after</b> the data. Why: without it, someone could guess a salary by trying numbers until the hash matches. For GDPR, when a user deletes their account we delete the salt, so the hash can never be linked back to them.</p><div class="val">salt = c3d61d706c96cdf36d2e32ccce14d3f8061030a9f3b34df80f8ebbafc77f0fcb</div></div></div>
+      <div class="pipe-step"><span class="n">3</span><div class="body"><h3>SHA-256 → the fingerprint</h3><p><code>document_hash = SHA-256( sorted data + salt )</code>. Change one letter and the result is completely different. The code is in one file: <code>server/src/common/utils/crypto.util.ts</code>.</p><div class="val">4290e4b048911c77126a423cc827c2f1545ac859d3d3c21a687a3d60c15517f5</div></div></div>
+      <div class="pipe-step"><span class="n">4</span><div class="body"><h3>Sign with RSA-2048</h3><p>The manager (when clicking Sign) and HR (when clicking Approve) each sign a small statement: <code>{hash, role, member ID}</code>. Why not sign the hash directly? Both use the same company key, so both signatures would come out exactly the same. Adding the role makes them different, and records who signed.</p><div class="val">manager statement = fac1833d458f68eaca5d55f3f27f07dd163955aab6eb4a551d6bd4cbec83a7aa<br>HR statement      = 50b48694ce5c7b42a09928e43b360af2139f64e2422dcf04e944a3626f2161e2</div></div></div>
+      <div class="pipe-step"><span class="n">5</span><div class="body"><h3>Merkle tree → one root → blockchain</h3><p>Later (at midnight, or on Anchor now), all new fingerprints are paired and hashed again and again until one root is left. That root goes on the blockchain with <code>anchorRoot(root, count)</code>. Each document keeps its "path" to the root. With only 1 document, the root is that document's hash.</p><div class="val">1 document → root = its hash = 4290e4b0…17f5 · tx 0xdd9c5fc8…f5b797 · block 49449192</div></div></div>
     </div>
     <div class="note">
-      <h3>Two differences from the feedback note to get right</h3>
+      <h3>Two things the feedback note gets slightly wrong</h3>
       <ul>
-        <li>The note puts signing <b>after</b> the Merkle step. In the code, signing happens first, per document, at issue time. The Merkle tree is a later batch step across many documents.</li>
-        <li>The note says "sign the leaf hash". The code signs a <b>role statement that contains</b> the leaf hash (reason in step 4).</li>
+        <li>The note puts signing <b>after</b> the Merkle step. Really, signing happens first, when the document is issued. The Merkle tree is a later step that combines many documents.</li>
+        <li>The note says "sign the leaf hash". Really, each person signs a small statement that <b>contains</b> the hash (reason in step 4).</li>
       </ul>
     </div>
   </section>
@@ -603,53 +614,53 @@ Verifying SALARY_PROOF urn:careervault:document:ec775677-9407-4a97-9fbd-e2d541bc
   <!-- QUESTIONS -->
   <section id="questions">
     <div class="section-head">
-      <span class="eyebrow">Prepare these answers</span>
-      <h2>Likely evaluator questions</h2>
+      <span class="eyebrow">Be ready for these</span>
+      <h2>Questions the evaluator may ask</h2>
     </div>
     <div class="qa">
-      <div><span class="q">"Is this really on-chain, or your simulator again?"</span><span class="a">PolygonScan: Success, From our wallet, To the source-verified registry, a <code>RootAnchored</code> event, and <code>verifyRoot</code> returning true. The simulator only runs in local dev. Production reports <code>driver: amoy</code> on <code>/api/v1/health/status</code>.</span></div>
-      <div><span class="q">"Where is the encryption key?"</span><span class="a"><code>KMS_MASTER_KEY</code> is a secret in Render's environment, never in the DB or repo. A field key is derived from it with HKDF, and it wraps a fresh data key per row. A DB dump alone can't be decrypted. The app also refuses to boot if its encryption self-test fails.</span></div>
-      <div><span class="q">"What is still plaintext?"</span><span class="a"><code>document_hash</code> and <code>signing_public_key_pem</code> (public by design), user names and emails (needed for login), and AI embeddings. Known gap: a revocation reason is also copied into <code>audit_logs</code> in plaintext.</span></div>
-      <div><span class="q">"If your database is gone, how do I know the key in the file is really TechCorp's?"</span><span class="a">I can't from the file alone, and the tool says so. Get the issuer key fingerprint from TechCorp out of band, or cross-check on the public verify page. Revocations that happened only in our DB would also be invisible. HR revocations are pushed on-chain too (<code>revokeDocument</code>), and the offline check reads <code>isRevoked</code>.</span></div>
-      <div><span class="q">"Why is your Merkle root identical to the document hash?"</span><span class="a">That batch had one document. A one-leaf tree's root is the leaf. With two or more documents the proof file carries sibling hashes. (Pre-issue a second document on the day to show this.)</span></div>
-      <div><span class="q">"Who can write to the contract?"</span><span class="a">Only authorised anchor wallets. The owner manages that list, and the owner is our wallet <code>0x955c…056e</code>. Anyone can read <code>verifyRoot</code> and <code>isRevoked</code>. A duplicate root reverts with "Root exists".</span></div>
-      <div><span class="q">"What happens if someone edits a row directly in the database?"</span><span class="a">Someone without the key can only write plaintext. Strict mode refuses it on read, and the anchoring integrity gate re-hashes every candidate and skips any mismatch, so our wallet never anchors it.</span></div>
+      <div><span class="q">"Is this really on the blockchain, or fake again?"</span><span class="a">Open PolygonScan. It shows Success, sent from our wallet to our verified contract, and verifyRoot says true. The fake version only runs on our laptops for development. The live server reports <code>driver: amoy</code> at <code>/api/v1/health/status</code>.</span></div>
+      <div><span class="q">"Where is the secret key?"</span><span class="a">Only in the server's secret settings on Render (<code>KMS_MASTER_KEY</code>). Not in the database, not on GitHub. Each row gets its own key, locked by the master key, so a copy of the database can't be opened. The server won't even start if its lock test fails.</span></div>
+      <div><span class="q">"What is NOT encrypted?"</span><span class="a"><code>document_hash</code> and the company's public key (both public on purpose), user names and emails (needed for login), and AI search data. One known gap: when a document is cancelled, the reason is also copied into the audit log without a lock.</span></div>
+      <div><span class="q">"If your database is gone, how do I know the key in the file is really TechCorp's?"</span><span class="a">The file alone can't prove that, and our tool says so honestly. You get TechCorp's key fingerprint directly from TechCorp. Also, a cancellation recorded only in our database wouldn't be visible offline. But when HR cancels (revokes) a document, we also write that to the blockchain, and the offline check reads it.</span></div>
+      <div><span class="q">"Why is your Merkle root the same as the document hash?"</span><span class="a">That batch had only one document. A tree with one leaf has that leaf as its root. With 2 or more documents, the proof file includes the extra hashes along the path.</span></div>
+      <div><span class="q">"Who can write to the contract?"</span><span class="a">Only wallets we allow. The owner (our wallet <code>0x955c…056e</code>) controls that list. Anyone can read. The same root can't be written twice.</span></div>
+      <div><span class="q">"What if someone edits the database directly?"</span><span class="a">Without the key they can only type normal text. The server refuses to read it. And before anchoring we re-check every document's fingerprint, so a changed document never goes on the blockchain.</span></div>
     </div>
   </section>
 
   <!-- FIXES -->
   <section id="fixes">
     <div class="section-head">
-      <span class="eyebrow">Your call</span>
-      <h2>Fix before the day</h2>
+      <span class="eyebrow">Your decision</span>
+      <h2>Problems to avoid</h2>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th style="width:28%">Issue</th><th style="width:12%">Risk</th><th>Options</th></tr></thead>
+        <thead><tr><th style="width:28%">Problem</th><th style="width:12%">How bad</th><th>What to do</th></tr></thead>
         <tbody>
           <tr>
-            <td>Bob's 2 TechCorp documents fail verification; "Local simulator" batch row on Analytics</td>
+            <td>Bob's 2 TechCorp documents fail verification, and there's a "Local simulator" row on Analytics</td>
             <td><span class="status s-bad">High</span></td>
             <td><ul>
-              <li><b>Avoid:</b> never open Bob's documents and keep attention on the newest batch row.</li>
-              <li><b>Re-anchor for real (recommended):</b> in one transaction, delete those 2 <code>document_merkle_proofs</code> rows and the simulator <code>merkle_roots</code> row (root <code>0x527398b672…ec1ecd</code>), and set the 2 documents back to <code>ISSUED</code>. The next Anchor now puts them on Amoy, and with your live document that makes a 3-leaf tree with a real Merkle path. Do it on the evaluation morning, or the midnight job will anchor them first.</li>
-              <li><b>Reseed:</b> wipe and re-seed the production demo DB.</li>
+              <li><b>Easiest:</b> never open Bob's documents, and only point at the newest row on the Analytics page.</li>
+              <li><b>Better:</b> make a small database change so those 2 documents get anchored again, for real this time. Remove their 2 rows in <code>document_merkle_proofs</code> and the fake row in <code>merkle_roots</code> (root <code>0x527398b672…ec1ecd</code>), and set the 2 documents back to <code>ISSUED</code>. Your live Anchor now then puts 3 documents into one tree. Do it on the morning of the evaluation, or the midnight job will anchor them first.</li>
+              <li><b>Or:</b> wipe and reload the demo database.</li>
             </ul></td>
           </tr>
           <tr>
-            <td>Demo password in your notes is wrong</td>
+            <td>The password in your notes is wrong</td>
             <td><span class="status s-warn">Medium</span></td>
             <td>Use <code>Password123@</code>.</td>
           </tr>
           <tr>
-            <td>Anchor wallet gas</td>
+            <td>Wallet money (gas)</td>
             <td><span class="status s-warn">Low</span></td>
-            <td>0.0894 POL today; ~0.005 POL per anchor at 35 gwei. Each revocation also costs gas. Top up from the Amoy faucet if pre-flight shows under ~0.03.</td>
+            <td>0.0894 POL left; one anchor costs about 0.005. Cancelling a document also costs a little. If the pre-flight shows less than 0.03, get free test POL from the Amoy faucet.</td>
           </tr>
           <tr>
-            <td>Backend cold start</td>
+            <td>The server is slow on the first load</td>
             <td><span class="status s-warn">Low</span></td>
-            <td>Load <code>/demo</code> and sign in once, 5–10 minutes before the evaluator arrives.</td>
+            <td>Open <code>/demo</code> and log in once, 5 to 10 minutes before the evaluator arrives.</td>
           </tr>
         </tbody>
       </table>
