@@ -7,6 +7,7 @@ import {
   EnrollEmployeeKeyDto,
   ResetEmployeeKeyDto,
 } from './dto/employee-secrets.dto.js';
+import { EmployeeKeyResetService } from './employee-key-reset.service.js';
 import { EmployeeKeyService } from './employee-key.service.js';
 import { SECURITY_QUESTIONS } from './security-questions.js';
 
@@ -15,7 +16,10 @@ import { SECURITY_QUESTIONS } from './security-questions.js';
 @ApiTags('employee-keys')
 @Controller('employee-keys')
 export class EmployeeKeyController {
-  constructor(private readonly employeeKeys: EmployeeKeyService) {}
+  constructor(
+    private readonly employeeKeys: EmployeeKeyService,
+    private readonly resets: EmployeeKeyResetService,
+  ) {}
 
   @Get('me')
   mine(@CurrentUser() user: AuthenticatedUser) {
@@ -43,10 +47,6 @@ export class EmployeeKeyController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ResetEmployeeKeyDto,
   ) {
-    return this.employeeKeys.resetForMember(
-      user,
-      dto.organizationId,
-      dto.userId,
-    );
+    return this.resets.reset(user, dto.organizationId, dto.userId);
   }
 }

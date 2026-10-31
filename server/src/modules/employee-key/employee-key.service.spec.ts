@@ -70,7 +70,7 @@ function service(row: unknown, priorFailures = 0, audits: string[] = []) {
       },
     },
   };
-  return new EmployeeKeyService(prisma as never, kms as never, {} as never);
+  return new EmployeeKeyService(prisma as never, kms as never);
 }
 
 describe('EmployeeKeyService.unlock (step-up)', () => {
@@ -139,6 +139,29 @@ describe('EmployeeKeyService.unlock (step-up)', () => {
       status: 409,
       response: { code: 'EMPLOYEE_KEY_REQUIRED' },
     });
+  });
+
+  it('settles a refused attempt as REFUSED, so hammering a locked key never extends the lock', async () => {
+    const audits: string[] = [];
+    await expect(
+      service(await enrolledRow(), 5, audits).unlock(USER, ORG, SECRETS),
+    ).rejects.toMatchObject({ status: 429 });
+    expect(audits).toEqual([
+      'EMPLOYEE_KEY_STEP_UP_FAILED',
+      'EMPLOYEE_KEY_STEP_UP_REFUSED',
+    ]);
+  });
+
+  it('settles a KMS fault as ERRORED, not as a wrong answer', async () => {
+    const audits: string[] = [];
+    const row = { ...(await enrolledRow()), wrappedKey: 'ekw1:broken:x:y' };
+    await expect(
+      service(row, 0, audits).unlock(USER, ORG, SECRETS),
+    ).rejects.toThrow();
+    expect(audits).toEqual([
+      'EMPLOYEE_KEY_STEP_UP_FAILED',
+      'EMPLOYEE_KEY_STEP_UP_ERRORED',
+    ]);
   });
 
   it('locks signing after five failures in the window, even with the right answers', async () => {
@@ -211,11 +234,7 @@ describe('EmployeeKeyService.enroll', () => {
         update: () => Promise.resolve({}),
       },
     };
-    const keys = new EmployeeKeyService(
-      prisma as never,
-      kms as never,
-      {} as never,
-    );
+    const keys = new EmployeeKeyService(prisma as never, kms as never);
     return { keys, calls };
   }
 

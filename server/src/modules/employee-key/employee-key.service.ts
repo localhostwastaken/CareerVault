@@ -8,7 +8,6 @@ import type { AuthenticatedUser } from '../../common/types/authenticated-user.js
 import type { EmployeeKey } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { KeyManagementService } from '../../services/key-management/key-management.service.js';
-import { NotificationService } from '../notification/notification.service.js';
 import type {
   EmployeeSecretsDto,
   EnrollEmployeeKeyDto,
@@ -20,7 +19,12 @@ import {
   secretMaterial,
 } from './key-derivation.js';
 import { questionText } from './security-questions.js';
-import { markPassed, reserveAttempt } from './step-up-lockout.js';
+import {
+  reserveAttempt,
+  settleAttempt,
+  STEP_UP_ERRORED,
+  STEP_UP_PASSED,
+} from './step-up-lockout.js';
 
 const SIGNING_ROLES = new Set(['MANAGER', 'HR']);
 
@@ -37,7 +41,6 @@ export class EmployeeKeyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly kms: KeyManagementService,
-    private readonly notifications: NotificationService,
   ) {}
 
   /** Each organisation where the user signs (MANAGER or HR), with their key status there. */
@@ -174,12 +177,20 @@ export class EmployeeKeyService {
       });
     const attempt = await reserveAttempt(this.prisma, userId, row.id);
 
-    const stored = await this.kms.unwrapEmployeeKey(row.wrappedKey, {
-      organizationId,
-      userId,
-      version: row.version,
-    });
-    const derived = await this.derive(secrets, row);
+    let stored: Buffer;
+    let derived: Buffer | null;
+    try {
+      stored = await this.kms.unwrapEmployeeKey(row.wrappedKey, {
+        organizationId,
+        userId,
+        version: row.version,
+      });
+      derived = await this.derive(secrets, row);
+    } catch (error) {
+      // An infrastructure fault, not a wrong answer: it must not count toward the lockout.
+      await settleAttempt(this.prisma, attempt, STEP_UP_ERRORED);
+      throw error;
+    }
     const isMatch = derived !== null && timingSafeEqual(stored, derived);
     derived?.fill(0);
     if (!isMatch) {
@@ -190,50 +201,8 @@ export class EmployeeKeyService {
           'Those details do not match your signing key. Check your date of birth, ID and answers.',
       });
     }
-    await markPassed(this.prisma, attempt);
+    await settleAttempt(this.prisma, attempt, STEP_UP_PASSED);
     return { keyId: row.id, key: stored };
-  }
-
-  // The admin's path for an employee who forgot their answers: retire the active key so they
-  // can enrol afresh. Documents it sealed still verify (the key is kept, only retired), and
-  // the employee is told, since a reset they did not ask for means someone else did.
-  async resetForMember(
-    admin: AuthenticatedUser,
-    organizationId: string,
-    userId: string,
-  ) {
-    if (
-      !admin.memberships.some(
-        (m) => m.organizationId === organizationId && m.role === 'ORG_ADMIN',
-      )
-    )
-      throw new ForbiddenException(
-        'Only an admin of this organisation can reset signing keys',
-      );
-    const retired = await this.prisma.employeeKey.updateMany({
-      where: { userId, organizationId, status: 'ACTIVE' },
-      data: { status: 'RETIRED', retiredAt: new Date() },
-    });
-    if (retired.count === 0)
-      throw new ConflictException('This member has no active signing key');
-    await this.prisma.auditLog.create({
-      data: {
-        actorId: admin.id,
-        actorType: 'USER',
-        action: 'EMPLOYEE_KEY_RESET',
-        entityType: 'USER',
-        entityId: userId,
-        retentionTier: 'COMPLIANCE',
-        newValue: { organizationId },
-      },
-    });
-    await this.notifications.notify(
-      userId,
-      'SECURITY_ALERT',
-      'Your signing key was reset',
-      `${admin.fullName} reset your signing key. Set up your signing security again before you sign. If you did not ask for this, tell your administrator.`,
-    );
-    return { reset: true };
   }
 
   /** Opens a pinned key for verification; null when it can no longer be opened. */

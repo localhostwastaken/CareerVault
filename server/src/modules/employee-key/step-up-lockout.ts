@@ -1,13 +1,18 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 
-// Step-up brute-force limit: 5 wrong attempts per user per 15 minutes. Every attempt is
-// recorded as FAILED BEFORE any work and flipped to PASSED only on a match, so attempts still
-// in flight count against the limit: parallel guesses cannot all slip past one check. The
+// Step-up brute-force limit: 5 wrong attempts per key per 15 minutes. Every attempt is
+// recorded as FAILED BEFORE any work, so attempts still in flight count against the limit
+// and parallel guesses cannot all slip past one check. It is then settled: PASSED on a
+// match, REFUSED when the lockout turned it away (so hammering a locked key does not keep
+// extending the lock), ERRORED when the KMS or database failed rather than the answers.
+// Counting per key means an admin reset, which issues a new key, starts a clean count. The
 // rows double as the audit trail of who tried to unlock a signing key, and when.
 
 const STEP_UP_FAILED = 'EMPLOYEE_KEY_STEP_UP_FAILED';
-const STEP_UP_PASSED = 'EMPLOYEE_KEY_STEP_UP_PASSED';
+export const STEP_UP_PASSED = 'EMPLOYEE_KEY_STEP_UP_PASSED';
+export const STEP_UP_ERRORED = 'EMPLOYEE_KEY_STEP_UP_ERRORED';
+const STEP_UP_REFUSED = 'EMPLOYEE_KEY_STEP_UP_REFUSED';
 const LOCKOUT_ATTEMPTS = 5;
 const LOCKOUT_WINDOW_MS = 15 * 60_000;
 
@@ -29,13 +34,14 @@ export async function reserveAttempt(
   });
   const failures = await prisma.auditLog.count({
     where: {
-      actorId: userId,
+      entityId: keyId,
       action: STEP_UP_FAILED,
       createdAt: { gt: new Date(Date.now() - LOCKOUT_WINDOW_MS) },
     },
   });
   // The count includes this attempt, so the sixth inside the window is refused.
-  if (failures > LOCKOUT_ATTEMPTS)
+  if (failures > LOCKOUT_ATTEMPTS) {
+    await settleAttempt(prisma, id, STEP_UP_REFUSED);
     throw new HttpException(
       {
         code: 'STEP_UP_LOCKED',
@@ -44,15 +50,17 @@ export async function reserveAttempt(
       },
       HttpStatus.TOO_MANY_REQUESTS,
     );
+  }
   return id;
 }
 
-export async function markPassed(
+export async function settleAttempt(
   prisma: PrismaService,
   attemptId: string,
+  action: string,
 ): Promise<void> {
   await prisma.auditLog.update({
     where: { id: attemptId },
-    data: { action: STEP_UP_PASSED },
+    data: { action },
   });
 }

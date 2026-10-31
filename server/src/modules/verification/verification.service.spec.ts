@@ -187,7 +187,7 @@ function service(
     kms,
     (options.chain ?? chainUp) as never,
     { notify: () => Promise.resolve() } as never,
-    new EmployeeKeyService(prisma as never, kms, {} as never),
+    new EmployeeKeyService(prisma as never, kms),
   );
 }
 
