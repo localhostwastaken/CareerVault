@@ -1,0 +1,10 @@
+{"cpu":"11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz","cores":8,"node":"v26.10.0"}
+JCS+salt+SHA256 (ms/op): 0.0054
+statement hash (ms/op): 0.0045
+RS256 sign (ms/op): 0.271
+RS256 verify (ms/op): 0.0206
+n=10: build 0.06 ms, proof len 4 hashes (128 B), verify 0.0118 ms, ok=true
+n=100: build 0.24 ms, proof len 7 hashes (224 B), verify 0.0171 ms, ok=true
+n=1000: build 3.36 ms, proof len 10 hashes (320 B), verify 0.0277 ms, ok=true
+n=10000: build 25.13 ms, proof len 14 hashes (448 B), verify 0.0411 ms, ok=true
+n=100000: build 277.93 ms, proof len 17 hashes (544 B), verify 0.0447 ms, ok=true

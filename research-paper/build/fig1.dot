@@ -1,0 +1,34 @@
+digraph G {
+  graph [rankdir=TB, fontname="Times-Roman", fontsize=11, nodesep=0.18, ranksep=0.28, pad=0.05, dpi=300, compound=true, newrank=true];
+  node  [shape=box, style="rounded,filled", fillcolor="white", fontname="Times-Roman", fontsize=11, margin="0.08,0.04", penwidth=0.8];
+  edge  [fontname="Times-Roman", fontsize=9, penwidth=0.8, arrowsize=0.6];
+
+  subgraph cluster_c { label="Clients"; style="rounded,dashed"; color="#555555"; labeljust=l;
+    spa  [label="React SPA\n(5 role portals,\npublic verifier,\nin-browser proof check)", fillcolor="#eeeeee"];
+    cli  [label="Offline CLI verifier\n(imports nothing\nfrom server)", fillcolor="#eeeeee"];
+    ext  [label="Third-party verifier\n(X-API-Key, bulk API)", fillcolor="#eeeeee"];
+  }
+  subgraph cluster_s { label="NestJS API  (77 REST endpoints)"; style="rounded"; color="#222222"; labeljust=l;
+    auth [label="Auth, RBAC,\nthrottling, CSRF"];
+    life [label="Document lifecycle\n+ bulk issuance"];
+    cry  [label="Crypto core\nJCS · SHA-256 · RS256"];
+    ver  [label="Verification\n(six checks)"];
+    mer  [label="Merkle batch worker\n(midnight IST cron)"];
+    tal  [label="Talent matching\n+ consent"];
+    enc  [label="Field-encryption extension\n(AES-256-GCM envelopes)", fillcolor="#eeeeee"];
+  }
+  subgraph cluster_d { label="Persistence"; style="rounded,dashed"; color="#555555"; labeljust=l;
+    pg  [label="PostgreSQL 16+ / pgvector", shape=cylinder, style="filled", fillcolor="#eeeeee"];
+    obj [label="Object store\n(encrypted PDFs,\nwrapped org keys)", shape=cylinder, style="filled", fillcolor="#eeeeee"];
+  }
+  subgraph cluster_x { label="Other services"; style="rounded,dashed"; color="#555555"; labeljust=l;
+    ai   [label="AI service (FastAPI)\nextract · embed · rank"];
+    chain[label="AnchorRegistry\nPolygon Amoy (80002)", fillcolor="#d9d9d9"];
+  }
+  spa -> auth; ext -> ver; cli -> chain [style=dashed, label="verifyRoot", constraint=false];
+  auth -> life; life -> cry; ver -> cry; life -> enc; tal -> enc;
+  enc -> pg; life -> obj; mer -> chain [label="anchorRoot"]; ver -> chain [label="verifyRoot", style=dashed];
+  tal -> ai; mer -> life [style=invis];
+  cry -> mer [style=invis]; ver -> mer [style=invis];
+  mer -> pg [style=dashed];
+}
