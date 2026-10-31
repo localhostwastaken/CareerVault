@@ -2,7 +2,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { ChainPreflight } from '@/features/demo/components/ChainPreflight'
 import { DemoAccounts } from '@/features/demo/components/DemoAccounts'
 import { DemoClickPath } from '@/features/demo/components/DemoClickPath'
-import { OfflineCliCard } from '@/features/demo/components/OfflineCliCard'
+import { Sha256LabCard } from '@/features/demo/components/Sha256LabCard'
 import { EncryptionFacts } from '@/features/system-status/components/EncryptionFacts'
 import { RegistryFacts } from '@/features/system-status/components/RegistryFacts'
 import { useGetSystemStatusQuery } from '@/features/system-status/api'
@@ -37,7 +37,7 @@ const DemoGuide = () => {
             <ChainPreflight contract={chain.contractAddress} wallet={chain.walletAddress} />
           )}
           <DemoAccounts />
-          <OfflineCliCard />
+          <Sha256LabCard />
         </div>
       </div>
     </div>
