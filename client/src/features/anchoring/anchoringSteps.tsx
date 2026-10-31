@@ -12,8 +12,8 @@ export const ANCHORING_STEPS: ExplainerStep[] = [
     title: 'Integrity gate',
     body: (
       <>
-        Each candidate&rsquo;s encrypted content and salt are decrypted and its hash recomputed:{' '}
-        <Term>SHA-256(JCS(content) + salt)</Term> must equal the stored document hash. A row edited directly in the
+        Each candidate&rsquo;s encrypted content and salt are decrypted, its bytes rebuilt and{' '}
+        <Term>SHA-256(bytes)</Term> recomputed; it must equal the stored document hash. A row edited directly in the
         database fails here and is left un-anchored.
       </>
     ),

@@ -1,4 +1,5 @@
-import { Anchor, CalendarX, SearchX, ShieldAlert, ShieldCheck, ShieldOff, type LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { CalendarX, SearchX, ShieldAlert, ShieldCheck, ShieldOff, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Verdict } from '@/features/verification/types'
 
@@ -6,19 +7,10 @@ import type { Verdict } from '@/features/verification/types'
 const VERDICTS: Record<Verdict, { label: string; sub: string; icon: LucideIcon; wrap: string; seal: string }> = {
   VERIFIED: {
     label: 'Document verified',
-    sub: 'Every authenticity check passed.',
+    sub: 'Every authenticity check passed on our server.',
     icon: ShieldCheck,
     wrap: 'border-verified/30 bg-verified-soft',
     seal: 'bg-verified text-primary-foreground',
-  },
-  VERIFIED_PENDING_ANCHOR: {
-    // A genuine PASS: signature and hash checks succeeded; only the on-chain anchor is
-    // still queued for the next Merkle batch. Never render this as failed/red.
-    label: 'Verified — anchoring pending',
-    sub: 'Signature and integrity checks passed. On-chain anchoring is scheduled and does not affect validity.',
-    icon: ShieldCheck,
-    wrap: 'border-anchor/30 bg-anchor-soft',
-    seal: 'bg-anchor text-primary-foreground',
   },
   REVOKED: {
     label: 'Document revoked',
@@ -52,12 +44,13 @@ const VERDICTS: Record<Verdict, { label: string; sub: string; icon: LucideIcon; 
 
 interface VerdictBannerProps {
   verdict: Verdict
-  anchored: boolean
   /** Counted from the returned checks by the caller; omitted when there are none. */
   tally?: { passed: number; total: number }
+  /** Secondary facts under the verdict, e.g. the on-chain badge. */
+  children?: ReactNode
 }
 
-export function VerdictBanner({ verdict, anchored, tally }: VerdictBannerProps) {
+export function VerdictBanner({ verdict, tally, children }: VerdictBannerProps) {
   const config = VERDICTS[verdict]
   const Icon = config.icon
 
@@ -72,18 +65,7 @@ export function VerdictBanner({ verdict, anchored, tally }: VerdictBannerProps) 
         <div className="min-w-0">
           <h1 className="font-serif text-h1 text-foreground">{config.label}</h1>
           <p className="mt-1 text-body text-muted-foreground">{config.sub}</p>
-          {verdict === 'VERIFIED' && anchored && (
-            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-anchor/25 bg-anchor-soft px-2.5 py-1 text-micro text-anchor">
-              <Anchor className="size-3.5" />
-              Anchored on-chain
-            </p>
-          )}
-          {verdict === 'VERIFIED_PENDING_ANCHOR' && (
-            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-anchor/25 bg-anchor-soft px-2.5 py-1 text-micro text-anchor">
-              <Anchor className="size-3.5" />
-              Anchoring pending
-            </p>
-          )}
+          {children}
         </div>
       </div>
       {tally && (

@@ -17,7 +17,7 @@ export function VerifyingProgress() {
         <h1 className="text-h3 text-foreground">Running verification…</h1>
       </div>
       <p className="mt-1 text-body text-muted-foreground">
-        All six checks run together. Results appear when the whole verification completes.
+        All five checks run together on our server. Results appear when the whole verification completes.
       </p>
       <ol className="mt-4">
         {VERIFICATION_CHECKS.map(({ label: check }, index) => (

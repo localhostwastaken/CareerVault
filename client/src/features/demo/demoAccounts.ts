@@ -22,14 +22,14 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     name: 'Marcus Manager',
     role: 'Manager',
     organization: 'TechCorp',
-    purpose: 'Drafts and signs (first signature)',
+    purpose: 'Enrolled signer: drafts and signs with step-up',
   },
   {
     email: 'hr@techcorp.example.com',
     name: 'Hannah HR',
     role: 'HR',
     organization: 'TechCorp',
-    purpose: 'Co-signs and issues; revokes',
+    purpose: 'Enrolled signer: co-signs with step-up; revokes',
   },
   {
     email: 'admin@techcorp.example.com',

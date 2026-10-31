@@ -16,7 +16,7 @@ export function EvidencePanel({ checks }: { checks: VerificationCheck[] }) {
         <div className="min-w-0">
           <h2 className="text-h2 text-foreground">Verification evidence</h2>
           <p className="mt-0.5 text-body text-muted-foreground">
-            Every check is recomputed from the stored document; the Merkle root is read from Polygon.
+            Every check is recomputed on our server from the encrypted record, each time you ask.
           </p>
         </div>
         <Button

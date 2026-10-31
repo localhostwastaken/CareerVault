@@ -1,12 +1,12 @@
 import { APISlice } from '@/apis/APISlice'
 import type { VerificationResult } from './types'
 
-// Public, no-auth verification. The APISlice attaches a token only if one exists,
-// so these work for anonymous verifiers.
+// Public, no-auth verification. The client sends only a document ID or a share token; every
+// check runs on the server.
 export const verificationApi = APISlice.injectEndpoints({
   endpoints: (builder) => ({
-    verifyByHash: builder.query<VerificationResult, string>({
-      query: (hash) => ({ url: `/verify/hash/${hash}` }),
+    verifyByDocument: builder.query<VerificationResult, string>({
+      query: (documentId) => ({ url: `/verify/document/${documentId}` }),
     }),
     verifyByToken: builder.query<VerificationResult, string>({
       query: (token) => ({ url: `/verify/${token}` }),
@@ -17,4 +17,4 @@ export const verificationApi = APISlice.injectEndpoints({
   }),
 })
 
-export const { useVerifyByHashQuery, useVerifyByTokenQuery } = verificationApi
+export const { useVerifyByDocumentQuery, useVerifyByTokenQuery } = verificationApi

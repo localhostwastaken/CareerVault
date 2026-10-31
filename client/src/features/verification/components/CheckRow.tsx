@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, XCircle, type LucideIcon } from 'lucide-react'
+import { CheckCircle2, XCircle, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CHECK_EXPLANATIONS } from '@/features/verification/checkExplanations'
 import type { VerificationCheck } from '@/features/verification/types'
@@ -7,7 +7,6 @@ import type { VerificationCheck } from '@/features/verification/types'
 const STATUS: Record<VerificationCheck['status'], { icon: LucideIcon; color: string; word: string }> = {
   pass: { icon: CheckCircle2, color: 'text-verified', word: 'Passed' },
   fail: { icon: XCircle, color: 'text-revoked', word: 'Failed' },
-  pending: { icon: Clock, color: 'text-pending', word: 'Pending' },
 }
 
 interface CheckRowProps {

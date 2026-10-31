@@ -10,9 +10,6 @@ import { ANCHORING_STEPS } from '@/features/anchoring/anchoringSteps'
 import type { DocumentDetail } from '@/features/document/types'
 import { useAuth } from '@/hooks/useAuth'
 
-function publicVerifyPath(hash: string): string {
-  return `/verify/hash/${hash}`
-}
 
 function PendingAnchor({ document }: { document: DocumentDetail }) {
   const { role, activeOrgId } = useAuth()
@@ -41,11 +38,12 @@ function PendingAnchor({ document }: { document: DocumentDetail }) {
 }
 
 // The document's own place on the public ledger: its batch's root, transaction and
-// contract, plus the one-click public verification a demo reaches for next.
+// contract, plus the one-click public verification a demo reaches for next. The anchor is a
+// secondary, public timestamp; verification itself never depends on it.
 export function DocumentAnchorCard({ document }: { document: DocumentDetail }) {
-  const hash = document.documentHash
   const anchor = document.anchor
-  const verifyUrl = hash ? `${window.location.origin}${publicVerifyPath(hash)}` : null
+  const verifyPath = `/verify/${document.id}`
+  const isIssued = Boolean(document.documentHash && document.hasHrSignature)
 
   return (
     <Card className="flex flex-col gap-5 p-6">
@@ -56,19 +54,20 @@ export function DocumentAnchorCard({ document }: { document: DocumentDetail }) {
             <h2 className="text-h2 text-foreground">On-chain proof</h2>
           </div>
           <p className="mt-0.5 max-w-xl text-body text-muted-foreground">
-            Where this document&rsquo;s hash was committed, and how anyone can check it without asking CareerVault.
+            Where this document&rsquo;s batch was timestamped on Polygon. A secondary receipt: the verdict comes from
+            our own checks, never from the chain.
           </p>
         </div>
-        {hash && verifyUrl && (
+        {isIssued && (
           <div className="flex shrink-0 items-center gap-1">
             <Button asChild size="sm">
-              <a href={publicVerifyPath(hash)} target="_blank" rel="noopener noreferrer">
+              <a href={verifyPath} target="_blank" rel="noopener noreferrer">
                 <ScanLine />
                 Run public verification
                 <ExternalLink />
               </a>
             </Button>
-            <CopyButton value={verifyUrl} label="Copy public verification link" />
+            <CopyButton value={`${window.location.origin}${verifyPath}`} label="Copy public verification link" />
           </div>
         )}
       </div>
@@ -80,7 +79,7 @@ export function DocumentAnchorCard({ document }: { document: DocumentDetail }) {
       ) : (
         <p className="inset-well p-3 text-body text-muted-foreground">
           {document.merkleStatus === 'ANCHORED'
-            ? 'Anchored on-chain. Run the public verification to see the transaction and the contract.'
+            ? 'Anchored on-chain. The public verification links the transaction.'
             : 'This document was not anchored before it left the issued state.'}
         </p>
       )}

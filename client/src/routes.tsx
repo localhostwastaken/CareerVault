@@ -106,8 +106,7 @@ export const routes: RouteObject[] = [
       { path: '/verify', element: suspense(<VerifyHome />) },
       { path: '/demo', element: suspense(<DemoGuide />) },
       { path: '/demo/sha256', element: suspense(<Sha256Visualizer />) },
-      { path: '/verify/hash/:hash', element: suspense(<VerifyResult />) },
-      { path: '/verify/:token', element: suspense(<VerifyResult />) },
+      { path: '/verify/:ref', element: suspense(<VerifyResult />) },
     ],
   },
   {

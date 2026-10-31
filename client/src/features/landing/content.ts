@@ -17,18 +17,18 @@ export const PILLARS: Pillar[] = [
   {
     icon: Anchor,
     title: 'Anchored to a public ledger',
-    body: 'Documents are hashed with SHA-256 and their daily Merkle root is committed on-chain, creating tamper-evident proof of existence.',
+    body: 'Each signer seals a document with a personal key that only their own answers unlock, and the organisation signs over both seals. A daily on-chain timestamp is a public extra, not a dependency.',
   },
   {
     icon: ShieldCheck,
     title: 'Verified in seconds, by anyone',
-    body: 'A six-step cryptographic check runs from a single share link. No account, no phone call to HR, no waiting.',
+    body: 'Five checks run on our server from a single share link or document ID. No account, no phone call to HR, no waiting.',
   },
 ]
 
 // Illustrative, and labelled as such wherever it renders: one record told end to end.
-// The hero's verification sample shows this same document hash.
-export const EXAMPLE_HASH = '8f2c9a1e4b6d0357af92c1e8d4b6a70f3c5e9b1d2a4f6c8e0b3d5f7a9c1e3b5d'
+// The hero's verification sample shows this same document ID.
+export const EXAMPLE_DOCUMENT_ID = '7c1e4b2a-9d3f-4e6a-b8c5-0f2d4a6e8b1c'
 
 export interface RecordEvent {
   step: string
@@ -61,7 +61,7 @@ export const EXAMPLE_RECORD = {
       role: 'Manager',
       actor: 'Rohan Mehta',
       action: 'Drafted and signed',
-      detail: 'Signed a MANAGER statement over the content hash with TechCorp’s key.',
+      detail: 'Unlocked a personal signing key with their own answers, sealed the content and signed it.',
       at: '2026-06-12T05:32:00Z',
       evidence: { label: 'Reference', value: 'TECHCO/EXP/2026/K7M2P9', isMono: true },
     },
@@ -70,16 +70,16 @@ export const EXAMPLE_RECORD = {
       role: 'HR',
       actor: 'Ananya Iyer',
       action: 'Co-signed and issued',
-      detail: 'Added the HR statement. A document is issued only once both signatures exist.',
+      detail: 'Sealed it again with HR’s own key. A document is issued only once both signatures exist.',
       at: '2026-06-12T10:10:00Z',
-      evidence: { label: 'Document hash', value: `${EXAMPLE_HASH.slice(0, 10)}…${EXAMPLE_HASH.slice(-6)}`, isMono: true },
+      evidence: { label: 'Document ID', value: `${EXAMPLE_DOCUMENT_ID.slice(0, 13)}…`, isMono: true },
     },
     {
       step: '04',
       role: 'Merkle batch',
       actor: 'CareerVault',
       action: 'Anchored on Polygon',
-      detail: 'That day’s documents were batched into one Merkle root and committed on-chain.',
+      detail: 'That day’s documents were batched into one Merkle root and timestamped on-chain, as a secondary public receipt.',
       at: '2026-06-12T18:30:00Z',
       evidence: { label: 'Block', value: '#84219301', isMono: true, tone: 'anchor' },
     },
@@ -88,9 +88,9 @@ export const EXAMPLE_RECORD = {
       role: 'Verifier',
       actor: 'A recruiter',
       action: 'Verified from a share link',
-      detail: 'Every check recomputed from the record — no account, no call to HR.',
+      detail: 'Every check recomputed on our server from the encrypted record — no account, no call to HR.',
       at: '2026-06-18T04:57:00Z',
-      evidence: { label: 'Result', value: '6 of 6 checks passed', tone: 'verified' },
+      evidence: { label: 'Result', value: '5 of 5 checks passed', tone: 'verified' },
     },
   ] satisfies RecordEvent[],
 }

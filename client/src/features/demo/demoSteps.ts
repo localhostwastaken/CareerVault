@@ -14,6 +14,15 @@ export interface DemoStep {
 
 export const DEMO_STEPS: DemoStep[] = [
   {
+    actor: 'Manager',
+    account: 'marcus@techcorp.example.com',
+    action: 'Profile → Signing security. Show the enrolled key (or enrol: date of birth, ID, three answers).',
+    to: '/app/profile',
+    linkLabel: 'Open profile',
+    happening:
+      'The answers are normalised and stretched with PBKDF2-SHA256 (600,000 rounds, random salt) into a 256-bit key. Only an AES-256-GCM-encrypted copy is stored; the answers themselves never are.',
+  },
+  {
     actor: 'Holder',
     account: 'alice@holder.example.com',
     action: 'Request an experience letter from TechCorp.',
@@ -25,26 +34,26 @@ export const DEMO_STEPS: DemoStep[] = [
   {
     actor: 'Manager',
     account: 'marcus@techcorp.example.com',
-    action: 'Open the request in the inbox, fill in the facts, and sign.',
+    action: 'Open the request, fill in the facts, re-enter the signing details, and sign. Try one wrong answer first.',
     to: '/app/inbox',
     linkLabel: 'Open the inbox',
     happening:
-      'The content is canonicalised (JCS), salted and hashed with SHA-256. The org key signs a MANAGER statement over that hash. The content, salt and signature are sealed with AES-256-GCM before they reach the database.',
+      'A wrong answer is refused and counted (five lock signing for 15 minutes). The right ones unlock the key: the content becomes fixed-layout bytes plus a salt, SHA-256 gives the hash, HMAC-SHA256 with the manager’s key gives the seal, and the org’s RSA-2048 key signs both. Everything is AES-256-GCM-encrypted before it reaches the database.',
   },
   {
     actor: 'HR',
     account: 'hr@techcorp.example.com',
-    action: 'Open Approvals, review, and Approve & issue.',
+    action: 'Open Approvals, review, re-enter HR’s signing details, and Approve & issue.',
     to: '/app/approvals',
     linkLabel: 'Open approvals',
     happening:
-      'HR signs a second, distinct statement (role HR, own membership). The PDF is rendered and encrypted before it is stored. The document is now Issued.',
+      'HR first confirms the bytes still hash to what the manager signed, then adds a seal with HR’s own key and a separate HR signature. The PDF is rendered and encrypted. The document is now Issued.',
   },
   {
     actor: 'Anyone',
-    action: 'On the document page, click “Run public verification”.',
+    action: 'On the document page, click “Open public verification”.',
     happening:
-      'The verdict is “Verified — anchoring pending”: the hash and both signatures recompute, and the on-chain anchor is still queued.',
+      'Only the document ID goes to the server, which decrypts the record and recomputes the hash, both seals and both signatures. The verdict is “Verified” at once; the on-chain badge says pending, and that never matters to validity.',
   },
   {
     actor: 'Org admin',
@@ -53,7 +62,13 @@ export const DEMO_STEPS: DemoStep[] = [
     to: '/app/analytics',
     linkLabel: 'Open analytics',
     happening:
-      'The integrity gate re-decrypts and re-hashes each issued document. The hashes become a Merkle tree, and the anchor wallet sends anchorRoot(root, count) to the registry on Polygon Amoy. PolygonScan shows Success and a RootAnchored event.',
+      'The integrity gate re-decrypts and re-hashes each issued document. The hashes become a Merkle tree, and the anchor wallet sends anchorRoot(root, count) to the registry on Polygon Amoy.',
+  },
+  {
+    actor: 'Anyone',
+    action: 'Refresh the public verification.',
+    happening:
+      'Same verdict; the badge now reads “Timestamped on-chain” and links the transaction. The chain is a public receipt, never a condition.',
   },
   {
     actor: 'Anyone',
@@ -61,12 +76,6 @@ export const DEMO_STEPS: DemoStep[] = [
     external: 'readContract',
     linkLabel: 'Open Read Contract',
     happening: 'The answer, exists = true with the block time, comes straight from the chain, not from CareerVault.',
-  },
-  {
-    actor: 'Anyone',
-    action: 'Refresh the public verification.',
-    happening:
-      'The verdict is now “Verified”. The Merkle proof folds to the root, verifyRoot confirms it, and the anchor card links the transaction and the contract.',
   },
   {
     actor: 'HR',
@@ -79,9 +88,10 @@ export const DEMO_STEPS: DemoStep[] = [
   },
   {
     actor: 'Anyone',
-    action: 'Show the contract’s event log: every anchor and revocation the registry has recorded.',
-    external: 'events',
-    linkLabel: 'Open contract events',
-    happening: 'Anyone can audit the registry. CareerVault’s wallet is the only one authorised to write to it.',
+    action: 'Open the SHA-256 lab and hash “abc”.',
+    to: '/demo/sha256',
+    linkLabel: 'Open the lab',
+    happening:
+      'Our own SHA-256, bit by bit: padding to 512 bits, the 64-word schedule, all 64 rounds, and the digest, checked live against the browser’s built-in SHA-256.',
   },
 ]

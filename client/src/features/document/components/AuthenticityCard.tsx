@@ -81,13 +81,11 @@ export function AuthenticityCard({ document }: { document: DocumentDetail }) {
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
-        <Explainer
-          title="How these signatures were made"
-          summary="From the fields the manager filled in to two RS256 signatures, sealed at rest."
-          steps={SIGNING_STEPS}
-        />
-      </div>
+      <Explainer
+        title="How these signatures were made"
+        summary="From the fields the manager filled in to two personally sealed, organisation-signed attestations."
+        steps={SIGNING_STEPS}
+      />
     </Card>
   )
 }

@@ -1,7 +1,10 @@
 import type { DocumentStatus, DocumentType } from '@/features/document/types'
 
-export type Verdict = 'VERIFIED' | 'VERIFIED_PENDING_ANCHOR' | 'REVOKED' | 'EXPIRED' | 'INVALID' | 'NOT_FOUND'
-export type CheckStatus = 'pass' | 'fail' | 'pending'
+// Mirrors server/src/modules/verification/verification-view.ts. The server sends verdicts,
+// never cryptographic material: no hash, salt, seal, signature, key or Merkle root.
+export type Verdict = 'VERIFIED' | 'REVOKED' | 'EXPIRED' | 'INVALID' | 'NOT_FOUND'
+export type CheckStatus = 'pass' | 'fail'
+export type AnchorStatus = 'anchored' | 'pending' | 'unconfirmed' | 'unavailable'
 
 export interface VerificationCheck {
   key: string
@@ -10,38 +13,39 @@ export interface VerificationCheck {
   detail: string
 }
 
-export interface VerificationAnchor {
-  rootHash: string
-  txHash: string | null
-  blockNumber: number | null
-  anchoredAt: string | null
-  chainId: number | null
-  network: string
-  contractAddress: string | null
+export interface RoleSignature {
+  role: 'MANAGER' | 'HR'
+  signerName: string | null
+  isValid: boolean
+}
+
+export interface AnchorBadgeInfo {
+  status: AnchorStatus
+  network: string | null
   explorerTxUrl: string | null
-  explorerContractUrl: string | null
+  anchoredAt: string | null
 }
 
 export interface VerificationDocument {
+  documentId: string
   type: DocumentType
   status: DocumentStatus
-  organizationName: string
   // Null on an anonymous lookup of a salary proof: the public view withholds the name.
   holderName: string | null
-  issuedAt: string | null
-  expiresAt: string | null
-  documentHash: string | null
-  version: number
-  content: Record<string, unknown>
+  fields: Record<string, unknown>
 }
 
 export interface VerificationResult {
+  verified: boolean
   verdict: Verdict
-  anchored: boolean
-  // The holder exercised GDPR erasure: only the hash and its anchor remain, so `document` is null.
+  // The holder exercised GDPR erasure: nothing of the content remains, so `document` is null.
   erased: boolean
+  issuer: { name: string; domain: string } | null
+  issuedAt: string | null
+  expiresAt: string | null
   document: VerificationDocument | null
-  anchor: VerificationAnchor | null
-  revocation: { revokedAt: string | null; code: string | null; reason: string | null } | null
+  roleSignatures: RoleSignature[]
   checks: VerificationCheck[]
+  revocation: { revokedAt: string | null; code: string | null; reason: string | null } | null
+  anchor: AnchorBadgeInfo
 }

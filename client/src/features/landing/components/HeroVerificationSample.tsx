@@ -3,14 +3,14 @@ import { HashDisplay } from '@/components/shared/HashDisplay'
 import { CheckRow } from '@/features/verification/components/CheckRow'
 import { VerdictBanner } from '@/features/verification/components/VerdictBanner'
 import type { VerificationCheck } from '@/features/verification/types'
-import { EXAMPLE_HASH } from '@/features/landing/content'
+import { EXAMPLE_DOCUMENT_ID } from '@/features/landing/content'
 
 // A real product artifact, not decoration — the exact evidence rail a visitor gets
 // from /verify, with illustrative values so the hero doesn't need a live document.
 const SAMPLE_CHECKS: VerificationCheck[] = [
-  { key: 'signatures', label: 'Manager & HR signatures', status: 'pass', detail: 'Both role statements verified.' },
-  { key: 'hash', label: 'Content hash', status: 'pass', detail: 'Recomputed from stored content.' },
-  { key: 'anchor', label: 'Blockchain anchor', status: 'pass', detail: 'Merkle root committed on Polygon.' },
+  { key: 'integrity', label: 'Content unchanged since signing', status: 'pass', detail: 'Rebuilt from the encrypted record.' },
+  { key: 'managerSignature', label: 'Manager signature', status: 'pass', detail: 'Sealed with the manager’s own key.' },
+  { key: 'hrSignature', label: 'HR co-signature', status: 'pass', detail: 'Sealed with HR’s own key.' },
 ]
 
 export function HeroVerificationSample() {
@@ -18,7 +18,7 @@ export function HeroVerificationSample() {
     <Card className="w-full max-w-sm p-5" aria-label="Example verification result">
       <p className="label-micro">Example verification</p>
       <div className="mt-3">
-        <VerdictBanner verdict="VERIFIED" anchored />
+        <VerdictBanner verdict="VERIFIED" />
       </div>
       <ol className="mt-4">
         {SAMPLE_CHECKS.map((check, index) => (
@@ -26,13 +26,8 @@ export function HeroVerificationSample() {
         ))}
       </ol>
       <div className="mt-4 border-t border-border pt-4">
-        <p className="label-micro mb-1.5">Document hash · SHA-256</p>
-        <HashDisplay
-          value={EXAMPLE_HASH}
-          lead={16}
-          tail={16}
-          label="Copy document hash"
-        />
+        <p className="label-micro mb-1.5">Document ID</p>
+        <HashDisplay value={EXAMPLE_DOCUMENT_ID} lead={36} tail={0} label="Copy document ID" />
       </div>
     </Card>
   )

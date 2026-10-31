@@ -2,16 +2,19 @@ import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ErrorState } from '@/components/shared/ErrorState'
-import { useVerifyByHashQuery, useVerifyByTokenQuery } from '@/features/verification/api'
+import { useVerifyByDocumentQuery, useVerifyByTokenQuery } from '@/features/verification/api'
+import { isDocumentId } from '@/features/verification/parse'
 import { VerificationReport } from '@/features/verification/components/VerificationReport'
 import { VerifyingProgress } from '@/features/verification/components/VerifyingProgress'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 
 const VerifyResult = () => {
-  const { hash, token } = useParams()
-  const hashQuery = useVerifyByHashQuery(hash ?? '', { skip: !hash })
-  const tokenQuery = useVerifyByTokenQuery(token ?? '', { skip: !token })
-  const { data, isLoading, isError, error, refetch } = hash ? hashQuery : tokenQuery
+  // One route for both references: a UUID is a document ID, anything else a share token.
+  const ref = useParams().ref ?? ''
+  const isDocument = isDocumentId(ref)
+  const documentQuery = useVerifyByDocumentQuery(ref, { skip: !isDocument })
+  const tokenQuery = useVerifyByTokenQuery(ref, { skip: isDocument })
+  const { data, isLoading, isError, error, refetch } = isDocument ? documentQuery : tokenQuery
 
   useDocumentTitle(data ? `Verification — ${data.verdict.toLowerCase().replaceAll('_', ' ')}` : 'Verifying document')
 

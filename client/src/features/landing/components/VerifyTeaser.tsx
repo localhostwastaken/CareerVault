@@ -32,21 +32,21 @@ export function VerifyTeaser() {
           Have a share link? Check it.
         </h2>
         <p className="mx-auto mt-3 max-w-xl text-body-lg text-muted-foreground">
-          Paste a CareerVault share link or a document hash. Verification is public, free, and needs no account.
+          Paste a CareerVault share link or a document ID. Verification is public, free, and needs no account.
         </p>
 
         <Card className="mt-8 p-5 text-left">
           <form onSubmit={onSubmit} className="flex flex-col gap-3 sm:flex-row">
             <div className="min-w-0 flex-1">
               <label htmlFor="verify-teaser" className="sr-only">
-                Share link or document hash
+                Share link or document ID
               </label>
               <Input
                 id="verify-teaser"
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
                 onBlur={() => setTouched(true)}
-                placeholder="Paste a share link or 64-character hash"
+                placeholder="Paste a share link or document ID"
                 className="font-mono text-label"
                 autoComplete="off"
                 spellCheck={false}
@@ -61,7 +61,7 @@ export function VerifyTeaser() {
           </form>
           {showError && (
             <p id="verify-teaser-error" role="alert" className="mt-2 text-label font-medium text-destructive">
-              That isn’t a CareerVault reference. Share tokens are 48 hex characters; hashes are 64.
+              That isn’t a CareerVault reference. Share tokens are 48 hex characters; document IDs look like 1b4e28ba-2fa1-11d2-883f-0016d3cca427.
             </p>
           )}
         </Card>

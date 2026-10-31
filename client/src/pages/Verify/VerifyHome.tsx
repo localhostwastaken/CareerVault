@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 
 const MODES: Array<{ value: VerifyMode; label: string; hint: string }> = [
   { value: 'token', label: 'Share link', hint: 'The 48-character token from a CareerVault link.' },
-  { value: 'hash', label: 'Document hash', hint: 'The 64-character SHA-256 hash printed on the document.' },
+  { value: 'document', label: 'Document ID', hint: 'The document ID printed at the foot of the PDF.' },
 ]
 
 const CHECK_STEPS = VERIFICATION_CHECKS.map(({ key, label }) => ({ title: label, body: CHECK_EXPLANATIONS[key] }))
@@ -35,7 +35,7 @@ const VerifyHome = () => {
     event.preventDefault()
     setTouched(true)
     if (!valid) return
-    navigate(mode === 'hash' ? `/verify/hash/${reference.toLowerCase()}` : `/verify/${reference}`)
+    navigate(`/verify/${mode === 'document' ? reference.toLowerCase() : reference}`)
   }
 
   return (
@@ -46,13 +46,13 @@ const VerifyHome = () => {
         </div>
         <h1 className="font-serif text-h1 text-foreground">Verify a document</h1>
         <p className="mx-auto mt-2 max-w-md text-body text-muted-foreground">
-          Confirm a document’s signatures, issuer and on-chain anchor. Public, free, and no account required.
+          Confirm a document’s signatures, issuer and status. Every check runs on our server; public, free, and no account required.
         </p>
       </div>
 
       <Card className="mt-8 p-5">
         {/* Two references, two shapes — picking one prevents a 48-char token being
-            rejected against the 64-char hash rule. Modelled as a pressed-button group,
+            rejected against the document-ID rule. Modelled as a pressed-button group,
             not role="tab": the ARIA tabs pattern promises arrow-key navigation and an
             associated tabpanel, and there is neither here. */}
         <div role="group" aria-label="Reference type" className="mb-5 flex gap-1 rounded-lg bg-surface-2 p-1">
@@ -86,7 +86,7 @@ const VerifyHome = () => {
               value={value}
               onChange={(event) => setValue(event.target.value)}
               onBlur={() => setTouched(true)}
-              placeholder={`${VERIFY_LENGTH[mode]}-character hex ${mode}`}
+              placeholder={mode === 'document' ? 'e.g. 7c1e4b2a-9d3f-4e6a-b8c5-0f2d4a6e8b1c' : '48-character hex token'}
               className="tnum font-mono text-label"
               autoComplete="off"
               spellCheck={false}
@@ -95,7 +95,7 @@ const VerifyHome = () => {
             />
             {showError ? (
               <p id="verify-error" role="alert" className="text-label font-medium text-destructive">
-                Enter a {VERIFY_LENGTH[mode]}-character hexadecimal {mode}. Pasting the full share link works too.
+                Enter a valid {active.label.toLowerCase()} ({VERIFY_LENGTH[mode]} characters). Pasting the full link works too.
               </p>
             ) : (
               <p id="verify-hint" className="text-label text-muted-foreground">
@@ -113,7 +113,7 @@ const VerifyHome = () => {
       <div className="mt-6 flex flex-col gap-6">
         <Explainer
           title="What gets checked"
-          summary="Six checks, all recomputed from the record on every run. Nothing is taken from a stored “valid” flag."
+          summary="Five checks, all recomputed on our server from the encrypted record on every run. Nothing is taken from a stored “valid” flag."
           steps={CHECK_STEPS}
         />
 

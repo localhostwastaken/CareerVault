@@ -10,7 +10,7 @@ const REVOCATION_LABEL: Record<string, string> = {
 
 // What the verdict means for the reader, in plain words, and what to do about it.
 export function VerificationNotices({ result }: { result: VerificationResult }) {
-  const { revocation, anchor } = result
+  const { revocation } = result
   return (
     <>
       {revocation && (
@@ -29,8 +29,7 @@ export function VerificationNotices({ result }: { result: VerificationResult }) 
       {result.erased && (
         <Notice tone="neutral" title="The holder erased this credential">
           They exercised their right to erasure, so the original content no longer exists and nothing can be checked
-          against this hash.
-          {anchor && ' The on-chain anchor below still shows when the hash was anchored.'}
+          against it.
         </Notice>
       )}
       {result.verdict === 'INVALID' && !result.erased && (
@@ -41,7 +40,7 @@ export function VerificationNotices({ result }: { result: VerificationResult }) 
       )}
       {result.verdict === 'NOT_FOUND' && (
         <Notice tone="neutral" title="Nothing to show for this reference">
-          Double-check the share link or document hash. If it's correct, the issuer may have removed the document.
+          Double-check the share link or document ID. If it's correct, the document may not have been issued, or the issuer removed it.
         </Notice>
       )}
     </>

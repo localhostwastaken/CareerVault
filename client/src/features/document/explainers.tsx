@@ -30,37 +30,42 @@ export const SIGNING_STEPS: ExplainerStep[] = [
     body: 'The server checks the fields against this document type’s schema, drops empty optional fields, and adds the schema version, issue date and reference number.',
   },
   {
-    title: 'Canonicalise',
+    title: 'Unlock your own key',
     body: (
       <>
-        The content is serialised with <Term>JCS (RFC 8785)</Term>: sorted keys and fixed number formats, so the same
-        facts always produce the same bytes.
+        You re-enter your date of birth, ID and three answers. The server stretches them with{' '}
+        <Term>PBKDF2-SHA256 (600,000 rounds)</Term> and compares the result, in constant time, with your key, which is
+        only ever stored encrypted with <Term>AES-256-GCM</Term>. A stolen login alone cannot sign.
       </>
     ),
   },
   {
-    title: 'Salt and hash',
+    title: 'Write the exact bytes',
+    body: 'The fields go into a fixed binary layout (type, length, value, keys in byte order) together with the document ID, type, organisation and holder, followed by a fresh 32-byte random salt.',
+  },
+  {
+    title: 'Hash and seal',
     body: (
       <>
-        A fresh 32-byte random salt is appended and hashed: <Term>SHA-256(JCS(content) + salt)</Term>. The salt makes
-        the hash impossible to guess. Deleting it later cuts the link to the person (GDPR erasure).
+        <Term>SHA-256(bytes)</Term> is the document hash. <Term>HMAC-SHA256(your key, bytes)</Term> is your seal: only
+        your key can produce it, and one changed character breaks it.
       </>
     ),
   },
   {
-    title: 'Sign a MANAGER statement',
+    title: 'Sign',
     body: (
       <>
-        The organisation key signs <Term>SHA-256(JCS({'{'}v:1, documentHash, role: MANAGER, memberId{'}'}))</Term>{' '}
-        with RS256. The statement names your role and membership, so it records who attested.
+        The organisation&rsquo;s <Term>RSA-2048</Term> key signs a statement that binds the hash to your seal, your
+        role and your key, so it records exactly who attested.
       </>
     ),
   },
   {
-    title: 'Seal before storing',
+    title: 'Encrypt before storing',
     body: (
       <>
-        The content, salt and signature are written as AES-256-GCM envelopes (<Term>cvenc:v1:…</Term>), so the
+        The content, salt, seal and signature are written as AES-256-GCM envelopes (<Term>cvenc:v1:…</Term>), so the
         database never holds them in plaintext. The document then moves to HR.
       </>
     ),
@@ -69,25 +74,26 @@ export const SIGNING_STEPS: ExplainerStep[] = [
 
 export const APPROVAL_STEPS: ExplainerStep[] = [
   {
-    title: 'A second, distinct signature',
+    title: 'A second person, a second key',
     body: (
       <>
-        HR signs a statement over the same hash with <Term>role: HR</Term> and their own membership. The manager who
-        signed can’t approve, so issuing takes two people.
+        HR first confirms the stored bytes still hash to what the manager signed, then unlocks their own key with their
+        own answers and adds a separate seal and a <Term>role: HR</Term> signature. The manager who signed can’t
+        approve, so issuing takes two people.
       </>
     ),
   },
   {
     title: 'Issue and render',
-    body: 'The status becomes Issued. A PDF is rendered with the document hash in its footer and encrypted before it reaches storage.',
+    body: 'The status becomes Issued. A PDF is rendered with the document ID and its verification link in the footer, and encrypted before it reaches storage.',
   },
   {
     title: 'Verifiable immediately',
-    body: 'Public verification passes at once as “Verified — anchoring pending”. Both signatures and the hash already check out.',
+    body: 'Public verification passes at once. The on-chain timestamp shows as pending until the next batch; it never affects the verdict.',
   },
   {
-    title: 'Anchored in the next batch',
-    body: 'The nightly batch (or an admin’s “Anchor now”) adds it to a Merkle tree whose root is written to Polygon.',
+    title: 'Timestamped in the next batch',
+    body: 'The nightly batch (or an admin’s “Anchor now”) adds it to a Merkle tree whose root is written to Polygon, as a public secondary receipt.',
   },
 ]
 

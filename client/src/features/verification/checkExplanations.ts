@@ -1,27 +1,24 @@
-// How each of the server's six checks works (verification.service.ts, anchor-check.ts),
-// keyed by the check's `key`. Plain sentences, because the evidence panel is read aloud in
-// demos and by verifiers who have never heard of JCS.
+// What each of the server's five checks means, keyed by the check's `key`. Plain sentences
+// for a verifier, and deliberately free of algorithm names: the verifier is told what was
+// proven, not how to re-prove it (the server holds the keys that would need).
 export const CHECK_EXPLANATIONS: Record<string, string> = {
   exists:
-    'Looks the hash up in the register. Only an issued document counts (or one later revoked or expired). The hash of a draft or a returned request never passes.',
+    'The document is in the issuer’s register and was actually issued. A draft or a returned request never passes.',
   integrity:
-    'Decrypts the stored content and salt, puts the content in canonical form (RFC 8785 JCS), appends the salt and recomputes SHA-256. It must equal the document hash, so changing one character anywhere fails this check.',
-  issuerSignature:
-    'Rebuilds the manager’s statement, SHA-256 of {v:1, documentHash, role: MANAGER, memberId}, and checks its RS256 signature against the issuer public key pinned to this document when it was signed.',
-  approverSignature:
-    'The same check for HR’s separate statement (role: HR, HR’s membership). It is signed with the same organisation key, but the statement is different, so it is a separate signature.',
-  anchor:
-    'Folds the document’s Merkle proof up to its batch root, then asks the AnchorRegistry contract on Polygon whether that root exists. Pending means the next batch has not run yet or the chain is unreachable. That does not affect validity.',
+    'The server decrypts the stored record and rebuilds it byte by byte. Changing a single character anywhere, or moving it to another person, fails this check.',
+  managerSignature:
+    'The manager sealed the document with a personal key that only unlocks with their own answers, and the organisation’s signature covers that seal.',
+  hrSignature:
+    'HR co-signed separately with their own personal key, so the two signatures are two different people’s acts.',
   status:
-    'Reads revocation and expiry from the register, which has the final say. If the hash is also flagged on-chain, that is noted here.',
+    'Revocation and expiry come from the issuer’s register, which has the final say.',
 }
 
-// The six checks in the order the server runs and returns them.
+// The five checks in the order the server runs and returns them.
 export const VERIFICATION_CHECKS = [
-  { key: 'exists', label: 'Document on record' },
-  { key: 'integrity', label: 'Content integrity' },
-  { key: 'issuerSignature', label: 'Issuer signature' },
-  { key: 'approverSignature', label: 'Approver signature' },
-  { key: 'anchor', label: 'Blockchain anchor' },
-  { key: 'status', label: 'Revocation status' },
+  { key: 'exists', label: 'Issued document on record' },
+  { key: 'integrity', label: 'Content unchanged since signing' },
+  { key: 'managerSignature', label: 'Manager signature' },
+  { key: 'hrSignature', label: 'HR co-signature' },
+  { key: 'status', label: 'Not revoked or expired' },
 ] as const
