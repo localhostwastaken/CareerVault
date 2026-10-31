@@ -1,13 +1,13 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 import type { PrismaService } from '../../prisma/prisma.service.js';
 
-// Step-up brute-force limit: 5 wrong attempts per key per 15 minutes. Every attempt is
+// Step-up brute-force limit: 5 wrong attempts per user per 15 minutes, across every key
+// they hold, so signing for several organisations does not multiply the guesses. Every attempt is
 // recorded as FAILED BEFORE any work, so attempts still in flight count against the limit
 // and parallel guesses cannot all slip past one check. It is then settled: PASSED on a
 // match, REFUSED when the lockout turned it away (so hammering a locked key does not keep
 // extending the lock), ERRORED when the KMS or database failed rather than the answers.
-// Counting per key means an admin reset, which issues a new key, starts a clean count. The
-// rows double as the audit trail of who tried to unlock a signing key, and when.
+// The rows double as the audit trail of who tried to unlock a signing key, and when.
 
 const STEP_UP_FAILED = 'EMPLOYEE_KEY_STEP_UP_FAILED';
 export const STEP_UP_PASSED = 'EMPLOYEE_KEY_STEP_UP_PASSED';
@@ -34,7 +34,7 @@ export async function reserveAttempt(
   });
   const failures = await prisma.auditLog.count({
     where: {
-      entityId: keyId,
+      actorId: userId,
       action: STEP_UP_FAILED,
       createdAt: { gt: new Date(Date.now() - LOCKOUT_WINDOW_MS) },
     },
