@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { API_BASE } from '../env'
 import { apiGet, apiPost, provisionOrganisation, signIn, type Organisation } from '../fixtures/api'
-import { signExperienceLetter } from '../fixtures/documents'
+import { completeStepUp, signExperienceLetter } from '../fixtures/documents'
 
 // The whole document lifecycle in a browser, end to end: holder requests → manager signs →
 // HR co-signs and issues → PDF → anchored → publicly verifiable → shared → revoked.
@@ -17,7 +17,6 @@ let holderPage: Page
 let managerPage: Page
 let hrPage: Page
 let documentId: string
-let documentHash: string
 
 // One context per role: the active persona lives in sessionStorage, so sharing a context
 // between the manager and HR would have them overwriting each other's identity.
@@ -90,7 +89,7 @@ test('the manager signs the draft and it moves to HR', async () => {
 test('HR co-signs and the document is issued with a PDF', async () => {
   await hrPage.goto(`/app/documents/${documentId}`)
   await hrPage.getByRole('button', { name: 'Approve & issue' }).click()
-  await hrPage.getByRole('dialog').getByRole('button', { name: 'Approve & issue' }).click()
+  await completeStepUp(hrPage, 'Approve & issue')
 
   await expect(hrPage.getByText('Issued').first()).toBeVisible()
 
@@ -104,21 +103,14 @@ test('HR co-signs and the document is issued with a PDF', async () => {
   expect(response.headers()['content-type']).toContain('application/pdf')
 })
 
-test('the issued document verifies publicly by hash', async ({ browser, request }) => {
-  const doc = await apiGet<{ documentHash: string }>(
-    request,
-    `/documents/${documentId}`,
-    org.hr.token,
-  )
-  documentHash = doc.documentHash
-  expect(documentHash).toMatch(/^[0-9a-f]{64}$/)
-
+test('the issued document verifies publicly by its ID, before any anchor', async ({ browser }) => {
   // A completely fresh, signed-out visitor — verification must need no account.
   const context = await browser.newContext()
   const visitor = await context.newPage()
-  await visitor.goto(`/verify/hash/${documentHash}`)
-  // Issued but not yet anchored is a PASS state, not a failure.
-  await expect(visitor.getByText(/Verified/i).first()).toBeVisible()
+  await visitor.goto(`/verify/${documentId}`)
+  // The chain is only a badge: an un-anchored document is fully verified.
+  await expect(visitor.getByRole('heading', { name: 'Document verified' })).toBeVisible()
+  await expect(visitor.getByText('On-chain timestamp pending')).toBeVisible()
   await context.close()
 })
 
@@ -174,7 +166,7 @@ test('HR revokes it and public verification says so', async ({ browser }) => {
 
   const context = await browser.newContext()
   const visitor = await context.newPage()
-  await visitor.goto(`/verify/hash/${documentHash}`)
+  await visitor.goto(`/verify/${documentId}`)
   await expect(visitor.getByText(/Revoked/i).first()).toBeVisible()
   await context.close()
 })

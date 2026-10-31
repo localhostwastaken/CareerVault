@@ -3,6 +3,7 @@ import { Ban, CheckCircle2, PenLine, Trash2, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DocumentActionDialogs } from '@/features/document/components/DocumentActionDialogs'
+import { StepUpDialog } from '@/features/employee-key/components/StepUpDialog'
 import { useDocumentActions } from '@/features/document/useDocumentActions'
 import type { DocumentDetail } from '@/features/document/types'
 
@@ -66,6 +67,16 @@ export function DocumentActions({ document }: { document: DocumentDetail }) {
         onCodeChange={actions.setCode}
         handlers={actions.handlers}
         loading={actions.loading}
+      />
+      <StepUpDialog
+        open={actions.dialog === 'approve'}
+        onOpenChange={(open) => !open && actions.close()}
+        organizationId={document.organizationId}
+        title="Approve and issue"
+        description="Re-enter your signing details to co-sign with your own key. This issues the document to the holder and cannot be undone."
+        confirmLabel="Approve & issue"
+        isLoading={actions.loading.approve}
+        onConfirm={actions.approveWith}
       />
     </Card>
   )

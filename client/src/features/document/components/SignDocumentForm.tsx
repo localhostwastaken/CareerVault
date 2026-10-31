@@ -9,6 +9,8 @@ import { useSignDocumentMutation } from '@/features/document/api'
 import { SIGN_FIELDS, buildSignSchema, outputKey, rupeesToPaise, signDefaults, type SignField, type SignFormValues } from '@/features/document/sign-config'
 import { SignFieldControl } from '@/features/document/components/SignFieldControl'
 import { SalarySummary } from '@/features/document/components/SalarySummary'
+import { StepUpDialog } from '@/features/employee-key/components/StepUpDialog'
+import type { StepUp } from '@/features/employee-key/types'
 import type { DocumentDetail } from '@/features/document/types'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
@@ -41,6 +43,8 @@ export function SignDocumentForm({ document, onSigned }: SignDocumentFormProps) 
   const navigate = useNavigate()
   const [sign, { isLoading }] = useSignDocumentMutation()
   const [showMore, setShowMore] = useState(false)
+  // The validated content waits here while the manager re-enters their signing details.
+  const [pendingContent, setPendingContent] = useState<Record<string, unknown> | null>(null)
   const type = document.type
 
   // Signer identity comes from the session, not the form. The server re-stamps these
@@ -62,9 +66,12 @@ export function SignDocumentForm({ document, onSigned }: SignDocumentFormProps) 
   const defaultFields = SIGN_FIELDS[type].filter((f) => f.section !== 'more')
   const moreFields = SIGN_FIELDS[type].filter((f) => f.section === 'more' && isVisible(f))
 
-  const onSubmit = async (values: SignFormValues) => {
+  const onSubmit = (values: SignFormValues) => setPendingContent(buildContent(type, values))
+
+  const onStepUp = async (stepUp: StepUp) => {
+    if (!pendingContent) return
     try {
-      onSigned(await sign({ id: document.id, contentJson: buildContent(type, values) }).unwrap())
+      onSigned(await sign({ id: document.id, contentJson: pendingContent, stepUp }).unwrap())
     } catch (error) {
       toastApiError(error, 'Could not sign the document')
     }
@@ -81,46 +88,58 @@ export function SignDocumentForm({ document, onSigned }: SignDocumentFormProps) 
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} noValidate className="flex flex-col gap-5">
-        {defaultFields.map((field) =>
-          field.separationOnly && stillEmployed ? (
-            <p key={field.name} className="inset-well p-4 text-body text-muted-foreground">
-              Marked as still employed — no last working day is recorded.
-            </p>
-          ) : (
-            <SignFieldControl key={field.name} field={field} control={form.control} />
-          ),
-        )}
+    <>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} noValidate className="flex flex-col gap-5">
+          {defaultFields.map((field) =>
+            field.separationOnly && stillEmployed ? (
+              <p key={field.name} className="inset-well p-4 text-body text-muted-foreground">
+                Marked as still employed — no last working day is recorded.
+              </p>
+            ) : (
+              <SignFieldControl key={field.name} field={field} control={form.control} />
+            ),
+          )}
 
-        {type === 'SALARY_PROOF' && <SalarySummary control={form.control} />}
+          {type === 'SALARY_PROOF' && <SalarySummary control={form.control} />}
 
-        {moreFields.length > 0 && (
-          <div className="flex flex-col gap-5 border-t border-border pt-5">
-            <button
-              type="button"
-              onClick={() => setShowMore((v) => !v)}
-              className="focus-ring flex items-center gap-1.5 self-start rounded-lg text-label font-medium text-seal"
-              aria-expanded={showMore}
-            >
-              <ChevronDown className={cn('size-4 transition-transform', showMore && 'rotate-180')} />
-              {showMore ? 'Hide extra detail' : 'Add more detail'}
-            </button>
-            {showMore &&
-              moreFields.map((field) => <SignFieldControl key={field.name} field={field} control={form.control} />)}
+          {moreFields.length > 0 && (
+            <div className="flex flex-col gap-5 border-t border-border pt-5">
+              <button
+                type="button"
+                onClick={() => setShowMore((v) => !v)}
+                className="focus-ring flex items-center gap-1.5 self-start rounded-lg text-label font-medium text-seal"
+                aria-expanded={showMore}
+              >
+                <ChevronDown className={cn('size-4 transition-transform', showMore && 'rotate-180')} />
+                {showMore ? 'Hide extra detail' : 'Add more detail'}
+              </button>
+              {showMore &&
+                moreFields.map((field) => <SignFieldControl key={field.name} field={field} control={form.control} />)}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 pt-1">
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? <Loader2 className="animate-spin" /> : <PenLine />}
+              Sign &amp; send to HR
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => navigate(-1)}>
+              Cancel
+            </Button>
           </div>
-        )}
-
-        <div className="flex items-center gap-2 pt-1">
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? <Loader2 className="animate-spin" /> : <PenLine />}
-            Sign &amp; send to HR
-          </Button>
-          <Button type="button" variant="ghost" onClick={() => navigate(-1)}>
-            Cancel
-          </Button>
-        </div>
-      </form>
-    </Form>
+        </form>
+      </Form>
+      <StepUpDialog
+        open={pendingContent !== null}
+        onOpenChange={(open) => !open && setPendingContent(null)}
+        organizationId={document.organizationId}
+        title="Confirm it is you"
+        description="Re-enter your signing details. They unlock your personal key, which seals this document; they are never stored."
+        confirmLabel="Sign & send to HR"
+        isLoading={isLoading}
+        onConfirm={onStepUp}
+      />
+    </>
   )
 }

@@ -1,3 +1,5 @@
+import type { StepUp } from '@/features/employee-key/types'
+
 export type DocumentStatus =
   | 'REQUESTED'
   | 'DRAFT'
@@ -69,10 +71,12 @@ export interface RequestDocumentRequest {
 
 export interface SignDocumentRequest {
   contentJson: Record<string, unknown>
+  stepUp: StepUp
 }
 
 export interface ApproveRequest {
   notes?: string
+  stepUp: StepUp
 }
 
 export interface RejectRequest {

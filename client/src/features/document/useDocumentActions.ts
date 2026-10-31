@@ -8,6 +8,7 @@ import {
   useRevokeDocumentMutation,
 } from '@/features/document/api'
 import type { DocumentDetail, RevocationCode } from '@/features/document/types'
+import type { StepUp } from '@/features/employee-key/types'
 import { documentPermissions } from '@/features/document/useDocumentPermissions'
 import { useAuth } from '@/hooks/useAuth'
 import { notify, toastApiError } from '@/lib/notify'
@@ -52,12 +53,15 @@ export function useDocumentActions(document: DocumentDetail) {
 
   const id = document.id
   const handlers = {
-    approve: () => run(approve({ id }).unwrap(), 'Document issued to the holder.', 'Could not approve the document'),
     reject: () => reason.trim() && run(reject({ id, reason: reason.trim() }).unwrap(), 'Returned to the signer for revision.', 'Could not return the document'),
     revoke: () => run(revoke({ id, code, reason: reason.trim() || undefined }).unwrap(), 'Document revoked.', 'Could not revoke the document'),
     delete: () => run(remove(id).unwrap(), 'Document deleted.', 'Could not delete the document', () => navigate('/app/documents', { replace: true })),
     return: () => reason.trim() && run(returnDoc({ id, reason: reason.trim() }).unwrap(), 'Returned to the holder for revision.', 'Could not return the document', () => navigate('/app/inbox', { replace: true })),
   }
+
+  // Approval carries HR's step-up, so it is not a plain confirm like the others.
+  const approveWith = (stepUp: StepUp) =>
+    run(approve({ id, stepUp }).unwrap(), 'Document issued to the holder.', 'Could not approve the document')
 
   const loading = {
     approve: approveState.isLoading,
@@ -67,5 +71,5 @@ export function useDocumentActions(document: DocumentDetail) {
     return: returnState.isLoading,
   }
 
-  return { permissions, dialog, setDialog, close, reason, setReason, code, setCode, handlers, loading }
+  return { permissions, dialog, setDialog, close, reason, setReason, code, setCode, handlers, approveWith, loading }
 }

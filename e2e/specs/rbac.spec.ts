@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { API_BASE } from '../env'
-import { apiPost, provisionOrganisation, signIn, type Organisation } from '../fixtures/api'
+import { apiPost, provisionOrganisation, signIn, STEP_UP, type Organisation } from '../fixtures/api'
 import { CONDUCT_SUMMARY } from '../fixtures/documents'
 
 // Separation of duties is the product's core claim: a document is only worth anything
@@ -25,6 +25,7 @@ const signPayload = {
     signatoryName: 'stamped by the server',
     signatoryDesignation: 'Head of Engineering',
   },
+  stepUp: STEP_UP,
 }
 
 async function rawPost(
@@ -87,7 +88,7 @@ test('the manager who signed cannot also approve', async ({ request }) => {
     org.admin.token,
   )
 
-  const response = await rawPost(request, `/documents/${documentId}/approve`, {}, org.manager.token)
+  const response = await rawPost(request, `/documents/${documentId}/approve`, { stepUp: STEP_UP }, org.manager.token)
   expect(response.status()).toBe(409)
   expect(await response.text()).toContain('cannot also approve')
 
@@ -95,7 +96,7 @@ test('the manager who signed cannot also approve', async ({ request }) => {
   const approved = await apiPost<{ status: string }>(
     request,
     `/documents/${documentId}/approve`,
-    {},
+    { stepUp: STEP_UP },
     org.hr.token,
   )
   expect(approved.status).toBe('ISSUED')

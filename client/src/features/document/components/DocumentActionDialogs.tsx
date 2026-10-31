@@ -21,7 +21,7 @@ interface DocumentActionDialogsProps {
   onReasonChange: (value: string) => void
   code: RevocationCode
   onCodeChange: (value: RevocationCode) => void
-  handlers: Record<ActionKey, () => void>
+  handlers: Record<Exclude<ActionKey, 'approve'>, () => void>
   loading: Record<ActionKey, boolean>
 }
 
@@ -80,16 +80,6 @@ export function DocumentActionDialogs({
           aria-label="What needs changing"
         />
       </ConfirmDialog>
-
-      <ConfirmDialog
-        open={dialog === 'approve'}
-        onOpenChange={handleOpenChange}
-        title="Approve and issue"
-        description="You co-sign this document and issue it to the holder. This generates the final PDF and cannot be undone."
-        confirmLabel="Approve & issue"
-        isLoading={loading.approve}
-        onConfirm={handlers.approve}
-      />
 
       <ConfirmDialog
         open={dialog === 'revoke'}

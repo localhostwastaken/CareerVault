@@ -1,11 +1,28 @@
 import { expect, type Page } from '@playwright/test'
+import { STEP_UP, STEP_UP_QUESTIONS } from './api'
 
 /** A conduct summary long enough for the 20-character server minimum. */
 export const CONDUCT_SUMMARY =
   'Led the payments squad, shipped the settlement rewrite, and conducted themselves professionally throughout.'
 
 /**
- * Fill and submit the manager's drafting form for an experience letter.
+ * Fill the step-up dialog a signer sees before every signature, then confirm it.
+ * `confirm` is the dialog's own button label, e.g. "Approve & issue".
+ */
+export async function completeStepUp(page: Page, confirm: string): Promise<void> {
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByLabel('Date of birth')).toBeVisible()
+  await dialog.getByLabel('Date of birth').fill(STEP_UP.dateOfBirth)
+  await dialog.getByLabel('Personal ID').fill(STEP_UP.personalId)
+  for (const [index, question] of STEP_UP_QUESTIONS.entries()) {
+    await dialog.getByLabel(question).fill(STEP_UP.answers[index].answer)
+  }
+  await dialog.getByRole('button', { name: confirm }).click()
+}
+
+/**
+ * Fill and submit the manager's drafting form for an experience letter, including the
+ * step-up that unlocks the manager's signing key.
  *
  * `letterKind` matters: anything other than EXPERIENCE certifies a separation, which makes
  * `Last working day` appear AND makes `Reason for leaving` required — and that field lives
@@ -20,8 +37,9 @@ export async function signExperienceLetter(
 
   await page.getByRole('combobox', { name: 'Letter type' }).selectOption(letterKind)
   await page.getByLabel('Employee code').fill(options.employeeCode ?? 'EMP-0001')
-  // `exact` matters: 'Signatory designation' also contains 'Designation'.
-  await page.getByLabel('Designation', { exact: true }).fill('Software Engineer')
+  // Anchored: 'Signatory designation' also contains 'Designation', and the required-field
+  // asterisk keeps an exact match from ever matching.
+  await page.getByLabel(/^Designation/).fill('Software Engineer')
   await page.getByLabel('Date of joining').fill('2022-06-01')
   await page.getByLabel('Conduct summary').fill(CONDUCT_SUMMARY)
 
@@ -39,4 +57,6 @@ export async function signExperienceLetter(
     await reason.selectOption('RESIGNATION')
     await page.getByRole('button', { name: 'Sign & send to HR' }).click()
   }
+
+  await completeStepUp(page, 'Sign & send to HR')
 }

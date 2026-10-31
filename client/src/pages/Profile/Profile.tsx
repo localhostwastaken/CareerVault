@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { Section } from '@/components/shared/Section'
 import { PasswordSection } from '@/features/auth/components/PasswordSection'
 import { ERASURE_STEPS } from '@/features/document/explainers'
+import { SigningSecurityCard } from '@/features/employee-key/components/SigningSecurityCard'
 import { useDeleteAccountMutation } from '@/features/auth/authApi'
 import { logout as logoutAction } from '@/features/auth/authSlice'
 import { useAppDispatch, useAuth } from '@/hooks/useAuth'
@@ -31,6 +32,7 @@ const Profile = () => {
   const navigate = useNavigate()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleteAccount, { isLoading }] = useDeleteAccountMutation()
+  const isSigner = Boolean(user?.memberships.some((m) => m.role === 'MANAGER' || m.role === 'HR'))
 
   const onDelete = async () => {
     try {
@@ -84,6 +86,8 @@ const Profile = () => {
           )}
         </div>
       </Card>
+
+      {isSigner && <SigningSecurityCard />}
 
       <PasswordSection />
 

@@ -85,6 +85,27 @@ export async function registerAccount(
  *     member-add treats them as invitees and emails a magic link they can never receive
  *     from a test.
  */
+/**
+ * The details every e2e signer enrols with and re-enters at each signature. Invented: the
+ * server never stores them, only the key they derive.
+ */
+export const STEP_UP = {
+  dateOfBirth: '1990-01-15',
+  personalId: 'E2E-0001',
+  answers: [
+    { questionId: 'first-school', answer: 'Somaiya Vidyavihar' },
+    { questionId: 'birth-city', answer: 'Mumbai' },
+    { questionId: 'first-pet', answer: 'Bruno' },
+  ],
+}
+
+/** The enrolled questions' wording, which labels the answer fields in the step-up dialog. */
+export const STEP_UP_QUESTIONS = [
+  'What was the name of your first school?',
+  'In which city were you born?',
+  'What was the name of your first pet?',
+]
+
 export async function provisionOrganisation(
   request: APIRequestContext,
   label = 'acme',
@@ -105,6 +126,11 @@ export async function provisionOrganisation(
 
   await apiPost(request, `/orgs/${org.id}/members`, { email: manager.email, role: 'MANAGER' }, admin.token)
   await apiPost(request, `/orgs/${org.id}/members`, { email: hr.email, role: 'HR' }, admin.token)
+
+  // Both signers enrol their personal signing key; every signature then needs a step-up.
+  for (const signer of [manager, hr]) {
+    await apiPost(request, '/employee-keys/enroll', { ...STEP_UP, organizationId: org.id }, signer.token)
+  }
 
   return { id: org.id, name, domain, admin, manager, hr, holder }
 }
