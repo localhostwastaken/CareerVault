@@ -260,24 +260,6 @@ describe('GDPR erasure (e2e)', () => {
       expect(summaries.every((summary) => summary === null)).toBe(true);
     });
 
-    it('answers a credential download by the issuer with 410 Gone, saying why', async () => {
-      const res = await request(http)
-        .get(api(`/documents/${documentId}/credential`))
-        .set('Authorization', `Bearer ${hr.token}`)
-        .expect(410);
-
-      expect(res.body).toMatchObject({
-        success: false,
-        error: {
-          code: 'GONE',
-          message: expect.stringContaining(
-            'exercised their right to erasure',
-          ) as string,
-        },
-      });
-      expect(res.text).not.toContain(HOLDER_NAME);
-    });
-
     it('records the erasure on the audit trail without PII', async () => {
       const rows = await prisma.auditLog.findMany({
         where: { action: 'USER_ERASED', entityId: holder.userId },

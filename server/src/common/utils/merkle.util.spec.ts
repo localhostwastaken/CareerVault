@@ -9,26 +9,23 @@ import {
   type MerkleProofStep,
 } from './merkle.util.js';
 
-interface TestVectors {
-  pipeline: {
-    merkle: {
-      label: string;
-      leaves: string[];
-      root: string;
-      proof: { leaf: string; path: MerkleProofStep[] };
-    }[];
-  };
+interface MerkleVectors {
+  merkle: {
+    label: string;
+    leaves: string[];
+    root: string;
+    proof: { leaf: string; path: MerkleProofStep[] };
+  }[];
 }
 
-// See crypto.util.spec.ts for why this resolves from process.cwd() rather than
-// import.meta.url. Same single-source-of-truth vectors file the offline verifier's
-// --selftest recomputes independently.
+// Jest's ESM runner makes import.meta.url-relative resolution awkward, and `npm test` always
+// runs with cwd = server/, so the fixture resolves from process.cwd().
 const VECTORS = JSON.parse(
   readFileSync(
-    join(process.cwd(), '../tools/verify-credential/test-vectors.json'),
+    join(process.cwd(), 'test/fixtures/merkle-vectors.json'),
     'utf8',
   ),
-) as TestVectors;
+) as MerkleVectors;
 
 describe('merkle.util (R2 anchoring proofs)', () => {
   const leaves = ['a', 'b', 'c', 'd'].map((s) => sha256Hex(s));
@@ -63,18 +60,17 @@ describe('merkle.util (R2 anchoring proofs)', () => {
   });
 });
 
-// The verifier at tools/verify-credential re-implements Merkle folding independently
-// (no merkletreejs import). These vectors are the executable proof that it agrees with
-// the real merkle.util.ts, for the 1/3/4-leaf shapes the brief calls out.
-describe('known-answer vectors (tools/verify-credential/test-vectors.json)', () => {
-  it.each(VECTORS.pipeline.merkle)(
+// Pinned roots and proofs for the 1/3/4-leaf shapes, so a merkletreejs upgrade or option
+// change that would orphan every anchored root fails here first.
+describe('known-answer vectors (test/fixtures/merkle-vectors.json)', () => {
+  it.each(VECTORS.merkle)(
     'reproduces the anchored root for the $label case',
     ({ leaves, root }) => {
       expect(merkleRootHex(buildMerkleTree(leaves))).toBe(root);
     },
   );
 
-  it.each(VECTORS.pipeline.merkle)(
+  it.each(VECTORS.merkle)(
     'reproduces the stored proof for the $label case and it verifies',
     ({ leaves, root, proof }) => {
       const tree = buildMerkleTree(leaves);

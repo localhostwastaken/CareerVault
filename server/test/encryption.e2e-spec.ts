@@ -1,4 +1,4 @@
-import { createPublicKey, randomBytes, randomUUID, verify } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,10 +6,6 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
-import {
-  hashDocument,
-  signingStatementHash,
-} from '../src/common/utils/crypto.util.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
 // R10 at rest: after a real request → sign → approve, the document's sensitive columns hold
@@ -28,19 +24,6 @@ const CONDUCT =
 interface Session {
   token: string;
   userId: string;
-}
-
-interface Credential {
-  issuer: { publicKeyPem: string };
-  credentialSubject: Record<string, unknown>;
-  proof: {
-    salt: string;
-    documentHash: string;
-    signerMemberId: string;
-    approverMemberId: string;
-    managerSignature: string;
-    hrSignature: string;
-  };
 }
 
 describe('field encryption at rest (e2e)', () => {
@@ -236,35 +219,6 @@ describe('field encryption at rest (e2e)', () => {
 
     expect(data<{ verdict: string }>(res).verdict).toBe(
       'VERIFIED_PENDING_ANCHOR',
-    );
-  });
-
-  it('exports a credential whose salt and signatures verify offline', async () => {
-    const res = await get(
-      `/documents/${documentId}/credential`,
-      holder.token,
-    ).expect(200);
-    const { issuer, credentialSubject, proof } = JSON.parse(
-      res.text,
-    ) as Credential;
-
-    const key = createPublicKey(issuer.publicKeyPem);
-    const signedBy = (signature: string, role: 'MANAGER' | 'HR', id: string) =>
-      verify(
-        'sha256',
-        Buffer.from(signingStatementHash(documentHash, role, id), 'hex'),
-        key,
-        Buffer.from(signature, 'base64'),
-      );
-
-    expect(proof.salt).toMatch(/^[0-9a-f]{64}$/);
-    expect(proof.documentHash).toBe(documentHash);
-    expect(hashDocument(credentialSubject, proof.salt)).toBe(documentHash);
-    expect(
-      signedBy(proof.managerSignature, 'MANAGER', proof.signerMemberId),
-    ).toBe(true);
-    expect(signedBy(proof.hrSignature, 'HR', proof.approverMemberId)).toBe(
-      true,
     );
   });
 

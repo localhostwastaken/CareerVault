@@ -21,10 +21,6 @@ import {
 } from './content-validation.js';
 import { stampSignerIdentity } from './signer-identity.js';
 import { presentAnchor } from './document-anchor.js';
-import {
-  buildCredential,
-  type VerifiableCredential,
-} from './credential.builder.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type {
@@ -607,29 +603,6 @@ export class DocumentService {
     const doc = await this.getOrThrow(id);
     await this.assertCanView(user, doc);
     return this.present(id);
-  }
-
-  // Loads the document (and checks the caller may view it), then hands off to the pure
-  // credential.builder.ts for the actual JSON-LD shaping — see that file's header for what
-  // and why. Kept here rather than inlined because building the credential needs Prisma
-  // (DI) to fetch the row and its relations; shaping it does not.
-  async buildCredential(
-    id: string,
-    user: AuthenticatedUser,
-  ): Promise<VerifiableCredential> {
-    const doc = await this.prisma.document.findUnique({
-      where: { id },
-      include: {
-        organization: {
-          select: { name: true, domain: true, publicKeyPem: true },
-        },
-        holder: { select: { fullName: true } },
-        merkleProof: { include: { merkleRoot: true } },
-      },
-    });
-    if (!doc) throw new NotFoundException('Document not found');
-    await this.assertCanView(user, doc);
-    return buildCredential(doc);
   }
 
   // Mirrors list() scoping: holder, HR/Admin/Recruiter of the org, or the signing manager.

@@ -1,0 +1,61 @@
+{
+  "description": "Known-answer vectors for merkle.util.ts (R2 anchoring). Generated once from merkle.util.ts; regenerate from it if the tree construction ever changes, never hand-edit.",
+  "merkle": [
+    {
+      "label": "1 leaf",
+      "leaves": [
+        "920a7c3107d4a2fbdbcfd658e237ad1e50ce7d618aa0da44757ee6e5979b51e2"
+      ],
+      "root": "920a7c3107d4a2fbdbcfd658e237ad1e50ce7d618aa0da44757ee6e5979b51e2",
+      "proof": {
+        "leaf": "920a7c3107d4a2fbdbcfd658e237ad1e50ce7d618aa0da44757ee6e5979b51e2",
+        "path": []
+      }
+    },
+    {
+      "label": "3 leaves",
+      "leaves": [
+        "d2dbf006f96dd05044a8f63d8f118f23925ba4cc5750f8b6c8e287fd506c8188",
+        "4140bf0e8569ed03ec838871ff2f190e9b3ea86bc083d7e9901049f75f00e855",
+        "649837ddcb7e1967086d7d35aaef7b975c513815d96fc6e70015e93a2bfe0f9a"
+      ],
+      "root": "60345a16e6d540ff9fd0af2163bc0692e7bcfd09d06aaa5dca143be9bc0b8e1c",
+      "proof": {
+        "leaf": "d2dbf006f96dd05044a8f63d8f118f23925ba4cc5750f8b6c8e287fd506c8188",
+        "path": [
+          {
+            "hash": "4140bf0e8569ed03ec838871ff2f190e9b3ea86bc083d7e9901049f75f00e855",
+            "position": "right"
+          },
+          {
+            "hash": "649837ddcb7e1967086d7d35aaef7b975c513815d96fc6e70015e93a2bfe0f9a",
+            "position": "right"
+          }
+        ]
+      }
+    },
+    {
+      "label": "4 leaves",
+      "leaves": [
+        "d2dbf006f96dd05044a8f63d8f118f23925ba4cc5750f8b6c8e287fd506c8188",
+        "4140bf0e8569ed03ec838871ff2f190e9b3ea86bc083d7e9901049f75f00e855",
+        "649837ddcb7e1967086d7d35aaef7b975c513815d96fc6e70015e93a2bfe0f9a",
+        "9fde56c376760bd399b82eb8569229a2dff19219411ac71154dfeab2cf502454"
+      ],
+      "root": "890382a01ba99b6bfad46faabc8d50e1311842a628f5df55ed86e895ea8672c5",
+      "proof": {
+        "leaf": "649837ddcb7e1967086d7d35aaef7b975c513815d96fc6e70015e93a2bfe0f9a",
+        "path": [
+          {
+            "hash": "9fde56c376760bd399b82eb8569229a2dff19219411ac71154dfeab2cf502454",
+            "position": "right"
+          },
+          {
+            "hash": "70eec33ec1e55edcf6150a2d90fc8f3e8441ebbecbcf9afb84fcb7a8b512a72e",
+            "position": "left"
+          }
+        ]
+      }
+    }
+  ]
+}
