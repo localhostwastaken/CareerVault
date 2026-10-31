@@ -10,7 +10,7 @@ These rules are binding for all work in `server/`. They exist to keep a 4-person
 - PostgreSQL 16 + **pgvector** · Redis (via adapter; in-memory mock in dev)
 - Auth: `@nestjs/jwt` (RS256), bcrypt, magic links
 - Jobs: `@nestjs/schedule` (V1) / BullMQ (when Redis is real) · Logging: `nestjs-pino`
-- Validation: `class-validator` + `class-transformer` · Crypto: Node `crypto`, `merkletreejs`, `canonicalize` (JCS)
+- Validation: `class-validator` + `class-transformer` · Crypto: Node `crypto`, `merkletreejs` (no JSON canonicalization library: bytes come from `common/crypto/document-bytes.ts`)
 - PDF: Puppeteer + pdf-lib · Blockchain: ethers v6 · Payments: stripe
 - **ESM project** (`"type": "module"`, `module: nodenext`): relative imports MUST carry an explicit `.js` extension (e.g. `./app.module.js`); the Prisma client is generated as ESM. No `require()`.
 - Runs on **:9900** (matches the client config). CORS allows the client origin with credentials.
@@ -43,23 +43,24 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
 ## Canonical truths (single source — never fork these)
 - **DocumentStatus:** `REQUESTED → DRAFT → PENDING_HR → ISSUED → ANCHORED`; terminal `REVOKED`, `EXPIRED`. Reject = action returning to `DRAFT` (no REJECTED state). `merkleStatus` is derived, not stored.
 - **Roles:** `ORG_ADMIN, MANAGER, HR, HOLDER, RECRUITER` (authenticated) + public `VERIFIER` (no account). Defined once in `schema.prisma`.
-- **Hash (R4):** `document_hash = SHA-256( JCS(content_json) ++ salt )`, lowercase hex.
-  - `content_json` is the validated subject after `normalizeSubject`.
-  - The salt is `randomBytes(32)`, stored as 64 lowercase hex chars and appended as UTF-8 text.
-  - Use `common/utils/crypto.util.ts` only — never inline. Worked examples are in that file's header and in `documentation/Crypto_Pipeline_Viva_Guide.md` §2.
-  - `tools/verify-credential/test-vectors.json` gates both this implementation and the offline verifier.
-- **Signing (R3):** RSA-2048 / RS256 via `KeyManagementService`, over a per-role **statement**, never the bare hash (C1).
-  - `signingStatementHash(documentHash, role, memberId)` = `SHA-256(JCS({v:1, documentHash, role, memberId}))`.
-  - The manager signs `MANAGER` at sign; HR signs `HR` at approve.
-  - Both use the org's **one custodial key**. RBAC enforces separation of duties and the statements record it; two keys don't prove it.
-  - Verify against the document's pinned `signing_public_key_pem`, falling back to the org key.
+- **Hash (R4, revised 2026-10-31):** `document_hash = SHA-256(B)`, lowercase hex, where `B = documentBytes(identity, subject, salt)`.
+  - `common/crypto/document-bytes.ts` only: a fixed TLV layout we own (tag ‖ u32be length ‖ value; 0x01 string, 0x02 int64, 0x03 bool, 0x04 array, 0x05 object with keys in bytewise UTF-8 order; floats and null rejected). `B = "CVDOC" ‖ 0x02 ‖ id ‖ type ‖ orgId ‖ holderId ‖ subject ‖ salt(32 raw bytes)`. RFC 8785 JCS and the `canonicalize` package are gone: verification is server-only, so no third party needs to rebuild text.
+  - `content_json` is the validated subject after `normalizeSubject`; the salt is `randomBytes(32)`, stored as 64 lowercase hex chars.
+  - Use `common/utils/crypto.util.ts` only — never inline. The pinned vector is in `document-bytes.spec.ts`.
+- **Employee keys (revised 2026-10-31):** every MANAGER/HR enrols per org (`modules/employee-key/`). `K = PBKDF2-SHA256(len-prefixed DOB ‖ personalId ‖ 3 answers, 16-byte random salt, 600,000, 32)`; answers are normalized and never stored. `K` is stored only as `ekw1:<iv>:<ct>:<tag>`: AES-256-GCM under `HKDF-SHA256(KMS_MASTER_KEY, salt=orgId, info="careervault/employee-kek/v1")`, AAD `careervault|employee-key|<orgId>|<userId>|v<version>`. Re-enrolling over an ACTIVE key needs its current details; an org admin may reset another member's key (never their own). Keys are RETIRED, never deleted: documents pin `managerKeyId`/`hrKeyId`.
+  - **Step-up:** sign and approve re-derive `K` from re-entered details and `timingSafeEqual` it with the unwrapped key. Attempts are reserved as FAILED before work and settled PASSED/REFUSED/ERRORED; 5 failures per user per 15 min lock signing (`step-up-lockout.ts`).
+- **Signing (R3, revised 2026-10-31):** per signer, `seal = HMAC-SHA256(K, B)`, then RSA-2048 / RS256 via `KeyManagementService` over `signingStatementHash({documentHash, seal, role, memberId, employeeKeyId}) = SHA-256(statementBytes(...))` (C1: never the bare hash).
+  - The manager seals/signs `MANAGER` at sign; HR re-checks `SHA-256(B) == documentHash`, then seals/signs `HR` at approve. Shared helper: `modules/document/document-seal.ts`.
+  - The RSA key is the org's one custodial key; the HMAC seals are per person, so the two halves are two people's acts.
+  - Verify against the document's pinned `signing_public_key_pem` (falling back to the org key) and the pinned employee key, which must belong to the signing member's user in the document's org.
+- **Verification (R6, revised 2026-10-31):** server-only. `GET /verify/document/:id` (UUID) and `GET /verify/:token` (48 hex); the hash route, the JSON-LD credential download and `tools/verify-credential` are gone. A never-issued document answers `NOT_FOUND`. The response (`verification-view.ts`) carries verdict, issuer, signers and plain-language checks only — never a hash, salt, seal, signature, key, root or algorithm name. The chain is a badge (`anchor-badge.ts`) and never decides the verdict.
 - **Merkle:** `common/utils/merkle.util.ts` only. `merkletreejs` with `sortPairs: true`; leaves are the raw 32-byte document hashes (not re-hashed); an odd node is promoted, not duplicated.
 - **Contract (R2):** `AnchorRegistry` (`anchorRoot`, `revokeDocument`, `verifyRoot`, `isRevoked`).
   - On Polygon Amoy (chain 80002) at `0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a` (record: `contracts/deployments/amoy.json`, deploy block 48502677).
   - Reached through `PolygonAnchorService`. Only authorized anchors can write.
   - The server's ABI copy lives in `services/blockchain/anchor-registry.abi.ts`.
 - **Field encryption (R10):** the Prisma query extension (`prisma/encryption/field-encryption.extension.ts`) seals `ENCRYPTED_FIELDS` (`prisma/encryption/encrypted-fields.ts`) through `FieldCipher` (`services/key-management/field-cipher.ts`).
-  - **Fields:** `Document.{contentJson, salt, managerSignature, hrSignature, revocationReasonText}` and `DocumentVersion.{contentJson, changeSummary}`.
+  - **Fields:** `Document.{contentJson, salt, managerSignature, hrSignature, managerSeal, hrSeal, revocationReasonText}` and `DocumentVersion.{contentJson, changeSummary}`.
   - **Envelope:** `cvenc:v1:<keyId 16 hex>:<wrappedDek>:<iv>:<ciphertext‖tag>`, base64url and unpadded. Json columns store it as a JSON string.
   - **Cipher:** AES-256-GCM, a fresh 12-byte IV per field, **AAD `careervault|<field>|v1`** (the bare field name), and one data key (DEK) per row payload. An `updateMany` seals its payload once, so every matched row gets the same envelope.
   - **Key hierarchy:** `KMS_MASTER_KEY` (32 bytes) → HKDF-SHA256 (`info = careervault/field-kek/v1`) → field KEK. The `keyId` is the first 16 hex of SHA-256(KEK). The KEK wraps each DEK with AES-256-GCM (AAD `careervault|dek|v1`). The org RSA key files are wrapped directly under the master key.
@@ -78,6 +79,7 @@ prisma/schema.prisma · prisma/seed.ts · prisma/migrations/
   - `npm run db:audit-encryption` proves the DB and storage hold no plaintext.
 - **Billing (R5):** org tier = promotional feature gates (not Stripe). User `subscriptions.tier` = Stripe-billed.
 - **Revocation (R7):** DB status authoritative; on-chain is secondary.
+- **Input hardening:** `common/middleware/payload-guard.middleware.ts` runs on every route before any DTO and refuses `__proto__`/`constructor`/`prototype` keys, markup, control characters and deep nesting. Identifier fields use allow-list formats (`common/validators/formats.ts`). SQL keywords are NOT filtered: all SQL is parameterized (ESLint bans `$queryRawUnsafe`/`$executeRawUnsafe`). Prisma error codes map to generic 4xx; no DB message reaches a client. `test/adversarial.e2e-spec.ts` is the proof.
 - **Region (R8):** ap-south-1. **Manager auth (R9):** external = magic link only; internal = email/password.
 
 ## API conventions
