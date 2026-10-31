@@ -118,7 +118,7 @@ export const PATHS: AudiencePath[] = [
     icon: Building2,
     audience: 'I’m an employer',
     headline: 'Issue once, prove forever',
-    body: 'Cut verification calls to zero. Issue in bulk from a CSV, revoke instantly, and keep a compliance-grade audit trail.',
+    body: 'Cut verification calls to zero. Dual-sign every document, revoke instantly, and keep a compliance-grade audit trail.',
     cta: 'Set up your organisation',
     to: '/auth/register',
   },

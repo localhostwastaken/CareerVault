@@ -778,7 +778,6 @@ export class DocumentService {
     return this.toPublic(doc);
   }
 
-  // Public: reused by BulkIssuanceService to verify the initiating HR member.
   async requireMember(userId: string, orgId: string, roles: MemberRole[]) {
     const member = await this.prisma.organizationMember.findFirst({
       where: {
@@ -814,9 +813,6 @@ export class DocumentService {
   // turned every signature attempt into an unexplained 500. Replacement is only safe
   // because each document records the key it was signed under (signingPublicKeyPem), so
   // re-keying an org cannot invalidate what it already issued.
-  //
-  // Public: reused by BulkIssuanceService, which signs directly without going through the
-  // normal sign/approve pipeline.
   async ensureOrgKey(org: {
     id: string;
     kmsKeyId: string | null;

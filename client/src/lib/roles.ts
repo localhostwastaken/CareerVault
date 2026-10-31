@@ -11,7 +11,6 @@ import {
   Share2,
   ShieldCheck,
   Sparkles,
-  UploadCloud,
   Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -67,7 +66,6 @@ export const ROLE_CONFIG: Record<AppRole, RoleConfig> = {
     home: '/app/approvals',
     nav: [
       { label: 'Approvals', to: '/app/approvals', icon: CheckSquare },
-      { label: 'Bulk Issue', to: '/app/bulk', icon: UploadCloud },
       { label: 'Issued', to: '/app/issued', icon: FileText },
     ],
   },

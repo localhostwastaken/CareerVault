@@ -20,7 +20,6 @@ import { MemberModule } from './modules/member/member.module.js';
 import { UserModule } from './modules/user/user.module.js';
 import { NotificationModule } from './modules/notification/notification.module.js';
 import { DocumentModule } from './modules/document/document.module.js';
-import { BulkIssuanceModule } from './modules/bulk-issuance/bulk-issuance.module.js';
 import { MerkleModule } from './modules/merkle/merkle.module.js';
 import { VerificationModule } from './modules/verification/verification.module.js';
 import { PaymentsModule } from './modules/payment/payments.module.js';
@@ -71,7 +70,6 @@ import { AuditModule } from './modules/audit/audit.module.js';
     UserModule,
     NotificationModule,
     DocumentModule,
-    BulkIssuanceModule,
     MerkleModule,
     VerificationModule,
     PaymentsModule,

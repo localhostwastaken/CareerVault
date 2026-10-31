@@ -14,7 +14,7 @@ export class NotificationService {
     private readonly email: EmailService,
   ) {}
 
-  // Creates the in-app record and (optionally) sends the email — the single entry point for user-facing notifications across the platform, called from document, payment, merkle, bulk-issuance and messaging flows.
+  // Creates the in-app record and (optionally) sends the email — the single entry point for user-facing notifications across the platform, called from document, payment, merkle and messaging flows.
   async notify(
     userId: string,
     type: NotificationType,
