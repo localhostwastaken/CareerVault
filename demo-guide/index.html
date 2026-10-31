@@ -267,9 +267,15 @@ pre .bad { color: #F08A84; }
       <span class="eyebrow">Ten minutes before</span>
       <h2>Before you start</h2>
     </div>
-    <div class="note warn">
-      <h3>The live database must be reseeded once (Anuj, from the laptop)</h3>
-      <p>Documents made before 31 Oct were hashed the old way (JCS) and now show <b>Verification failed</b>. The reseed clears them and gives Marcus, Hannah and Gabriel their signing keys. Follow <code>documentation/deployment.md</code> step 6 with the production values exported in your own shell: <code>npx prisma migrate reset --force</code> then <code>npm run db:seed</code>. If there is no time, skip it: sign in as Marcus and Hannah and set up the key live in <span class="ui">Profile</span> (that is a good demo step anyway), and never open old documents.</p>
+    <div class="note good">
+      <h3>The live site is ready (reseeded and anchored on 1 Nov)</h3>
+      <ul>
+        <li>Alice · Experience Letter, issued and anchored: <a href="https://career-vault-steel.vercel.app/verify/8291fc08-d0f4-47a9-b206-7bc1a5482ceb" target="_blank" rel="noopener"><code>/verify/8291fc08-d0f4-47a9-b206-7bc1a5482ceb</code></a></li>
+        <li>Alice · Salary Proof, issued and anchored: <a href="https://career-vault-steel.vercel.app/verify/46969431-8f7b-4290-8d0c-5657f3f1e737" target="_blank" rel="noopener"><code>/verify/46969431-8f7b-4290-8d0c-5657f3f1e737</code></a> (holder name hidden on a public lookup)</li>
+        <li>Polygon transaction: <a href="https://amoy.polygonscan.com/tx/0x5121025ead940b80b32e9870278475b1913435cfd16dab1152cd0469ccc5c758" target="_blank" rel="noopener"><code>0x5121025e…ccc5c758</code></a></li>
+        <li>Bob · Experience Letter, signed by Marcus and <b>waiting for HR</b>: sign in as Hannah → Approvals for a one-click live approval (step-up only).</li>
+        <li>Nothing older exists, so no document on the site fails.</li>
+      </ul>
     </div>
     <div class="accounts">
       <div class="acct"><span class="role">Password (all)</span><span class="email">Password123@</span><span class="what">Not Password@123.</span></div>
