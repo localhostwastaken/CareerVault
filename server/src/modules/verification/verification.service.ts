@@ -28,6 +28,7 @@ import {
 } from './verification-view.js';
 
 const SHARE_TOKEN = /^[0-9a-f]{48}$/i;
+const ISSUED_STATUSES = new Set(['ISSUED', 'ANCHORED', 'REVOKED', 'EXPIRED']);
 
 const BULK_ITEM_UNAVAILABLE = {
   code: 'VERIFICATION_UNAVAILABLE',
@@ -142,6 +143,12 @@ export class VerificationService {
     doc: VerifiableDocument,
     disclosure: Disclosure,
   ): Promise<PublicVerification> {
+    // A draft or a returned request is not a credential: answering anything at all, even
+    // the issuer's name, would confirm that an unissued document ID exists.
+    if (!ISSUED_STATUSES.has(doc.status)) {
+      await this.writeAuditLog(doc.id, 'NOT_FOUND');
+      return notFoundView();
+    }
     const outcome = await runChecks(
       doc,
       { kms: this.kms, employeeKeys: this.employeeKeys },

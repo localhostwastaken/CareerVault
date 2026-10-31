@@ -13,6 +13,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Roles } from '../../common/decorators/roles.decorator.js';
@@ -71,6 +72,8 @@ export class DocumentController {
   }
 
   @Post(':id/sign')
+  // Each call runs a 600k-iteration step-up derivation; this caps how hard one host can push.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(200)
   @Roles('MANAGER')
   sign(
@@ -82,6 +85,8 @@ export class DocumentController {
   }
 
   @Post(':id/approve')
+  // Each call runs a 600k-iteration step-up derivation; this caps how hard one host can push.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(200)
   @Roles('HR')
   approve(

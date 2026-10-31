@@ -1,8 +1,6 @@
 import {
   ConflictException,
   ForbiddenException,
-  HttpException,
-  HttpStatus,
   Injectable,
 } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
@@ -10,6 +8,7 @@ import type { AuthenticatedUser } from '../../common/types/authenticated-user.js
 import type { EmployeeKey } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { KeyManagementService } from '../../services/key-management/key-management.service.js';
+import { NotificationService } from '../notification/notification.service.js';
 import type {
   EmployeeSecretsDto,
   EnrollEmployeeKeyDto,
@@ -21,11 +20,9 @@ import {
   secretMaterial,
 } from './key-derivation.js';
 import { questionText } from './security-questions.js';
+import { markPassed, reserveAttempt } from './step-up-lockout.js';
 
 const SIGNING_ROLES = new Set(['MANAGER', 'HR']);
-const STEP_UP_FAILED = 'EMPLOYEE_KEY_STEP_UP_FAILED';
-const LOCKOUT_ATTEMPTS = 5;
-const LOCKOUT_WINDOW_MS = 15 * 60_000;
 
 export interface UnlockedKey {
   keyId: string;
@@ -40,6 +37,7 @@ export class EmployeeKeyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly kms: KeyManagementService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /** Each organisation where the user signs (MANAGER or HR), with their key status there. */
@@ -86,6 +84,22 @@ export class EmployeeKeyService {
       throw new ForbiddenException(
         'Only managers and HR of this organisation sign documents',
       );
+
+    const active = await this.prisma.employeeKey.findFirst({
+      where: { userId: user.id, organizationId, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (active) {
+      if (!dto.currentStepUp)
+        throw new ForbiddenException({
+          code: 'CURRENT_ANSWERS_REQUIRED',
+          message:
+            'Enter your current details to replace your signing key. Forgot them? Ask an organisation admin to reset it.',
+        });
+      (await this.unlock(user.id, organizationId, dto.currentStepUp)).key.fill(
+        0,
+      );
+    }
 
     const questionIds = dto.answers.map((answer) => answer.questionId);
     const kdfSalt = newKdfSalt();
@@ -158,7 +172,7 @@ export class EmployeeKeyService {
         message:
           'Set up your signing security in your profile before you sign documents.',
       });
-    await this.assertNotLockedOut(userId);
+    const attempt = await reserveAttempt(this.prisma, userId, row.id);
 
     const stored = await this.kms.unwrapEmployeeKey(row.wrappedKey, {
       organizationId,
@@ -170,14 +184,56 @@ export class EmployeeKeyService {
     derived?.fill(0);
     if (!isMatch) {
       stored.fill(0);
-      await this.recordFailure(userId, row.id);
       throw new ForbiddenException({
         code: 'STEP_UP_FAILED',
         message:
           'Those details do not match your signing key. Check your date of birth, ID and answers.',
       });
     }
+    await markPassed(this.prisma, attempt);
     return { keyId: row.id, key: stored };
+  }
+
+  // The admin's path for an employee who forgot their answers: retire the active key so they
+  // can enrol afresh. Documents it sealed still verify (the key is kept, only retired), and
+  // the employee is told, since a reset they did not ask for means someone else did.
+  async resetForMember(
+    admin: AuthenticatedUser,
+    organizationId: string,
+    userId: string,
+  ) {
+    if (
+      !admin.memberships.some(
+        (m) => m.organizationId === organizationId && m.role === 'ORG_ADMIN',
+      )
+    )
+      throw new ForbiddenException(
+        'Only an admin of this organisation can reset signing keys',
+      );
+    const retired = await this.prisma.employeeKey.updateMany({
+      where: { userId, organizationId, status: 'ACTIVE' },
+      data: { status: 'RETIRED', retiredAt: new Date() },
+    });
+    if (retired.count === 0)
+      throw new ConflictException('This member has no active signing key');
+    await this.prisma.auditLog.create({
+      data: {
+        actorId: admin.id,
+        actorType: 'USER',
+        action: 'EMPLOYEE_KEY_RESET',
+        entityType: 'USER',
+        entityId: userId,
+        retentionTier: 'COMPLIANCE',
+        newValue: { organizationId },
+      },
+    });
+    await this.notifications.notify(
+      userId,
+      'SECURITY_ALERT',
+      'Your signing key was reset',
+      `${admin.fullName} reset your signing key. Set up your signing security again before you sign. If you did not ask for this, tell your administrator.`,
+    );
+    return { reset: true };
   }
 
   /** Opens a pinned key for verification; null when it can no longer be opened. */
@@ -208,37 +264,5 @@ export class EmployeeKeyService {
       if (error instanceof TypeError) return null;
       throw error;
     }
-  }
-
-  private async assertNotLockedOut(userId: string): Promise<void> {
-    const recentFailures = await this.prisma.auditLog.count({
-      where: {
-        actorId: userId,
-        action: STEP_UP_FAILED,
-        createdAt: { gt: new Date(Date.now() - LOCKOUT_WINDOW_MS) },
-      },
-    });
-    if (recentFailures >= LOCKOUT_ATTEMPTS)
-      throw new HttpException(
-        {
-          code: 'STEP_UP_LOCKED',
-          message:
-            'Too many incorrect attempts. Signing is locked for 15 minutes.',
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-  }
-
-  private async recordFailure(userId: string, keyId: string): Promise<void> {
-    await this.prisma.auditLog.create({
-      data: {
-        actorId: userId,
-        actorType: 'USER',
-        action: STEP_UP_FAILED,
-        entityType: 'EMPLOYEE_KEY',
-        entityId: keyId,
-        retentionTier: 'COMPLIANCE',
-      },
-    });
   }
 }

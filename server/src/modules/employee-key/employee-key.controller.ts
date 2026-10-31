@@ -1,9 +1,12 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { AuthenticatedUser } from '../../common/types/authenticated-user.js';
-import { EnrollEmployeeKeyDto } from './dto/employee-secrets.dto.js';
+import {
+  EnrollEmployeeKeyDto,
+  ResetEmployeeKeyDto,
+} from './dto/employee-secrets.dto.js';
 import { EmployeeKeyService } from './employee-key.service.js';
 import { SECURITY_QUESTIONS } from './security-questions.js';
 
@@ -32,5 +35,18 @@ export class EmployeeKeyController {
     @Body() dto: EnrollEmployeeKeyDto,
   ) {
     return this.employeeKeys.enroll(user, dto);
+  }
+
+  @Post('reset')
+  @HttpCode(200)
+  reset(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ResetEmployeeKeyDto,
+  ) {
+    return this.employeeKeys.resetForMember(
+      user,
+      dto.organizationId,
+      dto.userId,
+    );
   }
 }

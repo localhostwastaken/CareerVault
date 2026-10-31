@@ -5,6 +5,7 @@ import {
   ArrayUnique,
   IsArray,
   IsIn,
+  IsOptional,
   IsString,
   IsUUID,
   Length,
@@ -50,4 +51,20 @@ export class EmployeeSecretsDto {
 export class EnrollEmployeeKeyDto extends EmployeeSecretsDto {
   @IsUUID()
   organizationId!: string;
+
+  // Replacing an existing key requires its current details: otherwise a stolen session could
+  // re-enrol with answers of its own choosing and sign as this employee.
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EmployeeSecretsDto)
+  currentStepUp?: EmployeeSecretsDto;
+}
+
+// An org admin's way out for an employee who forgot their answers.
+export class ResetEmployeeKeyDto {
+  @IsUUID()
+  organizationId!: string;
+
+  @IsUUID()
+  userId!: string;
 }

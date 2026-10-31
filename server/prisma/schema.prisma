@@ -111,6 +111,7 @@ enum NotificationType {
   PAYMENT_FAILED
   RECRUITER_MESSAGE
   TALENT_MATCH
+  SECURITY_ALERT
 }
 
 enum VerifierKeyTier {

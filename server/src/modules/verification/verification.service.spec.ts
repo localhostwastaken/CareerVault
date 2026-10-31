@@ -187,7 +187,7 @@ function service(
     kms,
     (options.chain ?? chainUp) as never,
     { notify: () => Promise.resolve() } as never,
-    new EmployeeKeyService(prisma as never, kms),
+    new EmployeeKeyService(prisma as never, kms, {} as never),
   );
 }
 
@@ -329,6 +329,15 @@ describe('VerificationService — status and disclosure', () => {
 
     expect(result.document?.holderName).toBeNull();
     expect(result.document?.fields).toEqual({ designation: 'Engineer' });
+  });
+
+  it('answers NOT_FOUND for a draft, without naming its organisation', async () => {
+    const result = await service({
+      doc: { status: 'DRAFT' },
+    }).verifyByDocumentId(IDENTITY.id);
+
+    expect(result.verdict).toBe('NOT_FOUND');
+    expect(JSON.stringify(result)).not.toContain('Acme');
   });
 
   it('answers NOT_FOUND for an unknown document', async () => {

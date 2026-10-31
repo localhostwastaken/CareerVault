@@ -53,23 +53,30 @@ async function enrolledRow() {
   };
 }
 
-function service(row: unknown, recentFailures = 0, audits: unknown[] = []) {
+// `priorFailures` counts failed attempts already in the window; the attempt under test is
+// reserved on top, exactly as the real count would include it.
+function service(row: unknown, priorFailures = 0, audits: string[] = []) {
   const prisma = {
     employeeKey: { findFirst: () => Promise.resolve(row) },
     auditLog: {
-      count: () => Promise.resolve(recentFailures),
-      create: (args: unknown) => {
-        audits.push(args);
+      create: ({ data }: { data: { action: string } }) => {
+        audits.push(data.action);
+        return Promise.resolve({ id: `attempt-${audits.length}` });
+      },
+      count: () => Promise.resolve(priorFailures + 1),
+      update: ({ data }: { data: { action: string } }) => {
+        audits.push(data.action);
         return Promise.resolve({});
       },
     },
   };
-  return new EmployeeKeyService(prisma as never, kms as never);
+  return new EmployeeKeyService(prisma as never, kms as never, {} as never);
 }
 
 describe('EmployeeKeyService.unlock (step-up)', () => {
   it('releases the stored key when the re-entered details match, however they are typed', async () => {
     const row = await enrolledRow();
+    const audits: string[] = [];
     const typedDifferently = {
       ...SECRETS,
       personalId: 'emp 1024',
@@ -79,14 +86,23 @@ describe('EmployeeKeyService.unlock (step-up)', () => {
       })),
     };
 
-    const unlocked = await service(row).unlock(USER, ORG, typedDifferently);
+    const unlocked = await service(row, 0, audits).unlock(
+      USER,
+      ORG,
+      typedDifferently,
+    );
 
     expect(unlocked.keyId).toBe('key-1');
     expect(unlocked.key).toEqual(row.key);
+    // Reserved as a failure first, then marked passed.
+    expect(audits).toEqual([
+      'EMPLOYEE_KEY_STEP_UP_FAILED',
+      'EMPLOYEE_KEY_STEP_UP_PASSED',
+    ]);
   });
 
   it('refuses a wrong answer with STEP_UP_FAILED and records the attempt', async () => {
-    const audits: unknown[] = [];
+    const audits: string[] = [];
     const wrong = {
       ...SECRETS,
       answers: SECRETS.answers.map((a) =>
@@ -100,13 +116,7 @@ describe('EmployeeKeyService.unlock (step-up)', () => {
       status: 403,
       response: { code: 'STEP_UP_FAILED' },
     });
-    expect(audits).toEqual([
-      expect.objectContaining({
-        data: expect.objectContaining({
-          action: 'EMPLOYEE_KEY_STEP_UP_FAILED',
-        }) as unknown,
-      }),
-    ]);
+    expect(audits).toEqual(['EMPLOYEE_KEY_STEP_UP_FAILED']);
   });
 
   it('treats answers to questions other than the enrolled ones as wrong', async () => {
@@ -168,12 +178,17 @@ describe('EmployeeKeyService.enroll', () => {
     ).rejects.toMatchObject({ status: 403 });
   });
 
-  it('retires the previous key and stores only a wrapped one, never the answers', async () => {
-    const calls: Array<[string, unknown]> = [];
+  const NEW_SECRETS = {
+    ...SECRETS,
+    answers: SECRETS.answers.map((a) => ({ ...a, answer: `${a.answer} 2` })),
+  };
+
+  function enrolling(active: unknown) {
+    const calls: Array<[string, Record<string, unknown>]> = [];
     const tx = {
       employeeKey: {
         findFirst: () => Promise.resolve({ version: 1 }),
-        updateMany: (args: unknown) => {
+        updateMany: (args: Record<string, unknown>) => {
           calls.push(['retire', args]);
           return Promise.resolve({ count: 1 });
         },
@@ -186,14 +201,31 @@ describe('EmployeeKeyService.enroll', () => {
     };
     const prisma = {
       $transaction: (fn: (t: typeof tx) => Promise<void>) => fn(tx),
-      employeeKey: { findMany: () => Promise.resolve([]) },
+      employeeKey: {
+        findFirst: () => Promise.resolve(active),
+        findMany: () => Promise.resolve([]),
+      },
+      auditLog: {
+        create: () => Promise.resolve({ id: 'attempt-1' }),
+        count: () => Promise.resolve(1),
+        update: () => Promise.resolve({}),
+      },
     };
-    const keys = new EmployeeKeyService(prisma as never, kms as never);
+    const keys = new EmployeeKeyService(
+      prisma as never,
+      kms as never,
+      {} as never,
+    );
+    return { keys, calls };
+  }
+
+  it('stores only a wrapped key on first enrolment, never the answers', async () => {
+    const { keys, calls } = enrolling(null);
 
     await keys.enroll(signer, { ...SECRETS, organizationId: ORG });
 
     expect(calls.map(([step]) => step)).toEqual(['retire', 'create']);
-    const created = calls[1][1] as Record<string, unknown>;
+    const created = calls[1][1];
     expect(created).toMatchObject({
       version: 2,
       kdfIterations: 600_000,
@@ -203,5 +235,43 @@ describe('EmployeeKeyService.enroll', () => {
     const stored = JSON.stringify(created);
     for (const secret of ['Mumbai', 'Bruno', 'Xavier', '1990-04-12', 'EMP'])
       expect(stored).not.toContain(secret);
+  });
+
+  // Otherwise a stolen session could re-enrol with answers of its choosing and sign.
+  it('refuses to replace an active key without the current details', async () => {
+    const { keys, calls } = enrolling(await enrolledRow());
+
+    await expect(
+      keys.enroll(signer, { ...NEW_SECRETS, organizationId: ORG }),
+    ).rejects.toMatchObject({
+      status: 403,
+      response: { code: 'CURRENT_ANSWERS_REQUIRED' },
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('refuses to replace an active key when the current details are wrong', async () => {
+    const { keys, calls } = enrolling(await enrolledRow());
+
+    await expect(
+      keys.enroll(signer, {
+        ...NEW_SECRETS,
+        organizationId: ORG,
+        currentStepUp: NEW_SECRETS,
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(calls).toEqual([]);
+  });
+
+  it('replaces an active key once the current details unlock it', async () => {
+    const { keys, calls } = enrolling(await enrolledRow());
+
+    await keys.enroll(signer, {
+      ...NEW_SECRETS,
+      organizationId: ORG,
+      currentStepUp: SECRETS,
+    });
+
+    expect(calls.map(([step]) => step)).toEqual(['retire', 'create']);
   });
 });
