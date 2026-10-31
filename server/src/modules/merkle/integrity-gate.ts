@@ -22,6 +22,8 @@ const ENCRYPTED_SELECT = {
   managerSignature: true,
   hrSignature: true,
   revocationReasonText: true,
+  managerSeal: true,
+  hrSeal: true,
 } as const;
 
 export async function integrityGate<T extends Candidate>(
@@ -50,11 +52,17 @@ async function failureOf(
   try {
     const row = await prisma.document.findUnique({
       where: { id: doc.id },
-      select: ENCRYPTED_SELECT,
+      select: {
+        ...ENCRYPTED_SELECT,
+        type: true,
+        organizationId: true,
+        holderId: true,
+      },
     });
     if (!row) return 'it no longer exists';
     if (!row.salt || !doc.documentHash) return 'it has no salt or hash';
-    return hashDocument(row.contentJson, row.salt) === doc.documentHash
+    return hashDocument({ ...row, id: doc.id }, row.contentJson, row.salt) ===
+      doc.documentHash
       ? null
       : 'its content and salt do not recompute its documentHash';
   } catch (error) {

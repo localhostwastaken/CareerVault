@@ -123,6 +123,12 @@ enum VerifierKeyStatus {
   REVOKED
 }
 
+// A signer's employee key: ACTIVE signs, RETIRED is kept only to verify what it signed.
+enum EmployeeKeyStatus {
+  ACTIVE
+  RETIRED
+}
+
 enum BulkBatchStatus {
   PROCESSING
   COMPLETED
@@ -150,32 +156,33 @@ enum MessageResponse {
 // ── Core identity ──────────────────────────────────────────────────────────────
 
 model User {
-  id               String    @id @default(uuid()) @db.Uuid
-  email            String    @unique
-  passwordHash     String?   @map("password_hash") // null for magic-link-only external managers (R9)
-  fullName         String    @map("full_name")
-  phone            String?
-  avatarUrl        String?   @map("avatar_url")
-  isActive         Boolean   @default(true) @map("is_active")
-  emailVerified    Boolean   @default(false) @map("email_verified")
-  emailVerifiedAt  DateTime? @map("email_verified_at")
-  isDiscoverable   Boolean   @default(false) @map("is_discoverable") // talent-matching opt-in
-  gdprDeletedAt    DateTime? @map("gdpr_deleted_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
+  passwordHash    String?   @map("password_hash") // null for magic-link-only external managers (R9)
+  fullName        String    @map("full_name")
+  phone           String?
+  avatarUrl       String?   @map("avatar_url")
+  isActive        Boolean   @default(true) @map("is_active")
+  emailVerified   Boolean   @default(false) @map("email_verified")
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  isDiscoverable  Boolean   @default(false) @map("is_discoverable") // talent-matching opt-in
+  gdprDeletedAt   DateTime? @map("gdpr_deleted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   memberships               OrganizationMember[]
-  documents                 Document[]         @relation("HolderDocuments")
-  documentVersions          DocumentVersion[]  @relation("VersionChangedBy")
+  documents                 Document[]           @relation("HolderDocuments")
+  documentVersions          DocumentVersion[]    @relation("VersionChangedBy")
   subscriptions             Subscription[]
   payments                  Payment[]
   notifications             Notification[]
-  auditLogs                 AuditLog[]         @relation("ActorAuditLogs")
+  auditLogs                 AuditLog[]           @relation("ActorAuditLogs")
   refreshTokens             RefreshToken[]
   verifierApiKeys           VerifierApiKey[]
   recruiterProfile          RecruiterProfile?
-  talentMatches             TalentMatch[]      @relation("HolderMatches")
-  recruiterMessagesReceived RecruiterMessage[] @relation("HolderMessages")
+  talentMatches             TalentMatch[]        @relation("HolderMatches")
+  recruiterMessagesReceived RecruiterMessage[]   @relation("HolderMessages")
+  employeeKeys              EmployeeKey[]
 
   @@index([isActive])
   @@map("users")
@@ -204,6 +211,7 @@ model Organization {
   jobOpenings       RecruiterJobOpening[]
   recruiterProfiles RecruiterProfile[]
   verifierApiKeys   VerifierApiKey[]
+  employeeKeys      EmployeeKey[]
 
   @@index([isVerified])
   @@map("organizations")
@@ -219,11 +227,11 @@ model OrganizationMember {
   invitedAt      DateTime?  @map("invited_at")
   joinedAt       DateTime?  @map("joined_at")
 
-  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  signedDocuments   Document[]   @relation("SignerMember")
-  approvedDocuments Document[]   @relation("ApproverMember")
-  revokedDocuments  Document[]   @relation("RevokedByMember")
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  signedDocuments   Document[]          @relation("SignerMember")
+  approvedDocuments Document[]          @relation("ApproverMember")
+  revokedDocuments  Document[]          @relation("RevokedByMember")
   bulkBatches       BulkIssuanceBatch[] @relation("BatchInitiator")
 
   @@unique([userId, organizationId, role])
@@ -252,6 +260,12 @@ model Document {
   // Without it verification can only ever check against the org's CURRENT key, so replacing
   // a lost or compromised org key would silently invalidate every document already issued.
   signingPublicKeyPem   String?         @map("signing_public_key_pem")
+  // Per-signer HMAC-SHA256 seals over the document bytes, and the employee key each was made
+  // under (pinned, like signingPublicKeyPem, so re-enrolling never invalidates a document).
+  managerSeal           String?         @map("manager_seal")
+  hrSeal                String?         @map("hr_seal")
+  managerKeyId          String?         @map("manager_key_id") @db.Uuid
+  hrKeyId               String?         @map("hr_key_id") @db.Uuid
   version               Int             @default(1)
   enableSkillExtraction Boolean         @default(false) @map("enable_skill_extraction")
   expiresAt             DateTime?       @map("expires_at")
@@ -263,11 +277,13 @@ model Document {
   createdAt             DateTime        @default(now()) @map("created_at")
   updatedAt             DateTime        @updatedAt @map("updated_at")
 
-  holder          User                @relation("HolderDocuments", fields: [holderId], references: [id], onDelete: Restrict)
-  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  signerMember    OrganizationMember? @relation("SignerMember", fields: [signerMemberId], references: [id], onDelete: SetNull)
-  approverMember  OrganizationMember? @relation("ApproverMember", fields: [approverMemberId], references: [id], onDelete: SetNull)
-  revokedByMember OrganizationMember? @relation("RevokedByMember", fields: [revokedById], references: [id], onDelete: SetNull)
+  holder          User                 @relation("HolderDocuments", fields: [holderId], references: [id], onDelete: Restrict)
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  signerMember    OrganizationMember?  @relation("SignerMember", fields: [signerMemberId], references: [id], onDelete: SetNull)
+  approverMember  OrganizationMember?  @relation("ApproverMember", fields: [approverMemberId], references: [id], onDelete: SetNull)
+  revokedByMember OrganizationMember?  @relation("RevokedByMember", fields: [revokedById], references: [id], onDelete: SetNull)
+  managerKey      EmployeeKey?         @relation("ManagerKey", fields: [managerKeyId], references: [id], onDelete: Restrict)
+  hrKey           EmployeeKey?         @relation("HrKey", fields: [hrKeyId], references: [id], onDelete: Restrict)
   versions        DocumentVersion[]
   merkleProof     DocumentMerkleProof?
   sharedLinks     SharedLink[]
@@ -282,6 +298,33 @@ model Document {
   @@index([signerMemberId])
   @@index([organizationId, type])
   @@map("documents")
+}
+
+// A MANAGER/HR member's signing key, derived at enrolment from their date of birth, personal
+// identifier and three security answers with PBKDF2-SHA256, then stored ONLY wrapped with
+// AES-256-GCM under the organisation's employee KEK. The answers themselves are never
+// stored: signing re-derives the key from re-entered answers (step-up) and must match.
+model EmployeeKey {
+  id             String            @id @default(uuid()) @db.Uuid
+  userId         String            @map("user_id") @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  version        Int
+  kdfSalt        String            @map("kdf_salt") // 16 random bytes, hex
+  kdfIterations  Int               @map("kdf_iterations")
+  questionIds    String[]          @map("question_ids") // order is part of the derivation
+  wrappedKey     String            @map("wrapped_key") // ekw1:<iv>:<ciphertext>:<tag>
+  status         EmployeeKeyStatus @default(ACTIVE)
+  createdAt      DateTime          @default(now()) @map("created_at")
+  retiredAt      DateTime?         @map("retired_at")
+
+  user             User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  managerDocuments Document[]   @relation("ManagerKey")
+  hrDocuments      Document[]   @relation("HrKey")
+
+  @@unique([userId, organizationId, version])
+  @@index([userId, organizationId, status])
+  @@map("employee_keys")
 }
 
 model DocumentVersion {
@@ -473,19 +516,19 @@ model AuditLog {
 // ── Verifier API & bulk issuance ───────────────────────────────────────────────
 
 model VerifierApiKey {
-  id               String            @id @default(uuid()) @db.Uuid
-  userId           String            @map("user_id") @db.Uuid
-  organizationId   String?           @map("organization_id") @db.Uuid // set for issuer-verifiers (50% discount, R6)
-  apiKeyHash       String            @unique @map("api_key_hash")
-  name             String?
-  tier             VerifierKeyTier   @default(BASIC)
-  status           VerifierKeyStatus @default(ACTIVE)
-  monthlyUsageCount Int              @default(0) @map("monthly_usage_count") // verification API requests used in the current window (R6 quota)
-  usageResetAt     DateTime?         @map("usage_reset_at") // start of the next monthly window; null until the first request
-  lastUsedAt       DateTime?         @map("last_used_at")
-  revokedAt        DateTime?         @map("revoked_at")
-  expiresAt        DateTime?         @map("expires_at")
-  createdAt        DateTime          @default(now()) @map("created_at")
+  id                String            @id @default(uuid()) @db.Uuid
+  userId            String            @map("user_id") @db.Uuid
+  organizationId    String?           @map("organization_id") @db.Uuid // set for issuer-verifiers (50% discount, R6)
+  apiKeyHash        String            @unique @map("api_key_hash")
+  name              String?
+  tier              VerifierKeyTier   @default(BASIC)
+  status            VerifierKeyStatus @default(ACTIVE)
+  monthlyUsageCount Int               @default(0) @map("monthly_usage_count") // verification API requests used in the current window (R6 quota)
+  usageResetAt      DateTime?         @map("usage_reset_at") // start of the next monthly window; null until the first request
+  lastUsedAt        DateTime?         @map("last_used_at")
+  revokedAt         DateTime?         @map("revoked_at")
+  expiresAt         DateTime?         @map("expires_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)

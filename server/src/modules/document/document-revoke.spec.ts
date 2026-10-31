@@ -51,6 +51,7 @@ function revokeFixture(revokeDocument: () => Promise<unknown>) {
     notifications as never,
     blockchain as never,
     {} as never, // skills
+    {} as never, // employeeKeys
   );
   // The response shape is not under test; only that revoke() returns at all.
   Object.assign(service, {

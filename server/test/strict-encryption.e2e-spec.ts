@@ -1,4 +1,9 @@
-import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
+import {
+  generateKeyPairSync,
+  randomBytes,
+  randomUUID,
+  sign,
+} from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +17,7 @@ import {
   signingStatementHash,
 } from '../src/common/utils/crypto.util.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { STEP_UP } from './fixtures/step-up.js';
 
 // FIELD_ENCRYPTION_STRICT=true (production) against a real database. Someone with write
 // access to Postgres but not KMS_MASTER_KEY plants a complete, self-consistent document
@@ -88,15 +94,33 @@ describe('strict field encryption and the batch integrity gate (e2e)', () => {
       designation: 'Chief Executive Officer',
     };
     plantedSalt = generateSalt();
-    plantedHash = hashDocument(content, plantedSalt);
+    plantedHash = hashDocument(
+      {
+        id: plantedId,
+        type: 'EXPERIENCE_LETTER',
+        organizationId: orgId,
+        holderId: holder.userId,
+      },
+      content,
+      plantedSalt,
+    );
     const { privateKey, publicKey } = generateKeyPairSync('rsa', {
       modulusLength: 2048,
     });
+    // Without KMS_MASTER_KEY no employee key can be opened, so the seals are made up; the
+    // attacker's own RSA key then signs statements over them.
+    const fakeSeal = randomBytes(32).toString('hex');
     const signAs = (role: 'MANAGER' | 'HR') =>
       sign(
         'sha256',
         Buffer.from(
-          signingStatementHash(plantedHash, role, memberId(role)),
+          signingStatementHash({
+            documentHash: plantedHash,
+            seal: fakeSeal,
+            role,
+            memberId: memberId(role),
+            employeeKeyId: randomUUID(),
+          }),
           'hex',
         ),
         privateKey,
@@ -154,6 +178,12 @@ describe('strict field encryption and the batch integrity gate (e2e)', () => {
       post(`/orgs/${orgId}/members`, { email, role }, admin.token).expect(201);
     await addMember(`mgr-${SLUG}@e2e-mail.test`, 'MANAGER');
     await addMember(`hr-${SLUG}@e2e-mail.test`, 'HR');
+    for (const signer of [manager, hr])
+      await post(
+        '/employee-keys/enroll',
+        { ...STEP_UP, organizationId: orgId },
+        signer.token,
+      ).expect(201);
 
     const requested = await post(
       '/documents/request',
@@ -179,12 +209,13 @@ describe('strict field encryption and the batch integrity gate (e2e)', () => {
           signatoryName: 'ignored — the server stamps the real signer',
           signatoryDesignation: 'Head of Engineering',
         },
+        stepUp: STEP_UP,
       },
       manager.token,
     ).expect(200);
     const approved = await post(
       `/documents/${validId}/approve`,
-      {},
+      { stepUp: STEP_UP },
       hr.token,
     ).expect(200);
     validHash = data<{ documentHash: string }>(approved).documentHash;
@@ -198,6 +229,9 @@ describe('strict field encryption and the batch integrity gate (e2e)', () => {
     // first; deleting them never reads an encrypted field.
     if (prisma) {
       await prisma.document.deleteMany({
+        where: { organization: { domain: DOMAIN } },
+      });
+      await prisma.employeeKey.deleteMany({
         where: { organization: { domain: DOMAIN } },
       });
       if (rootHash) await prisma.merkleRoot.deleteMany({ where: { rootHash } });
@@ -223,7 +257,7 @@ describe('strict field encryption and the batch integrity gate (e2e)', () => {
 
   it('fails the public lookup of the planted hash closed, as INVALID, disclosing nothing', async () => {
     const res = await request(http)
-      .get(api(`/verify/hash/${plantedHash}`))
+      .get(api(`/verify/document/${plantedId}`))
       .expect(200);
     const result = data<{
       verdict: string;
@@ -236,10 +270,10 @@ describe('strict field encryption and the batch integrity gate (e2e)', () => {
     expect(result.checks).toEqual([
       {
         key: 'integrity',
-        label: 'Content integrity',
+        label: 'Content unchanged since signing',
         status: 'fail',
         detail:
-          'The stored content failed integrity checks and cannot be verified.',
+          'The stored record failed its integrity checks and cannot be verified.',
       },
     ]);
     expect(res.text).not.toContain(PLANTED_NAME);
@@ -269,7 +303,7 @@ describe('strict field encryption and the batch integrity gate (e2e)', () => {
 
   it('still verifies the genuine document, now anchored', async () => {
     const res = await request(http)
-      .get(api(`/verify/hash/${validHash}`))
+      .get(api(`/verify/document/${validId}`))
       .expect(200);
 
     expect(data<{ verdict: string }>(res).verdict).toBe('VERIFIED');

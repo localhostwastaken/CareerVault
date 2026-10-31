@@ -7,6 +7,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { STEP_UP } from './fixtures/step-up.js';
 
 // R10 at rest: after a real request → sign → approve, the document's sensitive columns hold
 // only envelopes when read the way a database dump would ($queryRaw is not a model
@@ -105,6 +106,12 @@ describe('field encryption at rest (e2e)', () => {
       post(`/orgs/${orgId}/members`, { email, role }, admin.token).expect(201);
     await addMember(`mgr-${SLUG}@e2e-mail.test`, 'MANAGER');
     await addMember(`hr-${SLUG}@e2e-mail.test`, 'HR');
+    for (const signer of [manager, hr])
+      await post(
+        '/employee-keys/enroll',
+        { ...STEP_UP, organizationId: orgId },
+        signer.token,
+      ).expect(201);
 
     const requested = await post(
       '/documents/request',
@@ -131,13 +138,14 @@ describe('field encryption at rest (e2e)', () => {
           signatoryName: 'ignored — the server stamps the real signer',
           signatoryDesignation: 'Head of Engineering',
         },
+        stepUp: STEP_UP,
       },
       manager.token,
     ).expect(200);
 
     const approved = await post(
       `/documents/${documentId}/approve`,
-      {},
+      { stepUp: STEP_UP },
       hr.token,
     ).expect(200);
     documentHash = data<{ documentHash: string }>(approved).documentHash;
@@ -154,6 +162,9 @@ describe('field encryption at rest (e2e)', () => {
         s ? [s.userId] : [],
       );
       await prisma.document.deleteMany({
+        where: { organization: { domain: DOMAIN } },
+      });
+      await prisma.employeeKey.deleteMany({
         where: { organization: { domain: DOMAIN } },
       });
       await prisma.organization.deleteMany({ where: { domain: DOMAIN } });
@@ -215,11 +226,9 @@ describe('field encryption at rest (e2e)', () => {
   });
 
   it('verifies publicly from the decrypted content, salt and signatures', async () => {
-    const res = await get(`/verify/hash/${documentHash}`).expect(200);
+    const res = await get(`/verify/document/${documentId}`).expect(200);
 
-    expect(data<{ verdict: string }>(res).verdict).toBe(
-      'VERIFIED_PENDING_ANCHOR',
-    );
+    expect(data<{ verdict: string }>(res).verdict).toBe('VERIFIED');
   });
 
   // What an examiner editing the visible prefix of a cell in the Supabase Table Editor gets.
@@ -252,18 +261,18 @@ describe('field encryption at rest (e2e)', () => {
     const UNREADABLE = [
       {
         key: 'integrity',
-        label: 'Content integrity',
+        label: 'Content unchanged since signing',
         status: 'fail',
         detail:
-          'The stored content failed integrity checks and cannot be verified.',
+          'The stored record failed its integrity checks and cannot be verified.',
       },
     ];
 
     // Indistinguishable from a deployment on the wrong KMS_MASTER_KEY, so not "tampered".
     it('answers an edited key id with a 503 that names no key', async () => {
-      const { hash } = await copyWithSalt(editKeyId);
+      const { id } = await copyWithSalt(editKeyId);
 
-      const res = await get(`/verify/hash/${hash}`).expect(503);
+      const res = await get(`/verify/document/${id}`).expect(503);
 
       expect(res.body).toMatchObject({
         success: false,
@@ -273,9 +282,9 @@ describe('field encryption at rest (e2e)', () => {
     });
 
     it('fails an edited wrapped data key closed as INVALID', async () => {
-      const { hash } = await copyWithSalt(editWrappedDek);
+      const { id } = await copyWithSalt(editWrappedDek);
 
-      const res = await get(`/verify/hash/${hash}`).expect(200);
+      const res = await get(`/verify/document/${id}`).expect(200);
 
       expect(data<{ verdict: string; checks: unknown }>(res)).toMatchObject({
         verdict: 'INVALID',
@@ -287,7 +296,7 @@ describe('field encryption at rest (e2e)', () => {
 
     it('fails the same record closed as INVALID behind a share link', async () => {
       const { id } = await copyWithSalt(editWrappedDek);
-      const token = `e2e-${randomUUID()}`;
+      const token = randomBytes(24).toString('hex');
       await prisma.$executeRaw`
         INSERT INTO shared_links (id, document_id, url_token)
         VALUES (${randomUUID()}::uuid, ${id}::uuid, ${token})`;

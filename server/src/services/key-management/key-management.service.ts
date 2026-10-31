@@ -1,3 +1,5 @@
+import type { EmployeeKeyContext } from './employee-key-wrap.js';
+
 // Custodial document-signing (R3) and field-encryption data-key (R10) abstraction. Callers
 // depend only on this token; the concrete driver (LocalKms today, AwsKms later) is
 // selected by ConfigService.
@@ -90,4 +92,16 @@ export abstract class KeyManagementService {
 
   /** Rejects with DataKeyUnavailableError when this deployment cannot open `wrapped`. */
   abstract decryptDataKey(wrapped: string, keyId: string): Promise<Buffer>;
+
+  /** Seals a signer's employee key for storage (AES-256-GCM under the org's employee KEK). */
+  abstract wrapEmployeeKey(
+    key: Buffer,
+    ctx: EmployeeKeyContext,
+  ): Promise<string>;
+
+  /** Opens a stored employee key; rejects if it was edited or belongs to another row. */
+  abstract unwrapEmployeeKey(
+    wrapped: string,
+    ctx: EmployeeKeyContext,
+  ): Promise<Buffer>;
 }

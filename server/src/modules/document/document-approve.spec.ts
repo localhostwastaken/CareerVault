@@ -1,3 +1,4 @@
+import { hashDocument } from '../../common/utils/crypto.util.js';
 import { DocumentService } from './document.service.js';
 
 /**
@@ -7,9 +8,21 @@ import { DocumentService } from './document.service.js';
  * the production /approve latency spikes traced alongside PrismaPgAdapter EAUTHTIMEOUTs.
  */
 
-const HASH = 'ab'.repeat(32);
+const SALT = 'ab'.repeat(32);
+const CONTENT = { employeeName: 'Asha Rao' };
+const IDENTITY = {
+  id: 'doc-1',
+  type: 'EXPERIENCE_LETTER',
+  organizationId: 'org-1',
+  holderId: 'holder-1',
+};
+const HASH = hashDocument(IDENTITY, CONTENT, SALT);
 
-function approveFixture(extractForDocument: () => Promise<void>) {
+function approveFixture(
+  extractForDocument: () => Promise<void>,
+  storedContent: unknown = CONTENT,
+) {
+  const writes: Record<string, unknown>[] = [];
   const extractionCalls: string[] = [];
   const warnings: string[] = [];
   const org = {
@@ -20,7 +33,12 @@ function approveFixture(extractForDocument: () => Promise<void>) {
     publicKeyPem: 'pub-key-pem',
   };
   const tx = {
-    document: { updateMany: () => Promise.resolve({ count: 1 }) },
+    document: {
+      updateMany: ({ data }: { data: Record<string, unknown> }) => {
+        writes.push(data);
+        return Promise.resolve({ count: 1 });
+      },
+    },
     documentVersion: { create: () => Promise.resolve({}) },
   };
   const prisma = {
@@ -33,12 +51,13 @@ function approveFixture(extractForDocument: () => Promise<void>) {
           organizationId: 'org-1',
           holderId: 'holder-1',
           documentHash: HASH,
+          salt: SALT,
           managerSignature: 'manager-sig',
           signerMemberId: 'member-manager',
           signingPublicKeyPem: null,
           enableSkillExtraction: true,
           version: 1,
-          contentJson: {},
+          contentJson: storedContent,
         }),
       update: () => Promise.resolve({}),
     },
@@ -74,6 +93,10 @@ function approveFixture(extractForDocument: () => Promise<void>) {
     notifications as never,
     {} as never, // blockchain
     skills as never,
+    {
+      unlock: () =>
+        Promise.resolve({ keyId: 'key-hr', key: Buffer.alloc(32, 1) }),
+    } as never,
   );
   // The response shape is not under test; only that approve() returns without waiting
   // on skill extraction.
@@ -87,7 +110,7 @@ function approveFixture(extractForDocument: () => Promise<void>) {
       { id: 'user-hr' } as never,
       { notes: undefined } as never,
     );
-  return { approve, extractionCalls, warnings };
+  return { approve, extractionCalls, warnings, writes };
 }
 
 const nextMacrotask = () =>
@@ -96,6 +119,27 @@ const nextMacrotask = () =>
   );
 
 describe('DocumentService.approve', () => {
+  it("stores HR's seal and pins the employee key it was made under", async () => {
+    const { approve, writes } = approveFixture(() => Promise.resolve());
+
+    await approve();
+
+    expect(writes[0]).toMatchObject({
+      hrSignature: 'hr-signature',
+      hrKeyId: 'key-hr',
+      hrSeal: expect.stringMatching(/^[0-9a-f]{64}$/) as string,
+    });
+  });
+
+  it('refuses to co-sign content that no longer matches what the manager signed', async () => {
+    const { approve, writes } = approveFixture(() => Promise.resolve(), {
+      employeeName: 'Someone Else',
+    });
+
+    await expect(approve()).rejects.toMatchObject({ status: 409 });
+    expect(writes).toEqual([]);
+  });
+
   it('returns without waiting for skill extraction', async () => {
     const { approve, extractionCalls } = approveFixture(
       () => new Promise(() => {}),

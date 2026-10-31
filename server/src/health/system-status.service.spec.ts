@@ -110,6 +110,8 @@ describe('SystemStatusService', () => {
         'Document.salt',
         'Document.managerSignature',
         'Document.hrSignature',
+        'Document.managerSeal',
+        'Document.hrSeal',
         'Document.revocationReasonText',
         'DocumentVersion.contentJson',
         'DocumentVersion.changeSummary',

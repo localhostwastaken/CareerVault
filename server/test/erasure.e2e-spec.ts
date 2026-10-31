@@ -6,6 +6,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { STEP_UP } from './fixtures/step-up.js';
 
 // GDPR Art. 17 end to end: an issued, anchored document whose holder erases their account
 // keeps only its hash, signatures and Merkle proof. Its public lookup then returns no
@@ -27,7 +28,7 @@ interface Session {
 interface VerifyResult {
   verdict: string;
   erased: boolean;
-  document: { content: Record<string, unknown> } | null;
+  document: { fields: Record<string, unknown> } | null;
   checks: { key: string; status: string; detail: string }[];
 }
 
@@ -68,7 +69,7 @@ describe('GDPR erasure (e2e)', () => {
   const verify = async () =>
     data<VerifyResult>(
       await request(http)
-        .get(api(`/verify/hash/${documentHash}`))
+        .get(api(`/verify/document/${documentId}`))
         .expect(200),
     );
 
@@ -123,6 +124,12 @@ describe('GDPR erasure (e2e)', () => {
       post(`/orgs/${orgId}/members`, { email, role }, admin.token).expect(201);
     await addMember(`mgr-${SLUG}@e2e-mail.test`, 'MANAGER');
     await addMember(`hr-${SLUG}@e2e-mail.test`, 'HR');
+    for (const signer of [manager, hr])
+      await post(
+        '/employee-keys/enroll',
+        { ...STEP_UP, organizationId: orgId },
+        signer.token,
+      ).expect(201);
 
     const requested = await post(
       '/documents/request',
@@ -149,12 +156,13 @@ describe('GDPR erasure (e2e)', () => {
           signatoryName: 'ignored — the server stamps the real signer',
           signatoryDesignation: 'Head of Engineering',
         },
+        stepUp: STEP_UP,
       },
       manager.token,
     ).expect(200);
     const approved = await post(
       `/documents/${documentId}/approve`,
-      { notes: `Confirmed with ${HOLDER_NAME}` },
+      { notes: `Confirmed with ${HOLDER_NAME}`, stepUp: STEP_UP },
       hr.token,
     ).expect(200);
     documentHash = data<{ documentHash: string }>(approved).documentHash;
@@ -177,6 +185,9 @@ describe('GDPR erasure (e2e)', () => {
       await prisma.document.deleteMany({
         where: { organization: { domain: DOMAIN } },
       });
+      await prisma.employeeKey.deleteMany({
+        where: { organization: { domain: DOMAIN } },
+      });
       if (rootHash) await prisma.merkleRoot.deleteMany({ where: { rootHash } });
       await prisma.organization.deleteMany({ where: { domain: DOMAIN } });
       await prisma.user.deleteMany({
@@ -192,7 +203,7 @@ describe('GDPR erasure (e2e)', () => {
 
     expect(result.verdict).toBe('VERIFIED');
     expect(result.erased).toBe(false);
-    expect(result.document?.content.employeeName).toBe(HOLDER_NAME);
+    expect(result.document?.fields.employeeName).toBe(HOLDER_NAME);
     expect(existsSync(pdfPath())).toBe(true);
     expect(await changeSummaries()).toContain(
       `Approved by HR: Confirmed with ${HOLDER_NAME}`,
@@ -209,7 +220,7 @@ describe('GDPR erasure (e2e)', () => {
 
     it('returns no content from the public lookup and says why', async () => {
       const res = await request(http)
-        .get(api(`/verify/hash/${documentHash}`))
+        .get(api(`/verify/document/${documentId}`))
         .expect(200);
       const result = data<VerifyResult>(res);
 

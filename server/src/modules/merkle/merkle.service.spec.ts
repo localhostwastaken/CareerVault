@@ -12,13 +12,22 @@ const REGISTRY = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
 const ANCHORED_AT = new Date('2026-09-23T18:30:00.000Z');
 const SALT = 'ab'.repeat(32);
 const contentOf = (id: string) => ({ employeeName: `Holder ${id}` });
+const IDENTITY = {
+  type: 'EXPERIENCE_LETTER',
+  organizationId: 'org-1',
+  holderId: 'holder-1',
+};
+const hashOf = (id: string) =>
+  hashDocument({ ...IDENTITY, id }, contentOf(id), SALT);
 
-type Stored = { contentJson: unknown; salt: string | null } | Error;
+type Stored =
+  | (typeof IDENTITY & { contentJson: unknown; salt: string | null })
+  | Error;
 
 /** The rows the batch finds, keyed by id; what the gate's read returns for each. */
 const valid = (id: string): [string, Stored] => [
   id,
-  { contentJson: contentOf(id), salt: SALT },
+  { ...IDENTITY, contentJson: contentOf(id), salt: SALT },
 ];
 
 function merkleService(
@@ -59,7 +68,7 @@ function merkleService(
         return Promise.resolve(
           stored.map(([id], i) => ({
             id,
-            documentHash: hashDocument(contentOf(id), SALT),
+            documentHash: hashOf(id),
             holderId: `holder-${i}`,
             type: 'EXPERIENCE_LETTER',
           })),
@@ -214,7 +223,11 @@ describe('MerkleService', () => {
         ['planted', new PlaintextFieldError('salt')],
         [
           'altered',
-          { contentJson: { employeeName: 'Someone Else' }, salt: SALT },
+          {
+            ...IDENTITY,
+            contentJson: { employeeName: 'Someone Else' },
+            salt: SALT,
+          },
         ],
       ],
     );
@@ -226,7 +239,7 @@ describe('MerkleService', () => {
       anchored: 1,
       skipped: 2,
       busy: false,
-      rootHash: hashDocument(contentOf('genuine'), SALT),
+      rootHash: hashOf('genuine'),
       txHash: '0xanchor',
     });
     expect(created[0]).toMatchObject({ documentCount: 1 });

@@ -6,6 +6,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { STEP_UP } from './fixtures/step-up.js';
 
 // Regression net for the failure that stopped managers signing on the deployed app:
 // org signing keys are FILES, their reference is a DATABASE column, and the two drift the
@@ -99,6 +100,7 @@ describe('org signing key durability (e2e)', () => {
           signatoryName: 'ignored — the server stamps the real signer',
           signatoryDesignation: 'Head of Engineering',
         },
+        stepUp: STEP_UP,
       },
       manager.token,
     );
@@ -159,6 +161,12 @@ describe('org signing key durability (e2e)', () => {
       { email: `hr-${SLUG}@e2e-mail.test`, role: 'HR' },
       admin.token,
     ).expect(201);
+    for (const signer of [manager, hr])
+      await post(
+        '/employee-keys/enroll',
+        { ...STEP_UP, organizationId: orgId },
+        signer.token,
+      ).expect(201);
   }, 60_000);
 
   afterAll(async () => {
@@ -170,6 +178,9 @@ describe('org signing key durability (e2e)', () => {
       await prisma.document.deleteMany({
         where: { organization: { domain: DOMAIN } },
       });
+      await prisma.employeeKey.deleteMany({
+        where: { organization: { domain: DOMAIN } },
+      });
       await prisma.organization.deleteMany({ where: { domain: DOMAIN } });
       await prisma.user.deleteMany({ where: { email: { contains: SLUG } } });
     }
@@ -178,7 +189,6 @@ describe('org signing key durability (e2e)', () => {
   }, 30_000);
 
   let firstDocumentId: string;
-  let firstDocumentHash: string;
 
   it('signs a draft and hands it to HR', async () => {
     firstDocumentId = await requestDocument();
@@ -188,12 +198,10 @@ describe('org signing key durability (e2e)', () => {
 
     const approved = await post(
       `/documents/${firstDocumentId}/approve`,
-      {},
+      { stepUp: STEP_UP },
       hr.token,
     ).expect(200);
-    const doc = data<{ status: string; documentHash: string }>(approved);
-    expect(doc.status).toBe('ISSUED');
-    firstDocumentHash = doc.documentHash;
+    expect(data<{ status: string }>(approved).status).toBe('ISSUED');
 
     expect(orgKeyFiles()).toHaveLength(1);
   }, 60_000);
@@ -245,8 +253,8 @@ describe('org signing key durability (e2e)', () => {
 
     // The point of the whole design: a document issued under the PREVIOUS key still
     // verifies, because it carries the key it was signed with.
-    const verify = await get(`/verify/hash/${firstDocumentHash}`).expect(200);
+    const verify = await get(`/verify/document/${firstDocumentId}`).expect(200);
     const { verdict } = data<{ verdict: string }>(verify);
-    expect(['VERIFIED', 'VERIFIED_PENDING_ANCHOR']).toContain(verdict);
+    expect(['VERIFIED', 'VERIFIED']).toContain(verdict);
   }, 60_000);
 });

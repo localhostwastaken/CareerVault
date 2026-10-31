@@ -19,10 +19,20 @@ type Row = Record<string, unknown>;
 
 const CONTENT = { employeeName: 'Asha Rao', designation: 'Engineer' };
 const SALT = 'c0'.repeat(32);
-const HASH = hashDocument(CONTENT, SALT);
+// The hash binds the document's identity, so each candidate id has its own.
+const IDENTITY = {
+  type: 'EXPERIENCE_LETTER',
+  organizationId: 'org-1',
+  holderId: 'holder-1',
+};
+const hashFor = (id: string) =>
+  hashDocument({ ...IDENTITY, id }, CONTENT, SALT);
 const NO_SIGNATURES = {
+  ...IDENTITY,
   managerSignature: null,
   hrSignature: null,
+  managerSeal: null,
+  hrSeal: null,
   revocationReasonText: null,
 };
 
@@ -66,7 +76,7 @@ describe('integrityGate (batch-time R4 + R10 check)', () => {
       },
     };
     const logger = { error: (message: string) => logged.push(message) };
-    const candidates = ids.map((id) => ({ id, documentHash: HASH }));
+    const candidates = ids.map((id) => ({ id, documentHash: hashFor(id) }));
     return integrityGate(prisma as never, candidates, logger);
   };
 
@@ -80,6 +90,7 @@ describe('integrityGate (batch-time R4 + R10 check)', () => {
 
   // What a DB writer without the KEK can plant: self-consistent, but plaintext.
   const planted: Row = {
+    ...NO_SIGNATURES,
     contentJson: CONTENT,
     salt: SALT,
     managerSignature: 'c2lnbmVkLWJ5LWFuLWF0dGFja2Vy',
@@ -91,7 +102,7 @@ describe('integrityGate (batch-time R4 + R10 check)', () => {
     rows.set('valid', await sealed(CONTENT, SALT));
 
     await expect(gate(['valid'])).resolves.toEqual([
-      { id: 'valid', documentHash: HASH },
+      { id: 'valid', documentHash: hashFor('valid') },
     ]);
     expect(logged).toEqual([]);
   });
@@ -149,8 +160,8 @@ describe('integrityGate (batch-time R4 + R10 check)', () => {
     });
 
     await expect(gate(['forged-signature'])).resolves.toEqual([]);
-    expect(Object.keys(selects[0] as Row).sort()).toEqual(
-      [...ENCRYPTED_FIELDS.Document].sort(),
+    expect(Object.keys(selects[0] as Row)).toEqual(
+      expect.arrayContaining([...ENCRYPTED_FIELDS.Document]),
     );
   });
 

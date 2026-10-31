@@ -7,22 +7,31 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { KeyManagementService } from '../../services/key-management/key-management.service.js';
 import { BlockchainService } from '../../services/blockchain/blockchain.service.js';
 import { NotificationService } from '../notification/notification.service.js';
-import {
-  hashDocument,
-  signingStatementHash,
-} from '../../common/utils/crypto.util.js';
+import { EmployeeKeyService } from '../employee-key/employee-key.service.js';
 import {
   PUBLIC_SUBJECT_FIELDS,
   SALARY_PROOF_TYPE,
 } from '../document/public-fields.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { DocumentType } from '../../generated/prisma/enums.js';
-import { anchorCheck } from './anchor-check.js';
-import { ERASURE_DETAIL, isErased } from './is-erased.js';
+import { anchorBadge } from './anchor-badge.js';
+import {
+  runChecks,
+  VERIFY_INCLUDE,
+  type VerifiableDocument,
+} from './verification-checks.js';
+import {
+  notFoundView,
+  unreadableView,
+  type PublicVerification,
+  type Verdict,
+} from './verification-view.js';
+
+const SHARE_TOKEN = /^[0-9a-f]{48}$/i;
 
 const BULK_ITEM_UNAVAILABLE = {
   code: 'VERIFICATION_UNAVAILABLE',
-  message: 'This hash could not be checked right now. Retry it.',
+  message: 'This document could not be checked right now. Retry it.',
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -31,45 +40,18 @@ const TYPE_LABEL: Record<string, string> = {
   SALARY_PROOF: 'salary proof',
 };
 
-export type CheckStatus = 'pass' | 'fail' | 'pending';
-export type Verdict =
-  | 'VERIFIED'
-  // Signed and cryptographically valid, but the daily Merkle anchor is still pending.
-  // This is a PASS state (not INVALID) — a document is fully usable before it anchors.
-  | 'VERIFIED_PENDING_ANCHOR'
-  | 'REVOKED'
-  | 'EXPIRED'
-  | 'INVALID'
-  | 'NOT_FOUND';
-
-// 'public' = anonymous hash lookup (privacy-gated content); 'shared' = holder shared
-// this specific document via a link and opted into full disclosure.
+// 'public' = anonymous lookup by document ID (allow-listed content); 'shared' = the holder
+// shared this document through a link and opted into full disclosure.
 type Disclosure = 'public' | 'shared';
 
-export interface Check {
-  key: string;
-  label: string;
-  status: CheckStatus;
-  detail: string;
-}
-
-const INCLUDE = {
-  organization: { select: { name: true, publicKeyPem: true } },
-  holder: { select: { fullName: true } },
-  merkleProof: { include: { merkleRoot: true } },
-} satisfies Prisma.DocumentInclude;
-
-type VerifiableDocument = Prisma.DocumentGetPayload<{
-  include: typeof INCLUDE;
-}>;
-
 type SharedDocumentLink = Prisma.SharedLinkGetPayload<{
-  include: { document: { include: typeof INCLUDE } };
+  include: { document: { include: typeof VERIFY_INCLUDE } };
 }>;
 
-// Public, no-auth verification (R6). Recomputes every guarantee from scratch using the
-// SAME primitives that produced them (R4 hash, R3 RS256 signatures, Merkle proof,
-// DB-authoritative revocation per R7) — never trusts a stored "is valid" flag.
+// Public, no-auth verification (R6), entirely server-side. The client sends a document ID
+// or a share token and nothing else; the server decrypts the record, rebuilds its bytes,
+// recomputes the hash, both employee seals and both RSA signatures, and answers with a
+// sanitized verdict (verification-view.ts). The chain is consulted last, as a badge.
 @Injectable()
 export class VerificationService {
   private readonly logger = new Logger(VerificationService.name);
@@ -79,54 +61,50 @@ export class VerificationService {
     private readonly kms: KeyManagementService,
     private readonly blockchain: BlockchainService,
     private readonly notifications: NotificationService,
+    private readonly employeeKeys: EmployeeKeyService,
   ) {}
 
-  async verifyByHash(hash: string) {
-    if (!/^[0-9a-f]{64}$/i.test(hash)) return this.notFound();
-    const documentHash = hash.toLowerCase();
+  async verifyByDocumentId(id: string): Promise<PublicVerification> {
     let doc: VerifiableDocument | null;
     try {
-      doc = await this.prisma.document.findFirst({
-        where: { documentHash },
-        include: INCLUDE,
+      doc = await this.prisma.document.findUnique({
+        where: { id },
+        include: VERIFY_INCLUDE,
       });
     } catch (error) {
       if (!isFieldReadError(error)) throw error;
-      const row = await this.prisma.document.findFirst({
-        where: { documentHash },
-        select: { id: true },
-      });
-      return this.unreadable(row?.id, error);
+      return this.unreadable(id, error);
     }
-    return doc ? this.present(doc, 'public') : this.notFound();
+    return doc ? this.present(doc, 'public') : notFoundView();
   }
 
-  // Bulk API (R6): enterprise/basic verifiers submit many hashes per call. Reuses verifyByHash's full report per hash — no shortcuts on the recomputed guarantees.
-  // Each hash settles on its own: one that can't be checked at all, for any reason, gets an
-  // error entry rather than costing the caller every other result.
-  async verifyBulk(hashes: string[]) {
+  // Bulk API (R6). Each document settles on its own: one that cannot be checked at all gets
+  // an error entry rather than costing the caller every other result.
+  async verifyBulk(documentIds: string[]) {
     return Promise.all(
-      hashes.map((hash) =>
-        this.verifyByHash(hash).then(
-          (result) => ({ hash, result, error: null }),
+      documentIds.map((documentId) =>
+        this.verifyByDocumentId(documentId).then(
+          (result) => ({ documentId, result, error: null }),
           (error: unknown) => {
             this.logger.error(
-              `Bulk verification of ${hash} failed: ${describeReadError(error)}`,
+              `Bulk verification of ${documentId} failed: ${describeReadError(error)}`,
             );
-            return { hash, result: null, error: BULK_ITEM_UNAVAILABLE };
+            return { documentId, result: null, error: BULK_ITEM_UNAVAILABLE };
           },
         ),
       ),
     );
   }
 
-  async verifyByToken(token: string) {
+  async verifyByToken(token: string): Promise<PublicVerification> {
+    // Not a token's shape: answer without touching the database.
+    if (!SHARE_TOKEN.test(token)) return notFoundView();
     const now = new Date();
     let link: SharedDocumentLink | null;
     try {
       link = await this.prisma.sharedLink.findUnique({
         where: { urlToken: token },
-        include: { document: { include: INCLUDE } },
+        include: { document: { include: VERIFY_INCLUDE } },
       });
     } catch (error) {
       if (!isFieldReadError(error)) throw error;
@@ -136,9 +114,9 @@ export class VerificationService {
       });
       return bare && isLive(bare, now)
         ? this.unreadable(bare.documentId, error)
-        : this.notFound();
+        : notFoundView();
     }
-    if (!link || !isLive(link, now)) return this.notFound();
+    if (!link || !isLive(link, now)) return notFoundView();
     // Atomic view claim: the cap is re-checked under the row lock, so concurrent views
     // cannot exceed maxViews (TOCTOU-safe) — a plain read-then-increment could.
     const where: Prisma.SharedLinkWhereInput = { id: link.id, isActive: true };
@@ -148,8 +126,7 @@ export class VerificationService {
       where,
       data: { views: { increment: 1 } },
     });
-    if (claimed.count === 0) return this.notFound();
-    // In-app heads-up to the holder that their shared document was viewed (best-effort).
+    if (claimed.count === 0) return notFoundView();
     await this.notifications
       .notify(
         link.document.holderId,
@@ -158,256 +135,77 @@ export class VerificationService {
         `A ${TYPE_LABEL[link.document.type] ?? 'document'} you shared was just opened by a verifier.`,
       )
       .catch(() => undefined);
-    // The holder deliberately shared THIS document via a link, so full content is shown.
     return this.present(link.document, 'shared');
   }
 
-  private async present(doc: VerifiableDocument, disclosure: Disclosure) {
-    const now = new Date();
-    const checks: Check[] = [];
-
-    // 1. Issued record — a stale hash from a rejected DRAFT must not read as valid.
-    const isIssued = ['ISSUED', 'ANCHORED', 'REVOKED', 'EXPIRED'].includes(
-      doc.status,
-    );
-    const erased = isIssued && isErased(doc);
-    checks.push({
-      key: 'exists',
-      label: 'Document on record',
-      status: isIssued ? 'pass' : 'fail',
-      detail: isIssued
-        ? `Issued by ${doc.organization.name}.`
-        : 'This document has not been issued.',
-    });
-
-    // 2. Content integrity — recompute the R4 hash from content + salt.
-    const integrityOk =
-      !!doc.salt &&
-      !!doc.documentHash &&
-      hashDocument(doc.contentJson, doc.salt) === doc.documentHash;
-    let integrityDetail = 'Content matches its cryptographic hash.';
-    if (erased) integrityDetail = ERASURE_DETAIL;
-    else if (!integrityOk)
-      integrityDetail = doc.salt
-        ? 'Content does not match the recorded hash.'
-        : 'Original content is unavailable.';
-    checks.push({
-      key: 'integrity',
-      label: 'Content integrity',
-      status: integrityOk ? 'pass' : 'fail',
-      detail: integrityDetail,
-    });
-
-    // 3 & 4. RS256 signatures verified against the org public key. Each co-signature is
-    // over a distinct role+identity statement (C1), so they record two separate acts; both
-    // are made with the one org key, and RBAC is what enforces who performs each.
-    const issuerOk = await this.verifySignature(
+  private async present(
+    doc: VerifiableDocument,
+    disclosure: Disclosure,
+  ): Promise<PublicVerification> {
+    const outcome = await runChecks(
       doc,
-      doc.managerSignature,
-      'MANAGER',
-      doc.signerMemberId,
+      { kms: this.kms, employeeKeys: this.employeeKeys },
+      new Date(),
     );
-    checks.push({
-      key: 'issuerSignature',
-      label: 'Issuer signature',
-      status: issuerOk ? 'pass' : 'fail',
-      detail: issuerOk
-        ? 'Signed by the issuing manager.'
-        : 'Issuer signature could not be verified.',
-    });
-    const approverOk = await this.verifySignature(
-      doc,
-      doc.hrSignature,
-      'HR',
-      doc.approverMemberId,
-    );
-    checks.push({
-      key: 'approverSignature',
-      label: 'Approver signature',
-      status: approverOk ? 'pass' : 'fail',
-      detail: approverOk
-        ? 'Co-signed by HR.'
-        : 'Approver signature could not be verified.',
-    });
+    const anchor = await anchorBadge(doc, this.blockchain);
+    await this.writeAuditLog(doc.id, outcome.verdict);
 
-    // 5. Blockchain anchor — Merkle proof reconciles to a root that exists on-chain.
-    const {
-      status: anchorStatus,
-      detail: anchorDetail,
-      anchor,
-      chainUnavailable,
-    } = await anchorCheck(doc, this.blockchain);
-    checks.push({
-      key: 'anchor',
-      label: 'Blockchain anchor',
-      status: anchorStatus,
-      detail: anchorDetail,
-    });
-
-    // 6. Revocation/validity — DB is authoritative (R7); the on-chain flag is a secondary
-    // note, dropped rather than failed when the chain cannot be reached — and not even
-    // asked for once step 5 found it unreachable, so a hung RPC costs one timeout, not two.
-    const revoked = doc.status === 'REVOKED' || doc.revokedAt !== null;
-    const expired = !revoked && doc.expiresAt !== null && doc.expiresAt < now;
+    const { erased, isIssued } = outcome;
     // HR's free text can name the holder, so it goes with the rest of an erased document.
-    const reasonText = erased ? null : doc.revocationReasonText;
-    let statusDetail = 'Active — not revoked or expired.';
-    if (revoked) {
-      statusDetail = `Revoked${doc.revokedAt ? ` on ${isoDate(doc.revokedAt)}` : ''}${
-        reasonText ? `: ${reasonText}` : ''
-      }.`;
-    } else if (expired) {
-      statusDetail = `Expired on ${isoDate(doc.expiresAt as Date)}.`;
-    } else if (doc.documentHash && !chainUnavailable) {
-      const onChain = await this.blockchain
-        .isRevoked(doc.documentHash)
-        .catch(() => null);
-      if (onChain?.revoked)
-        statusDetail += ' (On-chain revocation flag present.)';
-    }
-    checks.push({
-      key: 'status',
-      label: 'Revocation status',
-      status: revoked || expired ? 'fail' : 'pass',
-      detail: statusDetail,
-    });
-
-    // A document is fully valid once it is issued, hash-intact, and dual-signed. On-chain
-    // anchoring happens in the daily batch, so between issuance and that batch the anchor
-    // is legitimately 'pending' — that is VERIFIED_PENDING_ANCHOR, NOT invalid (B1).
-    const coreOk = isIssued && integrityOk && issuerOk && approverOk;
-    let verdict: Verdict;
-    if (revoked) verdict = 'REVOKED';
-    else if (expired) verdict = 'EXPIRED';
-    else if (coreOk && anchorStatus === 'pass') verdict = 'VERIFIED';
-    else if (coreOk && anchorStatus === 'pending')
-      verdict = 'VERIFIED_PENDING_ANCHOR';
-    else verdict = 'INVALID';
-
-    // Audit every public verification (PRD: COMPLIANCE tier, 7-year retention).
-    await this.writeAuditLog(doc.id, verdict);
-
+    const reason = erased ? null : doc.revocationReasonText;
     return {
-      verdict,
-      anchored: anchorStatus === 'pass',
-      // Lets a verifier tell an erased credential from a tampered one; the verdict can't.
+      verified: outcome.verdict === 'VERIFIED',
+      verdict: outcome.verdict,
       erased,
-      // Withhold the document body for anything not actually issued — a non-issued
-      // (e.g. rejected-draft) record reads as INVALID and must not disclose content/PII —
-      // and for an erased one, whose remaining metadata still belongs to the holder.
+      issuer: {
+        name: doc.organization.name,
+        domain: doc.organization.domain,
+      },
+      issuedAt: isIssued ? doc.issuedAt : null,
+      expiresAt: isIssued ? doc.expiresAt : null,
+      // Nothing about a document that was never issued, nor about an erased one, whose
+      // remaining metadata still belongs to the holder.
       document:
         isIssued && !erased
           ? {
+              documentId: doc.id,
               type: doc.type,
               status: doc.status,
-              organizationName: doc.organization.name,
-              // Anonymous salary lookups don't disclose whose salary it is; a holder-shared
-              // link and every other document type still show the name.
+              // Anonymous salary lookups don't disclose whose salary it is.
               holderName:
                 disclosure === 'public' && doc.type === SALARY_PROOF_TYPE
                   ? null
                   : doc.holder.fullName,
-              issuedAt: doc.issuedAt,
-              expiresAt: doc.expiresAt,
-              documentHash: doc.documentHash,
-              version: doc.version,
-              content: this.publicContent(
-                doc.contentJson,
-                doc.type,
-                disclosure,
-              ),
+              fields: publicFields(doc.contentJson, doc.type, disclosure),
             }
           : null,
-      anchor,
-      revocation: revoked
+      roleSignatures: isIssued ? outcome.roleSignatures : [],
+      checks: outcome.checks,
+      revocation: outcome.revoked
         ? {
             revokedAt: doc.revokedAt,
             code: doc.revocationReasonCode,
-            reason: reasonText,
+            reason,
           }
         : null,
-      checks,
+      anchor,
     };
   }
 
-  // Public ('public') hash lookups expose only the per-type allow-listed scalar fields
-  // (D2/B6) — never salary paise, PAN/UAN, or personal contact. A holder-shared link
-  // ('shared') opts into full disclosure of that one document.
-  private publicContent(
-    contentJson: Prisma.JsonValue,
-    type: DocumentType,
-    disclosure: Disclosure,
-  ): Record<string, string | number | boolean> {
-    if (
-      !contentJson ||
-      typeof contentJson !== 'object' ||
-      Array.isArray(contentJson)
-    )
-      return {};
-    const root = contentJson as Record<string, unknown>;
-    // New documents store the flat subject; tolerate the legacy nested shape too.
-    const subject =
-      root.credentialSubject &&
-      typeof root.credentialSubject === 'object' &&
-      !Array.isArray(root.credentialSubject)
-        ? (root.credentialSubject as Record<string, unknown>)
-        : root;
-    const allow =
-      disclosure === 'public' ? new Set(PUBLIC_SUBJECT_FIELDS[type]) : null;
-    const out: Record<string, string | number | boolean> = {};
-    for (const [key, value] of Object.entries(subject)) {
-      if (allow && !allow.has(key)) continue;
-      if (
-        typeof value === 'string' ||
-        typeof value === 'number' ||
-        typeof value === 'boolean'
-      ) {
-        out[key] = value;
-      }
-    }
-    return out;
-  }
-
-  // Each co-signature is over a role+identity statement (C1), recomputed here from the
-  // stored signer/approver member ids — so a manager sig and an HR sig are distinct acts.
-  private async verifySignature(
-    doc: VerifiableDocument,
-    signature: string | null,
-    role: 'MANAGER' | 'HR',
-    memberId: string | null,
-  ): Promise<boolean> {
-    // Verify against the key recorded WITH the signature, not the org's current one. They
-    // are the same key until an org is ever re-keyed; after that, falling back to the
-    // current key would report every previously issued document as forged. The fallback
-    // covers rows signed before that column existed and never backfilled.
-    const publicKeyPem =
-      doc.signingPublicKeyPem ?? doc.organization.publicKeyPem;
-    if (!signature || !doc.documentHash || !publicKeyPem || !memberId)
-      return false;
-    try {
-      return await this.kms.verify(
-        publicKeyPem,
-        signingStatementHash(doc.documentHash, role, memberId),
-        signature,
-      );
-    } catch {
-      return false;
-    }
-  }
-
-  // PRD: every public verification writes a COMPLIANCE-tier audit log retained
-  // for 7 years. Best-effort — a failed log write must never break verification.
+  // PRD: every public verification writes a COMPLIANCE-tier audit log retained for 7 years.
+  // Best-effort — a failed log write must never break verification.
   private async writeAuditLog(
     documentId: string,
     verdict: Verdict,
   ): Promise<void> {
     try {
-      const passed =
-        verdict === 'VERIFIED' || verdict === 'VERIFIED_PENDING_ANCHOR';
       await this.prisma.auditLog.create({
         data: {
           actorType: 'SYSTEM',
-          action: passed ? 'DOCUMENT_VERIFIED' : 'DOCUMENT_CHECK_FAILED',
+          action:
+            verdict === 'VERIFIED'
+              ? 'DOCUMENT_VERIFIED'
+              : 'DOCUMENT_CHECK_FAILED',
           entityType: 'DOCUMENT',
           entityId: documentId,
           retentionTier: 'COMPLIANCE',
@@ -422,43 +220,41 @@ export class VerificationService {
   // Sealed fields that won't open under our key, or plaintext that strict mode refuses, mean
   // the row was written around the app. Fail closed as INVALID, disclosing nothing, and
   // record it: one such row must not turn a lookup, or a whole bulk request, into a 500.
-  private async unreadable(documentId: string | undefined, error: Error) {
-    if (documentId) {
-      this.logger.error(
-        `Public verification of document ${documentId} failed closed: ${error.message}`,
-      );
-      await this.writeAuditLog(documentId, 'INVALID');
-    }
-    return {
-      ...this.notFound(),
-      verdict: 'INVALID' as Verdict,
-      checks: [
-        {
-          key: 'integrity',
-          label: 'Content integrity',
-          status: 'fail' as CheckStatus,
-          detail:
-            'The stored content failed integrity checks and cannot be verified.',
-        },
-      ],
-    };
-  }
-
-  private notFound() {
-    return {
-      verdict: 'NOT_FOUND' as Verdict,
-      anchored: false,
-      erased: false,
-      document: null,
-      anchor: null,
-      revocation: null,
-      checks: [] as Check[],
-    };
+  private async unreadable(documentId: string, error: Error) {
+    this.logger.error(
+      `Public verification of document ${documentId} failed closed: ${error.message}`,
+    );
+    await this.writeAuditLog(documentId, 'INVALID');
+    return unreadableView();
   }
 }
 
-function isoDate(value: Date): string {
-  return value.toISOString().slice(0, 10);
+// Public lookups expose only the per-type allow-listed scalar fields (D2/B6) — never salary
+// paise, PAN/UAN, or personal contact. A holder-shared link opts into the whole document.
+function publicFields(
+  contentJson: Prisma.JsonValue,
+  type: DocumentType,
+  disclosure: Disclosure,
+): Record<string, string | number | boolean> {
+  if (
+    !contentJson ||
+    typeof contentJson !== 'object' ||
+    Array.isArray(contentJson)
+  )
+    return {};
+  const allow =
+    disclosure === 'public' ? new Set(PUBLIC_SUBJECT_FIELDS[type]) : null;
+  const out: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(contentJson)) {
+    if (allow && !allow.has(key)) continue;
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    )
+      out[key] = value;
+  }
+  return out;
 }
 
 // Only a pre-check for maxViews: the view claim in verifyByToken re-checks it atomically.

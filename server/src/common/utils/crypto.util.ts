@@ -1,38 +1,56 @@
 /**
- * Document integrity helpers — the ONLY place document hashes are computed (R4).
+ * Document integrity helpers — the ONLY place document hashes, employee seals and signing
+ * statements are computed (R4, R3). The bytes themselves come from document-bytes.ts.
  *
- * R4 spec: document_hash = SHA-256( JCS(content_json) ++ salt ), lowercase hex.
- *   - JCS = RFC 8785 canonical JSON (deterministic key ordering).
- *   - salt = 32-byte random hex, appended to the canonical string as UTF-8.
+ *   B            = documentBytes(id, type, orgId, holderId, subject, salt)
+ *   documentHash = SHA-256(B)                        lowercase hex; the Merkle leaf
+ *   seal         = HMAC-SHA256(employeeKey, B)       lowercase hex; one per signer
+ *   statement    = SHA-256(statementBytes(documentHash, seal, role, memberId, keyId))
+ *                  which the org's RSA-2048 key signs (RS256)
  *
- * Worked example:
- *   content = { b: 1, a: 2 }   ->  JCS = '{"a":2,"b":1}'
- *   salt    = 'ab12...' (64 hex chars)
- *   hash    = sha256('{"a":2,"b":1}' + 'ab12...')  (hex)
+ * The salt is randomBytes(32), stored as 64 lowercase hex chars, and enters B as its 32 raw
+ * bytes. Without it a guessable subject (a salary band, a designation) could be confirmed
+ * by hashing guesses; with it the hash reveals nothing.
  */
-import { createHash, randomBytes } from 'node:crypto';
-import canonicalize from 'canonicalize';
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
+import {
+  documentBytes,
+  statementBytes,
+  type DocumentIdentity,
+  type SigningStatement,
+} from '../crypto/document-bytes.js';
 
 export function generateSalt(bytes = 32): string {
   return randomBytes(bytes).toString('hex');
 }
 
-export function canonicalizeJson(value: unknown): string {
-  const json = canonicalize(value as object);
-  if (json === undefined) {
-    throw new Error('Value is not JCS-canonicalizable');
-  }
-  return json;
+export function sha256Hex(input: string | Buffer): string {
+  return createHash('sha256').update(input).digest('hex');
 }
 
-export function hashDocument(contentJson: unknown, salt: string): string {
-  return createHash('sha256')
-    .update(canonicalizeJson(contentJson) + salt, 'utf8')
-    .digest('hex');
+export function hashDocument(
+  identity: DocumentIdentity,
+  subject: unknown,
+  salt: string,
+): string {
+  return sha256Hex(documentBytes(identity, subject, salt));
 }
 
-export function sha256Hex(input: string): string {
-  return createHash('sha256').update(input, 'utf8').digest('hex');
+/** HMAC-SHA256 of the document bytes under one signer's employee key. */
+export function employeeSeal(key: Buffer, bytes: Buffer): string {
+  return createHmac('sha256', key).update(bytes).digest('hex');
+}
+
+/** Constant-time comparison of two hex seals, so a mismatch leaks no timing signal. */
+export function sealsMatch(expected: string, actual: string): boolean {
+  const a = Buffer.from(expected, 'hex');
+  const b = Buffer.from(actual, 'hex');
+  return a.length === 32 && a.length === b.length && timingSafeEqual(a, b);
 }
 
 /**
@@ -42,7 +60,8 @@ export function sha256Hex(input: string): string {
  * deterministic: two logically-equal subjects (one with `field: null`, one that
  * omits it) must serialize identically or the hash diverges. We recursively drop
  * `undefined`/`null`/`''`, empty arrays, and empty objects, while preserving `0`
- * and `false` (meaningful values). Canonical key ordering is handled later by JCS.
+ * and `false` (meaningful values). Key ordering is handled later by
+ * the byte serializer (document-bytes.ts).
  */
 export function normalizeSubject(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -72,16 +91,11 @@ export function normalizeSubject(value: unknown): unknown {
 /**
  * Per-role signing statement (C1 — dual-signature integrity).
  *
- * The manager and HR do NOT sign the bare document hash (that would produce two
- * byte-identical RS256 signatures under deterministic PKCS#1 padding). Each signs a
- * DISTINCT statement binding the hash to their role and membership. Both are signed
- * with the org's one key: RBAC enforces separation of duties; these statements record it.
- * Verification recomputes this statement from the stored signer/approver member ids.
+ * The manager and HR never sign the bare document hash: that would give two byte-identical
+ * RS256 signatures under deterministic PKCS#1 padding. Each signs a statement binding the
+ * hash to their own seal, role, membership and employee key, so the two co-signatures are
+ * distinct acts, and each names the key that sealed it.
  */
-export function signingStatementHash(
-  documentHash: string,
-  role: 'MANAGER' | 'HR',
-  memberId: string,
-): string {
-  return sha256Hex(canonicalizeJson({ v: 1, documentHash, role, memberId }));
+export function signingStatementHash(statement: SigningStatement): string {
+  return sha256Hex(statementBytes(statement));
 }

@@ -21,6 +21,11 @@ import {
   OrgKeyPair,
   SigningKeyUnavailableError,
 } from './key-management.service.js';
+import {
+  unwrapEmployeeKey,
+  wrapEmployeeKey,
+  type EmployeeKeyContext,
+} from './employee-key-wrap.js';
 import { loadMasterKey } from './master-key.js';
 
 const FIELD_KEK_INFO = 'careervault/field-kek/v1';
@@ -119,6 +124,19 @@ export class LocalKmsService extends KeyManagementService {
     const blob = Buffer.concat([iv, enc, cipher.getAuthTag()]);
     const wrapped = blob.toString('base64url');
     return Promise.resolve({ plaintext, wrapped, keyId: this.fieldKeyId });
+  }
+
+  wrapEmployeeKey(key: Buffer, ctx: EmployeeKeyContext): Promise<string> {
+    return Promise.resolve(wrapEmployeeKey(this.masterKey, key, ctx));
+  }
+
+  // Synchronous crypto behind an async signature, so a throw becomes a rejection.
+  unwrapEmployeeKey(wrapped: string, ctx: EmployeeKeyContext): Promise<Buffer> {
+    try {
+      return Promise.resolve(unwrapEmployeeKey(this.masterKey, wrapped, ctx));
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
   }
 
   decryptDataKey(wrapped: string, keyId: string): Promise<Buffer> {

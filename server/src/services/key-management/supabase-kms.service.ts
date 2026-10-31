@@ -21,6 +21,11 @@ import {
   OrgKeyPair,
   SigningKeyUnavailableError,
 } from './key-management.service.js';
+import {
+  unwrapEmployeeKey,
+  wrapEmployeeKey,
+  type EmployeeKeyContext,
+} from './employee-key-wrap.js';
 import { loadMasterKey } from './master-key.js';
 
 const FIELD_KEK_INFO = 'careervault/field-kek/v1';
@@ -42,7 +47,8 @@ export class SupabaseKmsService extends KeyManagementService {
       config.getOrThrow<string>('SUPABASE_URL'),
       config.getOrThrow<string>('SUPABASE_SERVICE_ROLE_KEY'),
     );
-    this.bucket = config.get<string>('SUPABASE_STORAGE_BUCKET') ?? 'careervault-storage';
+    this.bucket =
+      config.get<string>('SUPABASE_STORAGE_BUCKET') ?? 'careervault-storage';
     // The master key is unrelated to which storage driver is selected — it stays an env var (or, in a from-scratch dev environment with no persistent disk at all, this dev-only file fallback would itself need STORAGE_LOCAL_DIR to be durable; that's an orthogonal concern documented on loadMasterKey/master-key.ts, not something this driver changes).
     // Must match LocalKmsService's keysDir exactly (STORAGE_LOCAL_DIR/kms), not just STORAGE_LOCAL_DIR — otherwise the dev-fallback master.key file lands in a different directory per driver, silently producing two different master keys from one env, and every row encrypted under one driver becomes unreadable under the other.
     this.masterKey = loadMasterKey(
@@ -128,6 +134,19 @@ export class SupabaseKmsService extends KeyManagementService {
     const blob = Buffer.concat([iv, enc, cipher.getAuthTag()]);
     const wrapped = blob.toString('base64url');
     return Promise.resolve({ plaintext, wrapped, keyId: this.fieldKeyId });
+  }
+
+  wrapEmployeeKey(key: Buffer, ctx: EmployeeKeyContext): Promise<string> {
+    return Promise.resolve(wrapEmployeeKey(this.masterKey, key, ctx));
+  }
+
+  // Synchronous crypto behind an async signature, so a throw becomes a rejection.
+  unwrapEmployeeKey(wrapped: string, ctx: EmployeeKeyContext): Promise<Buffer> {
+    try {
+      return Promise.resolve(unwrapEmployeeKey(this.masterKey, wrapped, ctx));
+    } catch (error) {
+      return Promise.reject(error as Error);
+    }
   }
 
   decryptDataKey(wrapped: string, keyId: string): Promise<Buffer> {

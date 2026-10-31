@@ -10,6 +10,8 @@ export const ENCRYPTED_FIELDS = {
     'salt',
     'managerSignature',
     'hrSignature',
+    'managerSeal',
+    'hrSeal',
     'revocationReasonText',
   ],
   DocumentVersion: ['contentJson', 'changeSummary'],

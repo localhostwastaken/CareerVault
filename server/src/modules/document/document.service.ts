@@ -10,11 +10,10 @@ import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { KeyManagementService } from '../../services/key-management/key-management.service.js';
 import { BlockchainService } from '../../services/blockchain/blockchain.service.js';
-import {
-  generateSalt,
-  hashDocument,
-  signingStatementHash,
-} from '../../common/utils/crypto.util.js';
+import { documentBytes } from '../../common/crypto/document-bytes.js';
+import { generateSalt, sha256Hex } from '../../common/utils/crypto.util.js';
+import { EmployeeKeyService } from '../employee-key/employee-key.service.js';
+import { documentIdentity, sealAndSign } from './document-seal.js';
 import {
   makeReferenceNumber,
   validateAndNormalizeSubject,
@@ -74,6 +73,7 @@ export class DocumentService {
     private readonly notifications: NotificationService,
     private readonly blockchain: BlockchainService,
     private readonly skills: SkillService,
+    private readonly employeeKeys: EmployeeKeyService,
   ) {}
 
   // Holder requests a document; we resolve the signing manager and notify them.
@@ -140,7 +140,8 @@ export class DocumentService {
     return this.present(id);
   }
 
-  // Manager signs: compute salt + hash (R4) and sign the hash with the org key (R3).
+  // Manager signs: step-up unlocks their employee key, then salt + bytes + hash (R4), their
+  // HMAC seal, and the org RSA signature over a statement that includes the seal (R3).
   // Accepts REQUESTED (first-time: drafting and signing in one step) or DRAFT
   // (already drafted, just signing). Only the manager ASSIGNED at request time may
   // sign — there is no admin override, because the signature attests to who vouched
@@ -159,6 +160,13 @@ export class DocumentService {
         'Only the assigned manager can sign this document',
       );
     }
+
+    // Before any work: a wrong answer must cost nothing but the attempt it records.
+    const unlocked = await this.employeeKeys.unlock(
+      actor.id,
+      doc.organizationId,
+      dto.stepUp,
+    );
 
     const org = await this.prisma.organization.findUniqueOrThrow({
       where: { id: doc.organizationId },
@@ -191,14 +199,18 @@ export class DocumentService {
     stampSignerIdentity(doc.type, subject, actor);
 
     const salt = generateSalt();
-    const documentHash = hashDocument(subject, salt);
-    // C1: the manager signs a role- and identity-bound statement, not the bare hash, so it
-    // differs from HR's co-signature. RBAC enforces separation of duties and the signed
-    // role/memberId statements record it; both are signed with the org's one key.
-    const managerSignature = await this.kms.sign(
-      kmsKeyId,
-      signingStatementHash(documentHash, 'MANAGER', member.id),
-    );
+    const bytes = documentBytes(documentIdentity(doc), subject, salt);
+    const documentHash = sha256Hex(bytes);
+    // C1: the manager's seal is under their OWN employee key and the RSA statement binds it
+    // with the role and membership, so it can never equal HR's co-signature.
+    const { seal: managerSeal, signature: managerSignature } =
+      await sealAndSign(this.kms, kmsKeyId, {
+        bytes,
+        documentHash,
+        unlocked,
+        role: 'MANAGER',
+        memberId: member.id,
+      });
 
     await this.prisma.$transaction(async (tx) => {
       // Status-guarded write: two concurrent signs would both pass the assertStatus
@@ -210,6 +222,8 @@ export class DocumentService {
           salt,
           documentHash,
           managerSignature,
+          managerSeal,
+          managerKeyId: unlocked.keyId,
           // Pin the verification key to this signature rather than to whatever the org's
           // current key happens to be later. Without it, ever replacing an org key would
           // retroactively invalidate this document.
@@ -304,11 +318,36 @@ export class DocumentService {
       );
     }
 
-    // C1: HR co-signs a DISTINCT statement bound to the HR role and this approver's
-    // membership, so managerSignature !== hrSignature and the dual-signature is real.
-    const hrSignature = await this.kms.sign(
+    // HR co-signs the bytes the manager signed, so first prove they are still those bytes.
+    if (!doc.salt)
+      throw new ConflictException('Document is not ready for approval');
+    const bytes = documentBytes(
+      documentIdentity(doc),
+      doc.contentJson,
+      doc.salt,
+    );
+    if (sha256Hex(bytes) !== doc.documentHash)
+      throw new ConflictException(
+        'The stored content no longer matches what the manager signed. Return it for a fresh signature.',
+      );
+
+    // C1: HR seals with their OWN employee key and signs a statement bound to the HR role and
+    // this approver's membership, so the co-signature is a separate act from the manager's.
+    const unlocked = await this.employeeKeys.unlock(
+      actor.id,
+      doc.organizationId,
+      dto.stepUp,
+    );
+    const { seal: hrSeal, signature: hrSignature } = await sealAndSign(
+      this.kms,
       kmsKeyId,
-      signingStatementHash(doc.documentHash, 'HR', member.id),
+      {
+        bytes,
+        documentHash: doc.documentHash,
+        unlocked,
+        role: 'HR',
+        memberId: member.id,
+      },
     );
     const expiresAt =
       doc.type === 'LETTER_OF_RECOMMENDATION'
@@ -321,6 +360,8 @@ export class DocumentService {
         where: { id, status: 'PENDING_HR' },
         data: {
           hrSignature,
+          hrSeal,
+          hrKeyId: unlocked.keyId,
           approverMemberId: member.id,
           status: 'ISSUED',
           issuedAt: new Date(),
@@ -393,6 +434,8 @@ export class DocumentService {
         documentHash: null,
         salt: null,
         managerSignature: null,
+        managerSeal: null,
+        managerKeyId: null,
       },
     });
     if (claimed.count === 0) {

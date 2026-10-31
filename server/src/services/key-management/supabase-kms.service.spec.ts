@@ -8,7 +8,9 @@ import { SupabaseKmsService } from './supabase-kms.service.js';
 const HASH = 'ab'.repeat(32);
 
 // In-memory fake of the Supabase Storage bucket surface this service uses (upload/download/list), mirroring the SDK's { data, error } contract instead of throwing, since createClient() itself is never mocked — the service is given a fake ConfigService and its real `createClient(...)` call is redirected by overriding the module-level `supabase` field after construction is not possible (private), so instead we point SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY at values that make createClient() build a harmless client, and monkey-patch its `.storage.from` via a lightweight fake bucket object handed back by a stubbed `from()`.
-function fakeBucket(options: { failList?: boolean; failUpload?: boolean } = {}) {
+function fakeBucket(
+  options: { failList?: boolean; failUpload?: boolean } = {},
+) {
   const objects = new Map<string, Buffer>();
 
   return {
@@ -33,7 +35,15 @@ function fakeBucket(options: { failList?: boolean; failUpload?: boolean } = {}) 
           });
         }
         return Promise.resolve({
-          data: { arrayBuffer: () => Promise.resolve(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength)) },
+          data: {
+            arrayBuffer: () =>
+              Promise.resolve(
+                value.buffer.slice(
+                  value.byteOffset,
+                  value.byteOffset + value.byteLength,
+                ),
+              ),
+          },
           error: null,
         });
       },
@@ -71,7 +81,9 @@ function kmsWith(masterKey: Buffer, fake: ReturnType<typeof fakeBucket>) {
     getOrThrow: (name: string) => env[name],
   } as never);
   // Replace the real Supabase client's storage accessor with the fake bucket, the same way other specs in this codebase substitute a hand-rolled object for a real dependency.
-  (service as unknown as { supabase: { storage: { from: () => unknown } } }).supabase = {
+  (
+    service as unknown as { supabase: { storage: { from: () => unknown } } }
+  ).supabase = {
     storage: { from: () => fake.bucket },
   } as never;
   return service;
@@ -98,9 +110,9 @@ describe('SupabaseKmsService', () => {
       const { kmsKeyId } = await kms.generateOrgKeyPair('org-1');
 
       await expect(kms.hasKey(kmsKeyId)).resolves.toBe(true);
-      await expect(kms.hasKey('supabase-kms:org-2:deadbeefdeadbeef')).resolves.toBe(
-        false,
-      );
+      await expect(
+        kms.hasKey('supabase-kms:org-2:deadbeefdeadbeef'),
+      ).resolves.toBe(false);
     });
 
     it('raises SigningKeyUnavailableError, not a raw SDK error, for a missing key object', async () => {

@@ -85,6 +85,7 @@ const service = new DocumentService(
   {} as never, // notifications
   {} as never, // blockchain
   {} as never, // skills
+  {} as never, // employeeKeys
 );
 
 describe('requireMember role separation', () => {
