@@ -49,6 +49,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       code = 'ENCRYPTION_KEY_UNAVAILABLE';
       message =
         'This record is encrypted under a key this deployment does not hold, so it cannot be read right now. An administrator needs to check KMS_MASTER_KEY.';
+    } else if (prismaKnownError(exception)) {
+      // Prisma's own message names tables, columns and constraint targets: database
+      // structure a client must never see. Map the common codes to a generic answer.
+      const mapped = PRISMA_CODES[prismaKnownError(exception) as string];
+      if (mapped) ({ status, code, message } = mapped);
     } else if (exception instanceof HttpException) {
       status = exception.getStatus();
       code = codeFromStatus(status);
@@ -80,6 +85,39 @@ export class HttpExceptionFilter implements ExceptionFilter {
       .status(status)
       .json({ success: false, error: { code, message, statusCode: status } });
   }
+}
+
+const PRISMA_CODES: Record<
+  string,
+  { status: number; code: string; message: string }
+> = {
+  P2002: {
+    status: HttpStatus.CONFLICT,
+    code: 'CONFLICT',
+    message: 'A record with these details already exists.',
+  },
+  P2003: {
+    status: HttpStatus.CONFLICT,
+    code: 'CONFLICT',
+    message: 'This record is still in use and cannot be changed that way.',
+  },
+  P2025: {
+    status: HttpStatus.NOT_FOUND,
+    code: 'NOT_FOUND',
+    message: 'The record was not found.',
+  },
+};
+
+/** The Prisma error code (e.g. "P2002") of a known request error, else null. */
+function prismaKnownError(exception: unknown): string | null {
+  if (
+    exception instanceof Error &&
+    exception.name === 'PrismaClientKnownRequestError' &&
+    'code' in exception &&
+    typeof exception.code === 'string'
+  )
+    return exception.code;
+  return null;
 }
 
 function codeFromStatus(status: number): string {

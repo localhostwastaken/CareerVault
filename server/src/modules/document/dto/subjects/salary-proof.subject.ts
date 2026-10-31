@@ -8,6 +8,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { FORMATS } from '../../../../common/validators/formats.js';
 
 // India-first salary / income certificate. Money is integer PAISE (never floats or
 // coerced strings) so JCS canonicalization is byte-stable and the gross/net
@@ -45,6 +46,9 @@ export class SalaryProofSubjectDto {
   @IsString()
   @MinLength(1)
   @MaxLength(64)
+  @Matches(FORMATS.employeeCode, {
+    message: 'employeeCode may contain only letters, digits and / . _ -',
+  })
   employeeCode!: string;
 
   @IsString()

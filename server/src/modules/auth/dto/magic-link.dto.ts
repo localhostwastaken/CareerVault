@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, Matches } from 'class-validator';
+import { FORMATS } from '../../../common/validators/formats.js';
 
 export class MagicLinkRequestDto {
   @IsEmail()
@@ -6,7 +7,6 @@ export class MagicLinkRequestDto {
 }
 
 export class VerifyMagicLinkDto {
-  @IsString()
-  @MinLength(16)
+  @Matches(FORMATS.hexToken64, { message: 'The link is not valid' })
   token!: string;
 }

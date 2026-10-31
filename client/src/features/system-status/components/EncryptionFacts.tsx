@@ -28,18 +28,15 @@ function Encryption({ encryption }: { encryption: SystemStatus['encryption'] }) 
           ? 'Any value in these columns that is not a sealed envelope is refused on read. A row planted straight into the database can neither verify nor be anchored.'
           : 'Legacy plaintext in these columns is still read back, so a database seeded before encryption keeps working. Production turns this on.'}
       </p>
-      <ul className="flex flex-wrap gap-2" aria-label="Encrypted columns">
-        {encryption.encryptedFields.map((field) => (
-          <li key={field} className="inset-well tnum px-2 py-1 font-mono text-micro text-muted-foreground">
-            {field}
-          </li>
-        ))}
-      </ul>
+      <p className="tnum text-label text-muted-foreground">
+        {encryption.encryptedColumnCount} sensitive columns are encrypted: document content, salts, signatures, seals and
+        revocation reasons. The public endpoint gives the count, not the column names.
+      </p>
     </div>
   )
 }
 
-// What a database dump would show: each listed column holds `cvenc:v1:…` ciphertext,
+// What a database dump would show: each sensitive column holds `cvenc:v1:…` ciphertext,
 // sealed with a fresh AES-256 data key per row under a key derived from the master key.
 export function EncryptionFacts() {
   const query = useGetSystemStatusQuery()
@@ -52,7 +49,7 @@ export function EncryptionFacts() {
           <h2 className="text-h2 text-foreground">Encryption at rest</h2>
         </div>
         <p className="mt-0.5 text-body text-muted-foreground">
-          The server encrypts these columns before writing them, so the database and its backups only hold ciphertext.
+          The server encrypts sensitive columns before writing them, so the database and its backups only hold ciphertext.
         </p>
       </div>
       <QueryBoundary

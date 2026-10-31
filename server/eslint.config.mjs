@@ -30,6 +30,13 @@ export default tseslint.config(
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
       "prettier/prettier": ["error", { endOfLine: "auto" }],
+      // Raw SQL only through Prisma's tagged templates, which bind every interpolation as a
+      // parameter. The *Unsafe variants splice strings into the SQL text: SQL injection.
+      'no-restricted-properties': [
+        'error',
+        { property: '$queryRawUnsafe', message: 'Use the $queryRaw tagged template: it parameterizes every value.' },
+        { property: '$executeRawUnsafe', message: 'Use the $executeRaw tagged template: it parameterizes every value.' },
+      ],
     },
   },
 );

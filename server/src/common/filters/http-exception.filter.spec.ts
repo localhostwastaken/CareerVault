@@ -29,7 +29,7 @@ function send(exception: unknown) {
   const host = {
     switchToHttp: () => ({
       getResponse: () => res,
-      getRequest: () => ({ method: 'GET', url: '/api/v1/verify/hash/x' }),
+      getRequest: () => ({ method: 'GET', url: '/api/v1/verify/document/x' }),
     }),
   };
   const filter = new HttpExceptionFilter();
@@ -87,5 +87,36 @@ describe('HttpExceptionFilter', () => {
     expect(body).toMatchObject({
       error: { code, message: exception.message, statusCode },
     });
+  });
+
+  // Prisma's messages name tables, columns and constraints; none of that may reach a client.
+  it.each([
+    ['P2002', 409, 'A record with these details already exists.'],
+    ['P2025', 404, 'The record was not found.'],
+  ])(
+    'maps Prisma %s to %i without leaking the database message',
+    (code, status, message) => {
+      const error = Object.assign(
+        new Error(
+          'Unique constraint failed on the fields: (`email`) in table `users`',
+        ),
+        { name: 'PrismaClientKnownRequestError', code },
+      );
+
+      const sent = send(error);
+
+      expect(sent.status).toBe(status);
+      expect(sent.body).toMatchObject({ success: false, error: { message } });
+      expect(JSON.stringify(sent.body)).not.toMatch(/users|email|constraint/i);
+    },
+  );
+
+  it('never returns a stack trace or the raw message of an unexpected error', () => {
+    const sent = send(
+      new Error('relation "documents" does not exist at query.ts:42'),
+    );
+
+    expect(sent.status).toBe(500);
+    expect(JSON.stringify(sent.body)).not.toMatch(/documents|query\.ts|stack/);
   });
 });

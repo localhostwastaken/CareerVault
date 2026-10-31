@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, IsUrl, MinLength } from 'class-validator';
 
 export class UpdateOrganizationDto {
   @IsOptional()
@@ -7,6 +7,6 @@ export class UpdateOrganizationDto {
   name?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUrl({ protocols: ['https'], require_protocol: true })
   logoUrl?: string;
 }

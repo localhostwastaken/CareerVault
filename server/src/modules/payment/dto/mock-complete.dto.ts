@@ -1,7 +1,7 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { Matches } from 'class-validator';
+import { FORMATS } from '../../../common/validators/formats.js';
 
 export class MockCompleteDto {
-  @IsString()
-  @IsNotEmpty()
+  @Matches(FORMATS.mockSessionId, { message: 'Unknown checkout session' })
   sessionId!: string;
 }

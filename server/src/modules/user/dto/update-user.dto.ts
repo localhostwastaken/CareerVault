@@ -1,4 +1,12 @@
-import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Matches,
+  MinLength,
+} from 'class-validator';
+import { FORMATS } from '../../../common/validators/formats.js';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -7,11 +15,11 @@ export class UpdateUserDto {
   fullName?: string;
 
   @IsOptional()
-  @IsString()
+  @Matches(FORMATS.phone, { message: 'Enter a valid phone number' })
   phone?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUrl({ protocols: ['https'], require_protocol: true })
   avatarUrl?: string;
 
   @IsOptional()

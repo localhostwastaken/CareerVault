@@ -10,6 +10,7 @@ import {
   MinLength,
   ValidateIf,
 } from 'class-validator';
+import { FORMATS } from '../../../../common/validators/formats.js';
 
 // India-first experience / relieving letter (one type, discriminated by letterKind).
 // A relieving letter is issued only on separation and carries the separation block;
@@ -56,6 +57,9 @@ export class ExperienceLetterSubjectDto {
   @IsString()
   @MinLength(1)
   @MaxLength(64)
+  @Matches(FORMATS.employeeCode, {
+    message: 'employeeCode may contain only letters, digits and / . _ -',
+  })
   employeeCode!: string;
 
   @IsString()

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -32,6 +32,7 @@ import { RecruiterModule } from './modules/recruiter/recruiter.module.js';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module.js';
 import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
+import { PayloadGuardMiddleware } from './common/middleware/payload-guard.middleware.js';
 
 @Module({
   imports: [
@@ -94,4 +95,8 @@ import { AuditModule } from './modules/audit/audit.module.js';
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(PayloadGuardMiddleware).forRoutes('*path');
+  }
+}

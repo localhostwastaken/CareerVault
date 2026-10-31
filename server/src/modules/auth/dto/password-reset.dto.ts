@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsString, Matches, MinLength } from 'class-validator';
+import { FORMATS } from '../../../common/validators/formats.js';
 
 export class ForgotPasswordDto {
   @IsEmail()
@@ -6,8 +7,7 @@ export class ForgotPasswordDto {
 }
 
 export class ResetPasswordDto {
-  @IsString()
-  @MinLength(16)
+  @Matches(FORMATS.hexToken64, { message: 'The link is not valid' })
   token!: string;
 
   @IsString()

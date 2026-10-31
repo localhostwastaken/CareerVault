@@ -1,9 +1,10 @@
-import { IsIn, IsISO8601, IsOptional, IsString } from 'class-validator';
+import { IsISO8601, IsIn, IsOptional, Matches } from 'class-validator';
+import { FORMATS } from '../../common/validators/formats.js';
 import { PaginationDto } from '../../common/dtos/pagination.dto.js';
 
 export class AuditLogQueryDto extends PaginationDto {
   @IsOptional()
-  @IsString()
+  @Matches(FORMATS.auditCode)
   action?: string;
 
   @IsOptional()
@@ -11,7 +12,7 @@ export class AuditLogQueryDto extends PaginationDto {
   actorType?: string;
 
   @IsOptional()
-  @IsString()
+  @Matches(FORMATS.auditCode)
   entityType?: string;
 
   @IsOptional()

@@ -28,16 +28,15 @@ export interface SystemStatus {
   encryption: {
     strict: boolean;
     scheme: typeof ENVELOPE_SCHEME;
-    encryptedFields: string[];
+    // A count, not the column names: the endpoint is public and names are database structure.
+    encryptedColumnCount: number;
   };
   ai: { configured: boolean };
   generatedAt: string;
 }
 
-// Derived, not restated: a field added to ENCRYPTED_FIELDS shows up here unprompted.
-const ENCRYPTED_FIELD_LIST = Object.entries(ENCRYPTED_FIELDS).flatMap(
-  ([model, fields]) => fields.map((field) => `${model}.${field}`),
-);
+// Derived, not restated: a field added to ENCRYPTED_FIELDS is counted unprompted.
+const ENCRYPTED_COLUMN_COUNT = Object.values(ENCRYPTED_FIELDS).flat().length;
 
 @Injectable()
 export class SystemStatusService {
@@ -65,7 +64,7 @@ export class SystemStatusService {
         // Same source the Prisma extension is built from (prisma.module.ts).
         strict: this.config.get<boolean>('FIELD_ENCRYPTION_STRICT') === true,
         scheme: ENVELOPE_SCHEME,
-        encryptedFields: [...ENCRYPTED_FIELD_LIST],
+        encryptedColumnCount: ENCRYPTED_COLUMN_COUNT,
       },
       ai: { configured: typeof aiUrl === 'string' && aiUrl.trim() !== '' },
       generatedAt: new Date().toISOString(),

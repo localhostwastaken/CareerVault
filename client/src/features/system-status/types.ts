@@ -13,7 +13,7 @@ export interface SystemStatus {
   encryption: {
     strict: boolean
     scheme: string
-    encryptedFields: string[]
+    encryptedColumnCount: number
   }
   ai: { configured: boolean }
   generatedAt: string

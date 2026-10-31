@@ -101,22 +101,14 @@ describe('SystemStatusService', () => {
     expect(status.encryption.strict).toBe(false);
   });
 
-  it('lists the encrypted columns from ENCRYPTED_FIELDS', () => {
-    expect(local().status().encryption).toEqual({
+  it('counts the encrypted columns from ENCRYPTED_FIELDS without naming any', () => {
+    const { encryption } = local().status();
+    expect(encryption).toEqual({
       strict: false,
       scheme: 'AES-256-GCM envelope (cvenc:v1)',
-      encryptedFields: [
-        'Document.contentJson',
-        'Document.salt',
-        'Document.managerSignature',
-        'Document.hrSignature',
-        'Document.managerSeal',
-        'Document.hrSeal',
-        'Document.revocationReasonText',
-        'DocumentVersion.contentJson',
-        'DocumentVersion.changeSummary',
-      ],
+      encryptedColumnCount: 9,
     });
+    expect(JSON.stringify(encryption)).not.toMatch(/contentJson|salt|Signature/);
   });
 
   it.each([
