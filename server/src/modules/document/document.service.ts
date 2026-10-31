@@ -394,7 +394,6 @@ export class DocumentService {
       {
         id: doc.id,
         type: doc.type,
-        documentHash: doc.documentHash,
         contentJson: doc.contentJson,
       },
       { name: org.name, domain: org.domain },

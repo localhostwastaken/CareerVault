@@ -3,6 +3,7 @@
 // throws "regeneratorRuntime is not defined". Must load before fontkit shapes text.
 import 'regenerator-runtime/runtime.js';
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +16,6 @@ import { pdfStorageKey } from './pdf-storage-key.js';
 interface DocLike {
   id: string;
   type: string;
-  documentHash: string | null;
   contentJson: unknown;
 }
 
@@ -92,11 +92,22 @@ function fontAssets(): AssetSet {
   return assetCache;
 }
 
-// Headless PDF rendering via pdf-lib (no Chromium). Phase 3 embeds the Merkle proof
-// into the PDF metadata; for now we render the letter + the document hash footer.
+// Headless PDF rendering via pdf-lib (no Chromium): the letter, then a footer with the
+// document ID and the public verification link. Verification is by ID on our server, so the
+// PDF carries nothing cryptographic (no hash, no algorithm names).
 @Injectable()
 export class PdfGenerationService {
-  constructor(private readonly storage: StorageService) {}
+  private readonly verifyBase: string;
+
+  constructor(
+    private readonly storage: StorageService,
+    config: ConfigService,
+  ) {
+    // CORS_ORIGIN is the client's own origin, which is where /verify/:id lives.
+    this.verifyBase = (
+      config.get<string>('CORS_ORIGIN') ?? 'http://localhost:5173'
+    ).replace(/\/$/, '');
+  }
 
   async generateAndStore(doc: DocLike, org: OrgLike): Promise<string> {
     const pdf = await PDFDocument.create();
@@ -145,11 +156,11 @@ export class PdfGenerationService {
       thickness: 0.5,
       color: muted,
     });
-    draw(page, 'Document hash (SHA-256):', LEFT, 84, 8, faces.bold, muted);
-    draw(page, doc.documentHash ?? '—', LEFT, 72, 8, faces.regular, muted);
+    draw(page, 'Document ID:', LEFT, 84, 8, faces.bold, muted);
+    draw(page, doc.id, LEFT, 72, 8, faces.regular, muted);
     draw(
       page,
-      'Verify authenticity at careervault.io',
+      `Verify authenticity: ${this.verifyBase}/verify/${doc.id}`,
       LEFT,
       56,
       8,

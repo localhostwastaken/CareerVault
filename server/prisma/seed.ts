@@ -13,6 +13,9 @@
 //
 // Counts match the QA brief: 2 verified orgs · 1 admin · 2 managers · 1 HR · 2 holders.
 //
+// Note on employee keys: every seeded MANAGER/HR is enrolled with SIGNER_STEP_UP below, so
+// signing works straight away; each signature still asks for those details (step-up).
+//
 // Note on signing keys: orgs are seeded WITHOUT a kmsKeyId. DocumentService.ensureOrgKey()
 // lazily mints the RSA-2048 key pair on the manager's first signature, so the full
 // REQUESTED → PENDING_HR → ISSUED happy path works against a seeded org with no extra setup.
@@ -24,6 +27,12 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 import { fieldEncryption } from '../src/prisma/encryption/field-encryption.extension.js';
+import {
+  deriveEmployeeKey,
+  KDF_ITERATIONS,
+  newKdfSalt,
+  secretMaterial,
+} from '../src/modules/employee-key/key-derivation.js';
 import { FieldCipher } from '../src/services/key-management/field-cipher.js';
 import { LocalKmsService } from '../src/services/key-management/local-kms.service.js';
 
@@ -32,9 +41,23 @@ import { LocalKmsService } from '../src/services/key-management/local-kms.servic
 // database must therefore use that deployment's KMS_MASTER_KEY and STORAGE_LOCAL_DIR, or
 // the rows it writes are undecryptable there.
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL as string });
+const kms = new LocalKmsService(new ConfigService());
 const prisma = new PrismaClient({ adapter }).$extends(
-  fieldEncryption(new FieldCipher(new LocalKmsService(new ConfigService()))),
+  fieldEncryption(new FieldCipher(kms)),
 );
+
+// The signing details every seeded MANAGER/HR enrols with, so the demo can sign at once.
+// Demo values only: the server never stores them, only the key they derive, and the deployed
+// accounts stay behind the non-public SEED_DEMO_PASSWORD. Printed in demo-guide/index.html.
+const SIGNER_STEP_UP = {
+  dateOfBirth: '1990-01-15',
+  personalId: 'DEMO-0001',
+  answers: [
+    { questionId: 'first-school', answer: 'Somaiya' },
+    { questionId: 'birth-city', answer: 'Mumbai' },
+    { questionId: 'first-pet', answer: 'Bruno' },
+  ],
+};
 
 const DEMO_PASSWORD = process.env.SEED_DEMO_PASSWORD || 'Password123@';
 // A password set through the environment is a secret, so it is never echoed back.
@@ -61,6 +84,11 @@ async function main(): Promise<void> {
   const marcusMember = await upsertMember(marcus.id, techCorp.id, 'MANAGER', 'marcus@techcorp.example.com');
   await upsertMember(hannah.id, techCorp.id, 'HR', 'hr@techcorp.example.com');
   await upsertMember(gabriel.id, globalSolutions.id, 'MANAGER', 'gabriel@globalsolutions.example.com');
+
+  // ── Signing keys (per signer, per org) ─────────────────────────────────────
+  await enrolSigner(marcus.id, techCorp.id);
+  await enrolSigner(hannah.id, techCorp.id);
+  await enrolSigner(gabriel.id, globalSolutions.id);
 
   // ── Holders (plain users; "holder" is implicit, not an org membership) ────────
   // Alice is intentionally left with NO documents so the live E2E happy path starts
@@ -196,6 +224,8 @@ async function main(): Promise<void> {
   console.log('    MANAGER    gabriel@globalsolutions.example.com  (GlobalSolutions)');
   console.log('    HOLDER     alice@holder.example.com   (clean slate — run the live happy path here)');
   console.log('    HOLDER     bob@holder.example.com     (has seeded REQUESTED + DRAFT docs)');
+  console.log('  Signers are enrolled; step-up: DOB 1990-01-15 · ID DEMO-0001 ·');
+  console.log('    first school "Somaiya" · birth city "Mumbai" · first pet "Bruno"');
 }
 
 function upsertOrg(
@@ -227,6 +257,39 @@ function upsertUser(email: string, fullName: string, passwordHash: string | null
     update: { fullName, passwordHash },
     create: { email, fullName, passwordHash, emailVerified: true, isDiscoverable },
   });
+}
+
+// Idempotent: a signer who already has an ACTIVE key keeps it. Documents pin the key they
+// were sealed with, so an existing key is never replaced or deleted here.
+async function enrolSigner(userId: string, organizationId: string): Promise<void> {
+  const active = await prisma.employeeKey.findFirst({
+    where: { userId, organizationId, status: 'ACTIVE' },
+  });
+  if (active) return;
+  const latest = await prisma.employeeKey.findFirst({
+    where: { userId, organizationId },
+    orderBy: { version: 'desc' },
+  });
+  const version = (latest?.version ?? 0) + 1;
+  const questionIds = SIGNER_STEP_UP.answers.map((a) => a.questionId);
+  const kdfSalt = newKdfSalt();
+  const key = await deriveEmployeeKey(
+    secretMaterial(SIGNER_STEP_UP, questionIds),
+    kdfSalt,
+    KDF_ITERATIONS,
+  );
+  await prisma.employeeKey.create({
+    data: {
+      userId,
+      organizationId,
+      version,
+      kdfSalt,
+      kdfIterations: KDF_ITERATIONS,
+      questionIds,
+      wrappedKey: await kms.wrapEmployeeKey(key, { organizationId, userId, version }),
+    },
+  });
+  key.fill(0);
 }
 
 function upsertMember(userId: string, organizationId: string, role: MemberRole, corporateEmail: string) {
