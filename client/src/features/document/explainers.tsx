@@ -91,38 +91,10 @@ export const APPROVAL_STEPS: ExplainerStep[] = [
   },
 ]
 
-export const PROOF_FILE_STEPS: ExplainerStep[] = [
-  {
-    title: 'What the file contains',
-    body: 'The signed content, its salt, both signatures, the issuer’s public key and, once anchored, the Merkle proof and the anchoring transaction.',
-  },
-  {
-    title: 'Recompute the hash',
-    body: (
-      <>
-        <Term>SHA-256(JCS(credentialSubject) + salt)</Term> must equal the document hash in the file. Edit one
-        character of the content and this fails.
-      </>
-    ),
-  },
-  {
-    title: 'Check both signatures',
-    body: 'Each role statement is rebuilt and its RS256 signature checked against the embedded public key.',
-  },
-  {
-    title: 'Fold the Merkle proof and ask the chain',
-    body: 'The proof path must fold to the anchored root, and the pinned AnchorRegistry on Polygon must say that root exists. CareerVault isn’t involved in any of this.',
-  },
-]
-
 export const REVOCATION_STEPS: ExplainerStep[] = [
   {
     title: 'The register is updated',
     body: 'The status becomes Revoked immediately. The register has the final say, so every verification from now on reports it as revoked, whatever the chain says.',
-  },
-  {
-    title: 'The proof file says so too',
-    body: 'Downloaded credentials carry a revocation block from now on, and the offline verifier fails them.',
   },
   {
     title: 'Flagged on-chain',

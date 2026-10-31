@@ -15,7 +15,7 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     name: 'Alice Holder',
     role: 'Holder',
     organization: '—',
-    purpose: 'Requests a document, downloads the proof file, shares it',
+    purpose: 'Requests a document and shares it',
   },
   {
     email: 'marcus@techcorp.example.com',

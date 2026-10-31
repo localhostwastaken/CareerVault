@@ -35,8 +35,8 @@ export const ANCHORING_STEPS: ExplainerStep[] = [
     title: 'Anchored',
     body: (
       <>
-        The documents move to Anchored. From now on, public verification folds each proof to the root and asks the
-        contract <Term>verifyRoot(root)</Term>, and each proof file carries its Merkle path.
+        The documents move to Anchored. From now on, public verification also folds each proof to the root and asks
+        the contract <Term>verifyRoot(root)</Term>, and shows the answer as a badge beside the verdict.
       </>
     ),
   },

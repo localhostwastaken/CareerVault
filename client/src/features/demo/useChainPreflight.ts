@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { blockNumber, formatPol, getBalance, getCode, lastRpcUsed } from '@/features/credential-check/amoyRpc'
-import { isAuthorizedAnchor } from '@/features/credential-check/anchorRegistry'
+import { blockNumber, formatPol, getBalance, getCode, lastRpcUsed } from '@/features/demo/amoyRpc'
+import { isAuthorizedAnchor } from '@/features/demo/anchorRegistry'
 
 // Below this the server's own self-check warns too (anchor-self-check.ts LOW_BALANCE).
 const LOW_BALANCE_WEI = 5n * 10n ** 16n

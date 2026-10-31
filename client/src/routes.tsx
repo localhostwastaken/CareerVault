@@ -15,7 +15,6 @@ import type { AppRole } from '@/features/auth/types'
 const Hero = lazy(() => import('@/pages/Hero/Hero'))
 const VerifyHome = lazy(() => import('@/pages/Verify/VerifyHome'))
 const VerifyResult = lazy(() => import('@/pages/Verify/VerifyResult'))
-const VerifyFile = lazy(() => import('@/pages/Verify/VerifyFile'))
 const DemoGuide = lazy(() => import('@/pages/Demo/DemoGuide'))
 const Sha256Visualizer = lazy(() => import('@/pages/Demo/Sha256Visualizer'))
 const MockCheckout = lazy(() => import('@/pages/Payments/MockCheckout'))
@@ -105,8 +104,6 @@ export const routes: RouteObject[] = [
     children: [
       { path: '/', element: suspense(<Hero />) },
       { path: '/verify', element: suspense(<VerifyHome />) },
-      // A static segment outranks /verify/:token, so "file" is never read as a share token.
-      { path: '/verify/file', element: suspense(<VerifyFile />) },
       { path: '/demo', element: suspense(<DemoGuide />) },
       { path: '/demo/sha256', element: suspense(<Sha256Visualizer />) },
       { path: '/verify/hash/:hash', element: suspense(<VerifyResult />) },

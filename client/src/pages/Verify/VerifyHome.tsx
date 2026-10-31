@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight, FileCheck2, ScanLine, ShieldCheck } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ScanLine, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -116,20 +116,6 @@ const VerifyHome = () => {
           summary="Six checks, all recomputed from the record on every run. Nothing is taken from a stored “valid” flag."
           steps={CHECK_STEPS}
         />
-
-        <Link
-          to="/verify/file"
-          className="focus-ring group flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-rule-strong"
-        >
-          <FileCheck2 className="size-5 shrink-0 text-seal" aria-hidden />
-          <span className="min-w-0 flex-1">
-            <span className="block text-label font-semibold text-foreground">Have the proof file instead?</span>
-            <span className="block text-label text-muted-foreground">
-              Check a downloaded credential in your browser, with no call to CareerVault.
-            </span>
-          </span>
-          <ArrowRight className="size-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" aria-hidden />
-        </Link>
 
         <RegistryFacts />
       </div>

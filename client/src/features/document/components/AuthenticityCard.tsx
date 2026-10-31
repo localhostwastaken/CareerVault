@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
-import { CheckCircle2, Circle, FileCheck2, FileJson } from 'lucide-react'
+import { CheckCircle2, Circle, ScanLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Explainer } from '@/components/shared/Explainer'
 import { HashDisplay } from '@/components/shared/HashDisplay'
-import { PROOF_FILE_STEPS, SIGNING_STEPS } from '@/features/document/explainers'
+import { SIGNING_STEPS } from '@/features/document/explainers'
 import type { DocumentDetail } from '@/features/document/types'
 import { useDocumentFraming } from '@/features/document/useDocumentFraming'
 import { formatDate } from '@/lib/format'
@@ -38,16 +38,9 @@ function Meta({ label, value }: { label: string; value: string }) {
   )
 }
 
-// The proof panel: who signed, when it was issued, and the hash a verifier can check.
-// This used to be rendered twice on the detail page — once conditionally and once
-// unconditionally — so post-issuance documents showed two identical cards.
-interface AuthenticityCardProps {
-  document: DocumentDetail
-  /** Downloads the JSON-LD credential. Omit to hide the action. */
-  onDownloadCredential?: () => void
-}
-
-export function AuthenticityCard({ document, onDownloadCredential }: AuthenticityCardProps) {
+// The proof panel: who signed, when it was issued, and where anyone can verify it. Verification
+// is by document ID on our server, so nothing cryptographic is handed out here.
+export function AuthenticityCard({ document }: { document: DocumentDetail }) {
   // Same rule as DocumentPartiesSummary: signer identities are for the holder and the
   // issuing org, not for a recruiter or another neutral viewer.
   const framing = useDocumentFraming(document)
@@ -58,8 +51,8 @@ export function AuthenticityCard({ document, onDownloadCredential }: Authenticit
       <div>
         <h2 className="text-h2 text-foreground">Authenticity</h2>
         <p className="mt-1 text-body text-muted-foreground">
-          Two people at {document.organizationName} signed this, and the hash below is what a verifier checks it
-          against.
+          Two people at {document.organizationName} signed this, each with their own sealed key. Anyone can check
+          it by its document ID.
         </p>
       </div>
 
@@ -73,35 +66,18 @@ export function AuthenticityCard({ document, onDownloadCredential }: Authenticit
         <Meta label="Expires" value={document.expiresAt ? formatDate(document.expiresAt) : 'No expiry'} />
       </dl>
 
-      {document.documentHash && (
-        <div className="flex flex-col gap-4 border-t border-border pt-5">
-          <div>
-            <p className="label-micro mb-2">Document hash · SHA-256</p>
-            <HashDisplay value={document.documentHash} lead={12} tail={12} label="Copy document hash" />
+      {document.hasHrSignature && (
+        <div className="flex flex-wrap items-end justify-between gap-3 border-t border-border pt-5">
+          <div className="flex min-w-0 flex-col gap-2">
+            <p className="label-micro">Document ID</p>
+            <HashDisplay value={document.id} lead={36} tail={0} label="Copy document ID" />
           </div>
-
-          {/* Was a bare "Proof" button in the page header, where nobody could tell what
-              it produced. Here it sits beside the hash it contains, and says so. */}
-          {onDownloadCredential && (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="max-w-md text-label text-muted-foreground">
-                Need to prove this offline? Download the signed proof file. It bundles the hash, both signatures and
-                the on-chain receipt, so a verifier can check it without CareerVault.
-              </p>
-              <div className="flex shrink-0 flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={onDownloadCredential}>
-                  <FileJson />
-                  Download proof file
-                </Button>
-                <Button asChild variant="ghost" size="sm">
-                  <Link to="/verify/file">
-                    <FileCheck2 />
-                    Check a proof file
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          )}
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/verify/${document.id}`}>
+              <ScanLine />
+              Open public verification
+            </Link>
+          </Button>
         </div>
       )}
 
@@ -111,13 +87,6 @@ export function AuthenticityCard({ document, onDownloadCredential }: Authenticit
           summary="From the fields the manager filled in to two RS256 signatures, sealed at rest."
           steps={SIGNING_STEPS}
         />
-        {onDownloadCredential && (
-          <Explainer
-            title="How the proof file is checked"
-            summary="The same checks run in your browser, in the command-line tool, or by anyone with the file."
-            steps={PROOF_FILE_STEPS}
-          />
-        )}
       </div>
     </Card>
   )

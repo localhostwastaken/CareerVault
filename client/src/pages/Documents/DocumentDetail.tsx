@@ -16,7 +16,7 @@ import { DocumentProgress } from '@/features/document/components/DocumentProgres
 import { DocumentStageHint } from '@/features/document/components/DocumentStageHint'
 import { ResubmitForm } from '@/features/document/components/ResubmitForm'
 import { extractContentFields } from '@/features/document/content'
-import { useDownloadCredential, useDownloadDocument } from '@/features/document/hooks'
+import { useDownloadDocument } from '@/features/document/hooks'
 import { DOCUMENT_TYPE_LABEL, type DocumentDetail as DocumentDetailType } from '@/features/document/types'
 import { useDocumentFraming } from '@/features/document/useDocumentFraming'
 import { useAuth } from '@/hooks/useAuth'
@@ -76,7 +76,6 @@ function DocumentDetailView({ document }: { document: DocumentDetailType }) {
   const framing = useDocumentFraming(document)
   const { role, activeOrgId } = useAuth()
   const downloadDocument = useDownloadDocument()
-  const downloadCredential = useDownloadCredential()
 
   const content = document.contentJson as Record<string, unknown>
   const returned = content.returnedByManager === true
@@ -177,7 +176,7 @@ function DocumentDetailView({ document }: { document: DocumentDetailType }) {
 
       {!preIssue && (
         <>
-          <AuthenticityCard document={document} onDownloadCredential={() => downloadCredential(document.id)} />
+          <AuthenticityCard document={document} />
           <DocumentAnchorCard document={document} />
         </>
       )}

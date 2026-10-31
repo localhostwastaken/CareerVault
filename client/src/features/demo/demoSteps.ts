@@ -69,23 +69,6 @@ export const DEMO_STEPS: DemoStep[] = [
       'The verdict is now “Verified”. The Merkle proof folds to the root, verifyRoot confirms it, and the anchor card links the transaction and the contract.',
   },
   {
-    actor: 'Holder',
-    account: 'alice@holder.example.com',
-    action: 'Open the document and click “Download proof file”.',
-    to: '/app/documents',
-    linkLabel: 'Open documents',
-    happening:
-      'The holder now has a file containing the content, salt, both signatures, the issuer key and the Merkle proof. It can be verified without CareerVault.',
-  },
-  {
-    actor: 'Anyone',
-    action: 'Drop the file into the proof-file checker, then edit one character of its content and run again.',
-    to: '/verify/file',
-    linkLabel: 'Open the file checker',
-    happening:
-      'Every check runs in the browser against public Polygon RPCs. The edit breaks Integrity at once: tamper-evidence you can see.',
-  },
-  {
     actor: 'HR',
     account: 'hr@techcorp.example.com',
     action: 'Issued → open a document → Revoke. Verify it again.',

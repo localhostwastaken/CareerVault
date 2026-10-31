@@ -1,24 +1,6 @@
-// Minimal Polygon Amoy JSON-RPC over fetch, so the browser check needs no ethers bundle and
-// no CareerVault backend. Only public, CORS-enabled endpoints: a visitor's browser talks to
-// the chain directly, which is the point — the answer can't be shaped by our servers.
-
-export const AMOY_CHAIN_ID = 80002
-
-// CareerVault's OFFICIAL AnchorRegistry deployments, pinned HERE rather than trusted from
-// the credential file. Only CareerVault's authorized anchor wallet can write to ITS OWN
-// registry, so pinning the address is what rules out a forger who deploys a look-alike
-// AnchorRegistry and points anchor.contractAddress at it — verifyRoot() on ANY contract
-// truthfully answers "yes" for whatever that contract was itself told to anchor. Same pin as
-// tools/verify-credential (source-verified on PolygonScan; record: contracts/deployments/amoy.json).
-export const KNOWN_REGISTRIES: Readonly<Record<number, string>> = {
-  80002: '0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a',
-}
-
-// Links are built from this map plus a validated hash, never from the file's explorerTxUrl,
-// which a forged file could point anywhere.
-export const EXPLORER_BASE: Readonly<Record<number, string>> = {
-  80002: 'https://amoy.polygonscan.com',
-}
+// Minimal Polygon Amoy JSON-RPC over fetch for the demo guide's pre-flight, so the browser
+// needs no ethers bundle. Only public, CORS-enabled endpoints: the presenter's browser reads
+// the chain directly rather than through our server.
 
 // Tried in order; both send `access-control-allow-origin: *`. (rpc-amoy.polygon.technology
 // stopped resolving in Oct 2026.)

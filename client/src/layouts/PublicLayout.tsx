@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils'
 
 const FOOTER_LINKS = [
   { label: 'Verify a document', to: '/verify' },
-  { label: 'Check a proof file', to: '/verify/file' },
   { label: 'Demo guide', to: '/demo' },
   { label: 'Sign in', to: '/auth/login' },
   { label: 'Create account', to: '/auth/register' },
@@ -38,7 +37,7 @@ export function PublicLayout() {
               <NavLink
                 key={link.to}
                 to={link.to}
-                // "Verify" stays active on /verify/file and on results, but not on /demo.
+                // "Verify" stays active on results, but not on /demo.
                 end={link.to === '/demo'}
                 className={({ isActive }) =>
                   cn(
