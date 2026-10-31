@@ -23,15 +23,25 @@ CareerVault implements rigorous application-level Envelope Encryption (R10) to p
   - `documents.salt`
   - `documents.manager_signature`
   - `documents.hr_signature`
+  - `documents.manager_seal`, `documents.hr_seal`
   - `documents.revocation_reason_text`
   - `document_versions.content_json`
   - `document_versions.change_summary`
 - **PDF Storage:** PDFs stored in S3/Local are also encrypted on disk by `EncryptedStorageService`.
 
-## Cryptographic Guarantees (Document Integrity)
-- **Hashing:** `SHA-256(JCS(content_json) + salt)`. Using RFC 8785 JSON Canonicalization Scheme (JCS) ensures deterministic hashes regardless of key order.
-- **Dual Signatures:** Manager and HR sign role-bound statements `SHA-256(JCS({v: 1, documentHash, role, memberId}))` using the Organization's KMS key (RSA-2048, PKCS#1 v1.5).
-- **Key Storage (IMPLEMENTED):** Organization keys are currently stored via `LocalKmsService`, wrapped by the `KMS_MASTER_KEY`. (AWS KMS is **PLANNED**).
+## Cryptographic Guarantees (Document Integrity, revised 2026-10-31)
+- **Bytes, not text:** `B = documentBytes(id, type, orgId, holderId, subject, salt)` — our own length-prefixed TLV layout (`server/src/common/crypto/document-bytes.ts`). No JSON canonicalisation library. `documentHash = SHA-256(B)`.
+- **Personal employee keys:** each MANAGER/HR enrols per organisation. `K = PBKDF2-SHA256(DOB ‖ personal ID ‖ 3 answers, random 16-byte salt, 600,000 iterations)`. `K` is stored only AES-256-GCM-wrapped under a per-org HKDF key derived from `KMS_MASTER_KEY`; the answers are never stored.
+- **Step-up:** every signature re-derives `K` from re-entered details and compares it in constant time; 5 failures per user per 15 minutes lock signing. Re-enrolling needs the current details; another org admin can reset a forgotten key.
+- **Seal and signature:** `seal = HMAC-SHA256(K, B)`; the org's RSA-2048 key signs `SHA-256(statement(documentHash, seal, role, memberId, keyId))`. The manager does this at signing, HR again with their own key at approval.
+- **Verification is server-only** (`/verify/document/:id`, `/verify/:token`): the server recomputes the hash, both seals and both signatures, and returns a verdict without any salt, hash, key, root or algorithm name. The on-chain anchor is a secondary badge.
+
+## Input Hardening
+- `PayloadGuardMiddleware` refuses `__proto__`/`constructor`/`prototype` keys, markup, control characters and deep nesting in every body and query string, before any DTO runs.
+- Identifier fields use allow-list formats (`server/src/common/validators/formats.ts`); every other field is validated by class-validator with `whitelist` + `forbidNonWhitelisted`.
+- All SQL is parameterised (Prisma, tagged `$queryRaw`); ESLint bans `$queryRawUnsafe`/`$executeRawUnsafe`. SQL keywords are not filtered: they are stored as data.
+- Prisma error codes map to generic 409/404 responses and 5xx stay generic, so no table, column or stack detail reaches a client.
+- Proof: `server/test/adversarial.e2e-spec.ts`.
 
 ## Privacy and GDPR Erasure
 - **Salt-Based Deletion (Dead Hash):** CareerVault achieves "Right to be Forgotten" without breaking the immutable blockchain. Deleting a user wipes their row, their PDFs, and the `salt` from their documents. Without the salt, the on-chain hash is permanently unlinkable and cannot be brute-forced back to the user.
@@ -39,4 +49,4 @@ CareerVault implements rigorous application-level Envelope Encryption (R10) to p
 
 ## Trust Boundaries and External Services
 - **Blockchain Trust:** Merkle roots are anchored to Polygon Amoy (`AnchorRegistry`). Verification assumes the blockchain's consensus is secure.
-- **Offline Verification:** The offline verifier (`tools/verify-credential`) assumes the pinned Registry address (`KNOWN_REGISTRIES`) is authentic. It checks the signature mathematically but out-of-band verification is required to prove the `issuer.publicKeyPem` actually belongs to the claimed organization.
+- **Verification depends on CareerVault being up.** The offline verifier and the downloadable credential were removed on 2026-10-31: personal HMAC keys are held on the server, so no third party can recompute a seal. The PDF carries the Document ID, and the chain keeps its public timestamp.

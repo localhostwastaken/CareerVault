@@ -91,7 +91,6 @@ REQUESTED → DRAFT → PENDING_HR → ISSUED → ANCHORED
 - `POST /api/v1/documents/:id/revoke` — revoke issued document
 - `DELETE /api/v1/documents/:id` — delete (REQUESTED/DRAFT only)
 - `GET /api/v1/documents/:id/download` — download rendered PDF
-- `GET /api/v1/documents/:id/credential` — download W3C Verifiable Credential (JSON-LD)
 
 **Frontend pages (all 6 role portals):**
 
@@ -102,7 +101,7 @@ REQUESTED → DRAFT → PENDING_HR → ISSUED → ANCHORED
 | HR | `/app/approvals`, `/app/issued` |
 | Org Admin | `/app/org`, `/app/members`, `/app/analytics` |
 | Recruiter | `/app/talent`, `/app/matches` |
-| Verifier | `/verify`, `/verify/hash/:hash`, `/verify/:token` |
+| Verifier | `/verify`, `/verify/:ref` (document ID or share token) |
 
 Plus a public marketing landing at `/`.
 
@@ -144,7 +143,7 @@ Per R3 & R4 spec:
   - a boot self-check;
   - verification that degrades to "pending" when the RPC is down.
 - **Deployed (2026-09-25):** `AnchorRegistry` on Amoy at [`0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a`](https://amoy.polygonscan.com/address/0x483f9FF4B7444c60e93808Ea0e9b72a14b8Cb12a#code), source-verified on PolygonScan.
-- Merkle proofs are stored per document and included in the JSON-LD credential download, along with the chain id, contract and transaction.
+- Merkle proofs are stored per document. Public verification reports the anchor only as a badge (status, network, transaction link).
 - The document detail page shows the document's own anchor: root, transaction and contract with PolygonScan links, plus a "check it yourself" guide to calling `verifyRoot` on the contract's Read Contract tab. The admin card keeps the last run's result and transaction link on screen.
 
 ---
@@ -180,8 +179,17 @@ the sensitive document columns.
 No account required.
 
 **Backend routes:**
-- `GET /api/v1/verify/hash/:hash` — verify by document hash
-- `GET /api/v1/verify/:token` — verify by share link token
+- `GET /api/v1/verify/document/:documentId` — verify by document ID (UUID; 400 otherwise)
+- `GET /api/v1/verify/:token` — verify by share link token (48 hex; anything else is NOT_FOUND without a query)
+
+Response: `{ verified, verdict: VERIFIED|REVOKED|EXPIRED|INVALID|NOT_FOUND, erased, issuer, issuedAt, expiresAt, document: { documentId, type, status, holderName, fields }, roleSignatures: [{ role, signerName, isValid }], checks: [{ key, label, status, detail }], revocation, anchor: { status: anchored|pending|unconfirmed|unavailable, network, explorerTxUrl, anchoredAt } }`. It never contains a hash, salt, seal, signature, key, Merkle root or algorithm name. The anchor never affects the verdict.
+
+### Employee keys
+- `GET /api/v1/employee-keys/me` — for each org where the caller is MANAGER/HR: `{ organizationId, organizationName, isEnrolled, enrolledAt, version, questions: [{ id, text }] }`
+- `GET /api/v1/employee-keys/questions` — the question bank
+- `POST /api/v1/employee-keys/enroll` — `{ organizationId, dateOfBirth, personalId, answers: [{ questionId, answer }] ×3, currentStepUp? }` (`currentStepUp` required when replacing an active key)
+- `POST /api/v1/employee-keys/reset` — org admin retires another member's key: `{ organizationId, userId }`
+- `POST /documents/:id/sign` and `/approve` take `stepUp: { dateOfBirth, personalId, answers }`; a mismatch is `403 STEP_UP_FAILED`, no key `409 EMPLOYEE_KEY_REQUIRED`, lockout `429 STEP_UP_LOCKED`.
 
 **Verification report includes:**
 - Canonical content + credential subject
@@ -195,16 +203,10 @@ No account required.
 - A record whose stored fields can't be read (a failed envelope or wrapped data key, or plaintext under strict mode) reads `INVALID` with no content, by hash or by share link. An envelope naming a different key id returns a 503 (`ENCRYPTION_KEY_UNAVAILABLE`) instead, because that is what a wrong master key looks like
 - In a bulk call each hash gets its own result, or its own error entry if its lookup fails, so one hash never fails the whole call
 
-**Frontend pages:** `/verify`, `/verify/hash/:hash`, `/verify/:token`, `/verify/file`
+**Frontend pages:** `/verify`, `/verify/:ref`
 
-`/verify/file` is the offline verifier in the browser (`client/src/features/credential-check/`). It runs the same checks as `tools/verify-credential`, with the same labels and verdicts, on a dropped `.jsonld` file. It calls no CareerVault API; the on-chain reads go to public Amoy RPCs (publicnode, then drpc). A "try to tamper with it" editor re-runs the checks on edited content, which fails Integrity.
 
-**Offline verifier:** `tools/verify-credential` re-checks a downloaded credential with its own code, importing nothing from `server/`. It checks:
-- integrity and both RS256 statements;
-- Merkle inclusion;
-- the registry pin (`KNOWN_REGISTRIES` / `--registry`);
-- `verifyRoot`, `isRevoked` and the `RootAnchored` receipt on-chain;
-- revocation: a credential whose own revocation block is filled in, or that the pinned registry records as revoked, fails with exit 1. A revocation at an unpinned address, or a missing transaction hash, only warns.
+
 
 `--selftest` replays the shared known-answer vectors. It doesn't prove that the issuer key belongs to the named organisation; it prints the key fingerprint for an out-of-band check.
 
@@ -391,7 +393,7 @@ Paid Bulk Verification API for enterprise/basic verifiers (R6), gated by an acti
 - `POST /api/v1/verifier-keys` — mint a key (raw value shown once)
 - `GET /api/v1/verifier-keys` — list the caller's keys
 - `DELETE /api/v1/verifier-keys/:id` — revoke a key
-- `POST /api/v1/verify/bulk` — `X-API-Key`-authenticated bulk hash verification, with
+- `POST /api/v1/verify/bulk` — `X-API-Key`-authenticated bulk verification of `documentIds` (UUIDs), with
   a per-tier rate limit (BASIC 100/min, ENTERPRISE 1000/min)
 
 **Frontend page:** `/app/verifier-api` (Holder nav — "Verifier API"; subscribe, then
