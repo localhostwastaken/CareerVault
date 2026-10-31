@@ -43,8 +43,9 @@ export function SigningCeremony({ document, signerName, note }: SigningCeremonyP
       </Step>
       <Step number="03" title="Attestation">
         <p className="text-label text-muted-foreground">
-          You sign a <span className="font-mono text-foreground">MANAGER</span> statement binding this record's content
-          hash to your membership, with {document.organizationName}'s signing key.
+          You re-enter your signing details to unlock your personal key, which seals this record; then{' '}
+          {document.organizationName}&rsquo;s key signs a <span className="font-mono text-foreground">MANAGER</span>{' '}
+          statement over your seal.
         </p>
         <p className="text-label">
           <span className="text-muted-foreground">Signer </span>
