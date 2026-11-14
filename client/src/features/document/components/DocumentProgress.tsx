@@ -25,12 +25,6 @@ export function DocumentProgress({ document }: { document: DocumentDetail }) {
     <Card className="flex flex-col gap-5 p-6">
       <div className="flex flex-wrap items-center gap-2">
         <StatusBadge status={document.status} />
-        {document.merkleStatus === 'ANCHORED' && (
-          <Badge variant="anchor">
-            <Anchor />
-            On-chain
-          </Badge>
-        )}
         {document.merkleStatus === 'PENDING_BATCH' && (
           <Badge variant="pending">
             <Anchor />

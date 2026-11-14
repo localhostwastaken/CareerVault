@@ -8,9 +8,11 @@ import { EXAMPLE_DOCUMENT_ID } from '@/features/landing/content'
 // A real product artifact, not decoration — the exact evidence rail a visitor gets
 // from /verify, with illustrative values so the hero doesn't need a live document.
 const SAMPLE_CHECKS: VerificationCheck[] = [
+  { key: 'exists', label: 'Issued document on record', status: 'pass', detail: 'Issued by TechCorp.' },
   { key: 'integrity', label: 'Content unchanged since signing', status: 'pass', detail: 'Rebuilt from the encrypted record.' },
   { key: 'managerSignature', label: 'Manager signature', status: 'pass', detail: 'Sealed with the manager’s own key.' },
   { key: 'hrSignature', label: 'HR co-signature', status: 'pass', detail: 'Sealed with HR’s own key.' },
+  { key: 'status', label: 'Not revoked or expired', status: 'pass', detail: 'Active.' },
 ]
 
 export function HeroVerificationSample() {

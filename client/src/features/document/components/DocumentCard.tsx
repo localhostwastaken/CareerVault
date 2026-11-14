@@ -42,7 +42,7 @@ export function DocumentCard({ document, showHolder = false }: DocumentCardProps
           {/* Who has it right now. Scanning a list should answer that without a click. */}
           <p className="truncate text-label text-subtle">{progress.short}</p>
           {/* Wraps instead of truncating: the unique part of a reference is its tail. */}
-          <p className="tnum mt-0.5 break-all font-mono text-micro text-subtle">{reference}</p>
+          {reference && <p className="tnum mt-0.5 break-all font-mono text-micro text-subtle">{reference}</p>}
         </div>
         <StatusBadge status={returned ? 'DRAFT' : document.status} label={returned ? 'Returned' : undefined} />
         <ChevronRight className="size-4 shrink-0 text-subtle" aria-hidden />

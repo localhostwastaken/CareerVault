@@ -70,9 +70,11 @@ export function CredentialRegister({ documents }: { documents: DocumentDetail[] 
                   >
                     {DOCUMENT_TYPE_LABEL[document.type]}
                   </Link>
-                  <p className="tnum mt-1 whitespace-nowrap font-mono text-micro text-subtle">
-                    {documentReference(document)}
-                  </p>
+                  {documentReference(document) && (
+                    <p className="tnum mt-1 whitespace-nowrap font-mono text-micro text-subtle">
+                      {documentReference(document)}
+                    </p>
+                  )}
                 </TableCell>
                 <TableCell className="align-top text-label text-foreground">{document.organizationName}</TableCell>
                 <TableCell className="whitespace-nowrap align-top">

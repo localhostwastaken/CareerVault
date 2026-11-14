@@ -12,12 +12,12 @@ export const PILLARS: Pillar[] = [
   {
     icon: FileSignature,
     title: 'Dual-signed at the source',
-    body: 'Every document is signed by the employee’s manager and co-signed by HR before it is issued. Neither can issue alone.',
+    body: 'The employee’s manager signs, then HR co-signs, each with a personal key that only their own answers unlock. Neither can issue alone.',
   },
   {
     icon: Anchor,
     title: 'Anchored to a public ledger',
-    body: 'Each signer seals a document with a personal key that only their own answers unlock, and the organisation signs over both seals. A daily on-chain timestamp is a public extra, not a dependency.',
+    body: 'Every day’s issued documents are hashed into one Merkle root and written to Polygon. Anyone can check the timestamp on a public block explorer, and the verdict never depends on it.',
   },
   {
     icon: ShieldCheck,
