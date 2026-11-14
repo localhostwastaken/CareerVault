@@ -7,11 +7,13 @@
 // SEED_DEMO_PASSWORD when set, else the published local-dev default `Password123@`. A
 // deployed stack must be seeded with a non-public SEED_DEMO_PASSWORD: the default is in the
 // README, so anyone could otherwise sign in as TechCorp's admin.
-//   TechCorp (verified)        — Olivia (ORG_ADMIN), Marcus (MANAGER), Hannah (HR)
+//   TechCorp (verified)        — Olivia (ORG_ADMIN), Marcus (MANAGER), Hannah (HR), Riya (RECRUITER)
 //   GlobalSolutions (verified) — Gabriel (MANAGER)
-//   Holders (no membership)    — Alice (discoverable), Bob
+//   Holders (no membership)    — Alice (discoverable; a real Gmail plus-alias so the recorded
+//                                demo can show the issuance email), Bob
 //
-// Counts match the QA brief: 2 verified orgs · 1 admin · 2 managers · 1 HR · 2 holders.
+// Issued and anchored showcase documents cannot be inserted here (they need real seals and
+// signatures): `npm run demo:showcase` produces them through the real services afterwards.
 //
 // Note on employee keys: every seeded MANAGER/HR is enrolled with SIGNER_STEP_UP below, so
 // signing works straight away; each signature still asks for those details (step-up).
@@ -79,11 +81,13 @@ async function main(): Promise<void> {
   const marcus = await upsertUser('marcus@techcorp.example.com', 'Marcus Manager', passwordHash);
   const hannah = await upsertUser('hr@techcorp.example.com', 'Hannah HR', passwordHash);
   const gabriel = await upsertUser('gabriel@globalsolutions.example.com', 'Gabriel Manager', passwordHash);
+  const riya = await upsertUser('recruiter@techcorp.example.com', 'Riya Recruiter', passwordHash);
 
   await upsertMember(olivia.id, techCorp.id, 'ORG_ADMIN', 'admin@techcorp.example.com');
   const marcusMember = await upsertMember(marcus.id, techCorp.id, 'MANAGER', 'marcus@techcorp.example.com');
   await upsertMember(hannah.id, techCorp.id, 'HR', 'hr@techcorp.example.com');
   await upsertMember(gabriel.id, globalSolutions.id, 'MANAGER', 'gabriel@globalsolutions.example.com');
+  await upsertMember(riya.id, techCorp.id, 'RECRUITER', 'recruiter@techcorp.example.com');
 
   // ── Signing keys (per signer, per org) ─────────────────────────────────────
   await enrolSigner(marcus.id, techCorp.id);
@@ -91,21 +95,15 @@ async function main(): Promise<void> {
   await enrolSigner(gabriel.id, globalSolutions.id);
 
   // ── Holders (plain users; "holder" is implicit, not an org membership) ────────
-  // Alice is intentionally left with NO documents so the live E2E happy path starts
-  // from a clean slate. Bob carries seed documents to populate the manager dashboard.
-  const alice = await upsertUser('alice@holder.example.com', 'Alice Holder', passwordHash, true);
+  // Alice starts with NO documents here; demo:showcase issues her background documents.
+  // Bob carries one open request so the manager inbox is not empty.
+  const alice = await upsertUser('imperialsample+alice@gmail.com', 'Alice Holder', passwordHash, true);
   const bob = await upsertUser('bob@holder.example.com', 'Bob Holder', passwordHash);
 
-  // ── Demo documents for Bob at TechCorp (Marcus is the signer) ─────────────────
-  // Only REQUESTED/DRAFT stages are seeded — they require no real KMS signature.
-  // PENDING_HR/ISSUED states are produced live through the app so the dual-signature
-  // and hashing pipeline is exercised end-to-end during the demo.
+  // ── Bob's open request, so Marcus's inbox has something waiting ───────────────
   await prisma.auditLog.deleteMany({});
-  await prisma.document.deleteMany({ where: { holderId: bob.id } });
-
-  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
-
-  const bobDoc1 = await prisma.document.create({
+  await prisma.document.deleteMany({ where: { holderId: bob.id, status: { in: ['REQUESTED', 'DRAFT'] } } });
+  await prisma.document.create({
     data: {
       type:            'EXPERIENCE_LETTER',
       status:          'REQUESTED',
@@ -116,105 +114,6 @@ async function main(): Promise<void> {
     },
   });
 
-  const bobDoc2 = await prisma.document.create({
-    data: {
-      type:            'LETTER_OF_RECOMMENDATION',
-      status:          'DRAFT',
-      holderId:        bob.id,
-      organizationId:  techCorp.id,
-      signerMemberId:  marcusMember.id,
-      // Flat draft in the new India-first LOR shape (matches the sign form's field
-      // names). It is only a starting point — the manager finalizes and signs live.
-      contentJson: {
-        candidateName:        'Bob Holder',
-        candidateTitle:       'Software Engineer',
-        recommenderName:      'Marcus Manager',
-        recommenderTitle:     'Engineering Manager',
-        recommenderEmail:     'marcus@techcorp.example.com',
-        relationshipType:     'DIRECT_SUPERVISOR',
-        organizationContext:  'Platform Engineering, TechCorp',
-        relationshipStartDate:'2022-06-01',
-        overallAssessment:    'Bob consistently delivered high-quality work and mentored junior engineers over two years on the platform team.',
-      },
-    },
-  });
-
-  // ── Seed audit log entries so the Audit Log page has data immediately ──────────
-  await prisma.auditLog.createMany({
-    data: [
-      {
-        actorId:        marcus.id,
-        actorType:      'USER',
-        action:         'DOCUMENT_SIGNED',
-        entityType:     'DOCUMENT',
-        entityId:       bobDoc1.id,
-        retentionTier:  'STANDARD',
-        newValue:       { status: 'PENDING_HR' },
-        ipAddress:      '10.0.1.5',
-        createdAt:      daysAgo(4),
-      },
-      {
-        actorId:        hannah.id,
-        actorType:      'USER',
-        action:         'DOCUMENT_ISSUED',
-        entityType:     'DOCUMENT',
-        entityId:       bobDoc1.id,
-        retentionTier:  'STANDARD',
-        newValue:       { status: 'ISSUED' },
-        ipAddress:      '10.0.1.6',
-        createdAt:      daysAgo(3),
-      },
-      {
-        actorType:      'SYSTEM',
-        action:         'DOCUMENT_VERIFIED',
-        entityType:     'DOCUMENT',
-        entityId:       bobDoc1.id,
-        retentionTier:  'COMPLIANCE',
-        newValue:       { verdict: 'VERIFIED' },
-        ipAddress:      '203.0.113.42',
-        createdAt:      daysAgo(2),
-      },
-      {
-        actorType:      'SYSTEM',
-        action:         'DOCUMENT_CHECK_FAILED',
-        entityType:     'DOCUMENT',
-        entityId:       bobDoc2.id,
-        retentionTier:  'COMPLIANCE',
-        newValue:       { verdict: 'INVALID', failedCheck: 'SIGNATURE_INVALID' },
-        ipAddress:      '198.51.100.7',
-        createdAt:      daysAgo(1),
-      },
-      {
-        actorType:      'SYSTEM',
-        action:         'DOCUMENT_VERIFIED',
-        entityType:     'DOCUMENT',
-        entityId:       bobDoc1.id,
-        retentionTier:  'COMPLIANCE',
-        newValue:       { verdict: 'VERIFIED' },
-        ipAddress:      '198.51.100.19',
-        createdAt:      daysAgo(0),
-      },
-      {
-        actorType:      'CRON',
-        action:         'AUDIT_LOGS_PURGED',
-        entityType:     'SYSTEM',
-        entityId:       techCorp.id,
-        retentionTier:  'STANDARD',
-        newValue:       { deletedCount: 0 },
-        createdAt:      daysAgo(1),
-      },
-    ],
-  });
-
-  await prisma.notification.create({
-    data: {
-      userId: bob.id,
-      type: 'DOCUMENT_REQUESTED',
-      title: 'Experience letter requested',
-      body: 'Your experience letter request was sent to TechCorp.',
-    },
-  });
-
   console.log('Seed complete.');
   console.log('  Organizations (verified): TechCorp, GlobalSolutions');
   console.log(`  Staff/holders (password ${PASSWORD_NOTE}):`);
@@ -222,8 +121,9 @@ async function main(): Promise<void> {
   console.log('    MANAGER    marcus@techcorp.example.com   (TechCorp)');
   console.log('    HR         hr@techcorp.example.com');
   console.log('    MANAGER    gabriel@globalsolutions.example.com  (GlobalSolutions)');
-  console.log('    HOLDER     alice@holder.example.com   (clean slate — run the live happy path here)');
-  console.log('    HOLDER     bob@holder.example.com     (has seeded REQUESTED + DRAFT docs)');
+  console.log('    RECRUITER  recruiter@techcorp.example.com');
+  console.log('    HOLDER     imperialsample+alice@gmail.com   (discoverable; background docs from demo:showcase)');
+  console.log('    HOLDER     bob@holder.example.com     (one REQUESTED letter)');
   console.log('  Signers are enrolled; step-up: DOB 1990-01-15 · ID DEMO-0001 ·');
   console.log('    first school "Somaiya" · birth city "Mumbai" · first pet "Bruno"');
 }
