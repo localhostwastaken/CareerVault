@@ -13,15 +13,9 @@ export interface ShareLink {
   organizationName: string
 }
 
-export interface CheckoutInfo {
-  sessionId: string
-  checkoutUrl: string
-  amount: number
-}
-
 export interface CreateShareLinkResponse {
   shareLink: ShareLink
-  checkout: CheckoutInfo | null
+  checkout: null
 }
 
 export interface CreateShareLinkRequest {

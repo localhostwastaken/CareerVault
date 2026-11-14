@@ -1,5 +1,4 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2 } from 'lucide-react'
@@ -32,7 +31,6 @@ interface CreateShareLinkDialogProps {
 }
 
 export function CreateShareLinkDialog({ open, onOpenChange, presetDocumentId, onCreated }: CreateShareLinkDialogProps) {
-  const navigate = useNavigate()
   // Same query arg as Wallet/Documents so this shares their cache entry — a bare
   // useListDocumentsQuery() is a *different* entry and always starts cold, which made
   // the dialog claim "no issued documents" while its own request was still in flight.
@@ -58,17 +56,8 @@ export function CreateShareLinkDialog({ open, onOpenChange, presetDocumentId, on
         expiresInDays: values.expiresInDays ? Number(values.expiresInDays) : undefined,
         maxViews: values.maxViews ? Number(values.maxViews) : undefined,
       }).unwrap()
-      if (result.checkout) {
-        const url = new URL(result.checkout.checkoutUrl)
-        // Carry the link through checkout so the user still gets the Act III panel
-        // once they return — the paid path is the default for non-premium holders.
-        navigate(url.pathname + url.search, {
-          state: { amountDollars: result.checkout.amount, shareLink: result.shareLink },
-        })
-      } else {
-        onOpenChange(false)
-        onCreated?.(result.shareLink)
-      }
+      onOpenChange(false)
+      onCreated?.(result.shareLink)
     } catch (error) {
       toastApiError(error, 'Could not create the share link')
     }
@@ -79,7 +68,7 @@ export function CreateShareLinkDialog({ open, onOpenChange, presetDocumentId, on
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create share link</DialogTitle>
-          <DialogDescription>$1.99 per link — free for Premium subscribers.</DialogDescription>
+          <DialogDescription>Free. Anyone with the link can verify the document, and you can deactivate it at any time.</DialogDescription>
         </DialogHeader>
 
         {documentsQuery.isLoading ? (

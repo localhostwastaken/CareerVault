@@ -139,11 +139,9 @@ test('the holder shares the document and a stranger can verify the link', async 
   await dialog.getByRole('combobox', { name: 'Document' }).selectOption(documentId)
   await dialog.getByRole('button', { name: 'Continue' }).click()
 
-  // Share links are a paid feature for non-premium holders; the mock driver hands us a
-  // local checkout rather than Stripe.
-  await holderPage.waitForURL(/\/payments\/mock/)
-  await holderPage.getByRole('button', { name: /^Pay/ }).click()
-  await holderPage.waitForURL(/\/app\/share-links/)
+  // Share links are free: no checkout, the holder stays on the page with an active link.
+  await expect(dialog).toBeHidden()
+  await expect(holderPage).toHaveURL(/\/app\/share-links/)
 
   const shareUrl = await holderPage.getByText(/\/verify\/[0-9a-f]{48}/).first().innerText()
   const token = shareUrl.trim().split('/verify/').pop()!
