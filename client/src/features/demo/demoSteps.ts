@@ -86,12 +86,4 @@ export const DEMO_STEPS: DemoStep[] = [
     happening:
       'The register now says Revoked, and it has the final say. A DocumentRevoked event follows on the contract’s Events tab.',
   },
-  {
-    actor: 'Anyone',
-    action: 'Open the SHA-256 lab and hash “abc”.',
-    to: '/demo/sha256',
-    linkLabel: 'Open the lab',
-    happening:
-      'Our own SHA-256, bit by bit: padding to 512 bits, the 64-word schedule, all 64 rounds, and the digest, checked live against the browser’s built-in SHA-256.',
-  },
 ]

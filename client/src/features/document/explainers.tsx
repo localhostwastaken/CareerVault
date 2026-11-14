@@ -116,7 +116,7 @@ export const REVOCATION_STEPS: ExplainerStep[] = [
 export const ERASURE_STEPS: ExplainerStep[] = [
   {
     title: 'Your identity is scrubbed',
-    body: 'Your name and email are anonymised. Sessions, notifications, talent matches, messages, share links and verifier API keys are removed in the same transaction.',
+    body: 'Your name and email are anonymised. Sessions, notifications, talent matches, messages and share links are removed in the same transaction.',
   },
   {
     title: 'Every document loses its content and salt',

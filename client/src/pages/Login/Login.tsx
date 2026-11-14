@@ -45,10 +45,6 @@ const Login = () => {
           <Link to="/auth/register" className="focus-ring rounded font-medium text-seal hover:underline">
             Create one
           </Link>
-          <span className="text-subtle"> · </span>
-          <Link to="/demo" className="focus-ring rounded font-medium text-seal hover:underline">
-            Demo accounts
-          </Link>
         </p>
       }
     >

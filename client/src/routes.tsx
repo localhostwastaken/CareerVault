@@ -16,8 +16,6 @@ const Hero = lazy(() => import('@/pages/Hero/Hero'))
 const VerifyHome = lazy(() => import('@/pages/Verify/VerifyHome'))
 const VerifyResult = lazy(() => import('@/pages/Verify/VerifyResult'))
 const DemoGuide = lazy(() => import('@/pages/Demo/DemoGuide'))
-const Sha256Visualizer = lazy(() => import('@/pages/Demo/Sha256Visualizer'))
-const MockCheckout = lazy(() => import('@/pages/Payments/MockCheckout'))
 const Login = lazy(() => import('@/pages/Login/Login'))
 const MagicLink = lazy(() => import('@/pages/MagicLink/MagicLink'))
 const ForgotPassword = lazy(() => import('@/pages/ForgotPassword/ForgotPassword'))
@@ -32,8 +30,6 @@ const HolderDocuments = lazy(() => import('@/pages/Holder/Documents'))
 const HolderRequestDocument = lazy(() => import('@/pages/Holder/RequestDocument'))
 const DocumentDetail = lazy(() => import('@/pages/Documents/DocumentDetail'))
 const HolderShareLinks = lazy(() => import('@/pages/Holder/ShareLinks'))
-const HolderBilling = lazy(() => import('@/pages/Holder/Billing'))
-const HolderVerifierApi = lazy(() => import('@/pages/Holder/VerifierApi'))
 const HolderTalentProfile = lazy(() => import('@/pages/Holder/TalentProfile'))
 const RecruiterTalentSearch = lazy(() => import('@/pages/Recruiter/TalentSearch'))
 const RecruiterMatches = lazy(() => import('@/pages/Recruiter/Matches'))
@@ -59,8 +55,6 @@ const IMPLEMENTED: Record<string, ReactNode> = {
   approvals: suspense(<HrApprovals />),
   issued: suspense(<HrIssued />),
   'share-links': suspense(<HolderShareLinks />),
-  billing: suspense(<HolderBilling />),
-  'verifier-api': suspense(<HolderVerifierApi />),
   skills: suspense(<HolderTalentProfile />),
   talent: suspense(<RecruiterTalentSearch />),
   matches: suspense(<RecruiterMatches />),
@@ -104,8 +98,8 @@ export const routes: RouteObject[] = [
     children: [
       { path: '/', element: suspense(<Hero />) },
       { path: '/verify', element: suspense(<VerifyHome />) },
+      // Presenter's page: reachable by direct URL only, deliberately linked from nowhere (SCOPE.md).
       { path: '/demo', element: suspense(<DemoGuide />) },
-      { path: '/demo/sha256', element: suspense(<Sha256Visualizer />) },
       { path: '/verify/:ref', element: suspense(<VerifyResult />) },
     ],
   },
@@ -157,13 +151,6 @@ export const routes: RouteObject[] = [
         ],
       },
     ],
-  },
-  // Checkout needs a session but not the portal shell, so it reuses the same guard as
-  // /app rather than re-implementing one inline.
-  {
-    element: <RequireAuth />,
-    errorElement: <RouteErrorBoundary />,
-    children: [{ path: '/payments/mock', element: suspense(<MockCheckout />) }],
   },
   { path: '*', element: <Navigate to="/" replace /> },
 ]

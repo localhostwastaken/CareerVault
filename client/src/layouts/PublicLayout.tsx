@@ -5,16 +5,11 @@ import { cn } from '@/lib/utils'
 
 const FOOTER_LINKS = [
   { label: 'Verify a document', to: '/verify' },
-  { label: 'Demo guide', to: '/demo' },
   { label: 'Sign in', to: '/auth/login' },
   { label: 'Create account', to: '/auth/register' },
 ]
 
-// The guide drops out of a phone-width header (it stays in the footer) so the bar fits.
-const HEADER_LINKS = [
-  { label: 'Verify', to: '/verify', className: '' },
-  { label: 'Demo guide', to: '/demo', className: 'hidden sm:block' },
-]
+const HEADER_LINKS = [{ label: 'Verify', to: '/verify', className: '' }]
 
 export function PublicLayout() {
   return (
@@ -37,8 +32,6 @@ export function PublicLayout() {
               <NavLink
                 key={link.to}
                 to={link.to}
-                // "Verify" stays active on results, but not on /demo.
-                end={link.to === '/demo'}
                 className={({ isActive }) =>
                   cn(
                     'focus-ring rounded-lg px-3 py-2 text-label font-medium transition-colors',

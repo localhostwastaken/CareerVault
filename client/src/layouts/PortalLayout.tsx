@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from 'react-router-dom'
-import { Compass, LogOut, ShieldCheck, User } from 'lucide-react'
+import { LogOut, ShieldCheck, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -71,10 +71,6 @@ export function PortalLayout() {
                 <DropdownMenuItem onSelect={() => navigate('/app/profile')}>
                   <User />
                   Profile
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => navigate('/demo')}>
-                  <Compass />
-                  Demo guide
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => signOut()}>
                   <LogOut />
