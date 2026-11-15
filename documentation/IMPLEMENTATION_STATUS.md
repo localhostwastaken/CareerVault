@@ -1,5 +1,7 @@
 # CareerVault Implementation Status
 
+> **Superseded on 2026-11-14 for scope:** [`SCOPE.md`](../SCOPE.md) is the authority on what is in scope, future scope and removed. Where this document disagrees (e.g. bulk issuance, paid share links, JCS), `SCOPE.md` and the code win.
+
 **Purpose:** This document is the single canonical source of truth for the implementation status of features in CareerVault, directly reflecting the repository code as of September 2026.
 
 ## Current Project Maturity
@@ -25,7 +27,7 @@
 | **Members** | Multi-role join table | IMPLEMENTED | `server/prisma/schema.prisma` | Users can hold roles in multiple orgs. |
 | **Manager workflow** | Draft & Sign | IMPLEMENTED | `server/src/modules/document/document.service.ts` | Drafts transition to `PENDING_HR`. |
 | **HR workflow** | Approve & Co-sign | IMPLEMENTED | `server/src/modules/document/document-approve.spec.ts` | HR triggers final issuance & PDF generation. |
-| **Holder workflow** | Wallet & Link sharing | IMPLEMENTED | `server/src/modules/share-link/` | Paid/premium links. |
+| **Holder workflow** | Wallet & Link sharing | IMPLEMENTED | `server/src/modules/share-link/` | Free share links (billing is future scope). |
 | **Document issuance** | Bulk & Single Issuance | IMPLEMENTED | `server/src/modules/bulk-issuance/` | Handles CSV bulk issuance by HR. |
 | **PDF generation** | Human-readable artifacts | IMPLEMENTED | `server/src/modules/document/pdf-generation.service.ts` | Hash in footer. Encrypted on disk. |
 | **Document versions** | Complete audit trail | IMPLEMENTED | `server/prisma/schema.prisma` | Stores complete snapshot per version. |

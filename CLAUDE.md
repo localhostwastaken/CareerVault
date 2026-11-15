@@ -1,3 +1,7 @@
+## Scope
+
+- Scope: items under "Future scope" and "Removed" in SCOPE.md are out of scope for audits, reviews and suggestions unless the user explicitly asks about them.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
