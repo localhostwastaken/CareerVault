@@ -15,12 +15,19 @@ import { SkillService } from '../src/modules/skill/skill.service.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import { SHOWCASE } from './showcase-content.js';
 
-if (process.env.NODE_ENV === 'production' && !process.argv.includes('--yes-reset-production')) {
-  console.error('Refusing to write showcase data to production without --yes-reset-production.');
+if (
+  process.env.NODE_ENV === 'production' &&
+  !process.argv.includes('--yes-reset-production')
+) {
+  console.error(
+    'Refusing to write showcase data to production without --yes-reset-production.',
+  );
   process.exit(1);
 }
 
-const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
+const app = await NestFactory.createApplicationContext(AppModule, {
+  logger: ['error', 'warn'],
+});
 const prisma = app.get(PrismaService);
 const documents = app.get(DocumentService);
 
@@ -28,7 +35,10 @@ async function actor(email: string): Promise<AuthenticatedUser> {
   const user = await prisma.user.findUniqueOrThrow({
     where: { email },
     include: {
-      memberships: { where: { isActive: true }, include: { organization: { select: { name: true } } } },
+      memberships: {
+        where: { isActive: true },
+        include: { organization: { select: { name: true } } },
+      },
     },
   });
   return {
@@ -57,7 +67,10 @@ async function issue(
     managerUserId: manager.id,
     enableSkillExtraction: item.enableSkillExtraction,
   });
-  await documents.sign(requested.id, manager, { contentJson: item.subject, stepUp: SHOWCASE.stepUp });
+  await documents.sign(requested.id, manager, {
+    contentJson: item.subject,
+    stepUp: SHOWCASE.stepUp,
+  });
   await documents.approve(requested.id, hr, { stepUp: SHOWCASE.stepUp });
   return requested.id;
 }
@@ -72,32 +85,54 @@ async function warmAiService(): Promise<void> {
     body: JSON.stringify({ text: 'warm up' }),
     signal: AbortSignal.timeout(300_000),
   });
-  if (!response.ok) throw new Error(`AI service warm-up failed with ${response.status}`);
+  if (!response.ok)
+    throw new Error(`AI service warm-up failed with ${response.status}`);
 }
 
 try {
-  const techCorp = await prisma.organization.findUniqueOrThrow({ where: { domain: 'techcorp.example.com' } });
+  const techCorp = await prisma.organization.findUniqueOrThrow({
+    where: { domain: 'techcorp.example.com' },
+  });
   const [alice, bob, marcus, hannah, riya] = await Promise.all(
-    [SHOWCASE.emails.alice, SHOWCASE.emails.bob, SHOWCASE.emails.marcus, SHOWCASE.emails.hr, SHOWCASE.emails.recruiter].map(actor),
+    [
+      SHOWCASE.emails.alice,
+      SHOWCASE.emails.bob,
+      SHOWCASE.emails.marcus,
+      SHOWCASE.emails.hr,
+      SHOWCASE.emails.recruiter,
+    ].map(actor),
   );
   const holders = { alice, bob };
 
   await warmAiService();
   const issued: Record<string, string> = {};
   for (const item of SHOWCASE.documents) {
-    issued[item.label] = await issue(holders[item.holder], marcus, hannah, item, techCorp.id);
-    if (item.enableSkillExtraction) await app.get(SkillService).extractForDocument(issued[item.label]);
+    issued[item.label] = await issue(
+      holders[item.holder],
+      marcus,
+      hannah,
+      item,
+      techCorp.id,
+    );
+    if (item.enableSkillExtraction)
+      await app.get(SkillService).extractForDocument(issued[item.label]);
   }
 
   const batch = await app.get(MerkleService).runBatch(techCorp.id);
-  const opening = await app.get(RecruiterService).createJobOpening(riya, SHOWCASE.jobOpening);
+  const opening = await app
+    .get(RecruiterService)
+    .createJobOpening(riya, SHOWCASE.jobOpening);
 
   console.log('Showcase ready.');
-  for (const [label, id] of Object.entries(issued)) console.log(`  ${label.padEnd(28)} ${id}`);
+  for (const [label, id] of Object.entries(issued))
+    console.log(`  ${label.padEnd(28)} ${id}`);
   console.log(`  Anchor batch                 ${JSON.stringify(batch)}`);
   console.log(`  Job opening                  ${opening.id}`);
 } catch (error) {
-  console.error('Showcase failed:', error instanceof Error ? error.message : error);
+  console.error(
+    'Showcase failed:',
+    error instanceof Error ? error.message : error,
+  );
   process.exitCode = 1;
 } finally {
   await app.close();

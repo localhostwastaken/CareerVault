@@ -13,8 +13,11 @@ if (process.env.STORAGE_DRIVER !== 'supabase') {
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const bucket = process.env.SUPABASE_STORAGE_BUCKET ?? 'careervault-storage';
-if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
-const storage = createClient(url, key, { auth: { persistSession: false } }).storage.from(bucket);
+if (!url || !key)
+  throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
+const storage = createClient(url, key, {
+  auth: { persistSession: false },
+}).storage.from(bucket);
 
 // Supabase lists one folder level at a time; entries without an id are folders.
 async function listFiles(prefix: string): Promise<string[]> {

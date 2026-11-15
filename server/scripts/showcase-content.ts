@@ -1,6 +1,9 @@
 // The words and numbers behind the demo's background documents. Kept apart from
 // demo-showcase.ts so the script stays about order of operations, not content.
-type DocumentType = 'EXPERIENCE_LETTER' | 'SALARY_PROOF' | 'LETTER_OF_RECOMMENDATION';
+type DocumentType =
+  | 'EXPERIENCE_LETTER'
+  | 'SALARY_PROOF'
+  | 'LETTER_OF_RECOMMENDATION';
 
 interface ShowcaseDocument {
   label: string;
@@ -68,7 +71,8 @@ const documents: ShowcaseDocument[] = [
       dateOfJoining: '2021-03-15',
       lastWorkingDay: '2026-09-30',
       reasonForLeaving: 'RESIGNATION',
-      conductSummary: 'Bob worked on our release quality team and conducted himself professionally throughout.',
+      conductSummary:
+        'Bob worked on our release quality team and conducted himself professionally throughout.',
       signatoryName: 'Hannah HR',
       signatoryDesignation: 'Head — Human Resources',
     },

@@ -288,11 +288,13 @@ export class DocumentService {
     // Dual-signature: the manager who signed must not also approve (separation of
     // duties). Signing requires MANAGER and approving requires HR, so this only bites
     // a person who holds both memberships — they may do one step, never both.
+    let managerName: string | null = null;
     if (doc.signerMemberId) {
       const signerMembership = await this.prisma.organizationMember.findUnique({
         where: { id: doc.signerMemberId },
-        select: { userId: true },
+        select: { userId: true, user: { select: { fullName: true } } },
       });
+      managerName = signerMembership?.user?.fullName ?? null;
       if (signerMembership && signerMembership.userId === actor.id) {
         throw new ConflictException(
           'The manager who signed cannot also approve this document',
@@ -397,6 +399,7 @@ export class DocumentService {
         contentJson: doc.contentJson,
       },
       { name: org.name, domain: org.domain },
+      { managerName, hrName: actor.fullName },
     );
     await this.prisma.document.update({
       where: { id },
