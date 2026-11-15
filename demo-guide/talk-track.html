@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CareerVault talk track</title>
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #FDFBF7; --panel: #FFFFFF; --well: #F4F2EC;
+    --ink: #1A1A1A; --muted: #4A4A4A; --subtle: #6B6B6B;
+    --rule: #E0E0E0; --rule-strong: #C9C6BF;
+    --seal: #1B3A5C; --verified: #15803D; --pending: #A84D07; --revoked: #B4231F; --anchor: #8A5A16;
+    --sans: "IBM Plex Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+    --serif: "IBM Plex Serif", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 var(--sans); }
+  main { max-width: 980px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font: 600 30px/1.2 var(--serif); margin: 0 0 6px; }
+  h2 { font-size: 18px; margin: 40px 0 12px; }
+  .lede { color: var(--muted); margin: 0 0 24px; }
+  .micro { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--subtle); font-weight: 600; }
+  code, .mono { font-family: var(--mono); font-size: 13px; }
+  .checklist { background: var(--panel); border: 1px solid var(--rule); border-radius: 4px; padding: 16px 20px; }
+  .checklist li { margin: 6px 0; }
+  .seg { display: grid; grid-template-columns: 72px 1fr; gap: 16px; border-top: 1px solid var(--rule); padding: 20px 0; }
+  .time { font: 500 14px var(--mono); color: var(--seal); }
+  .seg h3 { margin: 0 0 4px; font-size: 16px; }
+  .who { color: var(--subtle); font-size: 13px; margin: 0 0 10px; }
+  .seg ul { margin: 0; padding-left: 18px; }
+  .seg li { margin: 4px 0; }
+  .evidence { margin-top: 10px; padding: 8px 12px; background: var(--well); border-left: 2px solid var(--anchor); font-size: 13px; color: var(--muted); }
+  .brief { border-left-color: var(--subtle); }
+  pre { background: var(--well); padding: 12px; border-radius: 4px; overflow-x: auto; font: 13px/1.5 var(--mono); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border-top: 1px solid var(--rule); padding: 8px 6px; text-align: left; vertical-align: top; }
+  @media (max-width: 560px) { .seg { grid-template-columns: 1fr; gap: 4px; } }
+</style>
+</head>
+<body>
+<main>
+  <p class="micro">Presentation · recorded demo</p>
+  <h1>CareerVault talk track</h1>
+  <p class="lede">One continuous take, about 12 minutes. Play it and talk over it, pausing on the held screens.
+    Each segment lists what is on screen and two or three points to make. The timestamps come from the final take.</p>
+
+  <h2>Pre-show checklist</h2>
+  <ol class="checklist">
+    <li><strong>Play the video from a local file</strong> (<code>demo-recording/out/careervault-demo-prod-….mp4</code>). Don't rely on venue Wi-Fi.</li>
+    <li>If someone may want to click the live site afterwards, wake it <strong>10 minutes before</strong>:
+      <pre>curl -s -m 300 https://careervault-fsov.onrender.com/api/v1/health
+curl -s -m 120 https://careervault-ai-service.onrender.com/health</pre>
+      If the first command hangs, the Supabase project is paused. Restore it in the Supabase dashboard.</li>
+    <li>Turn on Do Not Disturb on the presenting laptop.</li>
+    <li>Fallback: if the video won't play, open the screenshots in <code>demo-guide/img/</code>.</li>
+  </ol>
+
+  <h2>The take</h2>
+
+  <div class="seg"><div class="time">00:00</div><div>
+    <h3>1 · The problem and the promise</h3>
+    <p class="who">Landing page, signed out</p>
+    <ul>
+      <li>A fake experience letter takes minutes to make and weeks to disprove. Background checks still mean calling HR.</li>
+      <li>Three pillars: two people sign at the source, a public timestamp on Polygon, and anyone can verify in seconds.</li>
+      <li>The sample on the right is the exact result a verifier sees: five checks.</li>
+    </ul>
+  </div></div>
+
+  <div class="seg"><div class="time">—</div><div>
+    <h3>2 · Alice requests an experience letter</h3>
+    <p class="who">Holder · Alice Holder</p>
+    <ul>
+      <li>The employee only <em>requests</em>. The organisation writes the content, which is why the result can be trusted.</li>
+      <li>She picks a verified organisation and the manager who knows her work.</li>
+      <li>She opts in to AI skill extraction. It's off by default, and we come back to it at the end.</li>
+    </ul>
+  </div></div>
+
+  <div class="seg"><div class="time">—</div><div>
+    <h3>3 · The manager signs, with a step-up</h3>
+    <p class="who">Manager · Marcus Manager</p>
+    <ul>
+      <li>Marcus fills in the facts. That record becomes the signed content.</li>
+      <li>Signing asks for his personal details again. <strong>A wrong answer is refused</strong>, and five failures lock signing for 15 minutes.</li>
+      <li>The right answers unlock his personal key: PBKDF2 (600,000 rounds) derives it, an HMAC-SHA256 seal is made over the document bytes, and the organisation's RSA-2048 key signs the seal.</li>
+    </ul>
+  </div></div>
+
+  <div class="seg"><div class="time">—</div><div>
+    <h3>4 · HR co-signs and issues</h3>
+    <p class="who">HR · Hannah HR</p>
+    <ul>
+      <li>A different person has to approve. HR first re-checks that the bytes still hash to what the manager signed.</li>
+      <li>HR adds her own seal and signature. Only now is the document issued.</li>
+      <li>Everything is stored encrypted (AES-256-GCM envelope encryption), including the PDF.</li>
+    </ul>
+    <div class="evidence">Evidence: the Supabase Storage bucket holds only encrypted blobs, and the <code>documents</code> table shows <code>cvenc:v1:…</code> ciphertext instead of readable content.</div>
+  </div></div>
+
+  <div class="seg"><div class="time">—</div><div>
+    <h3>5 · Alice shares it, and anyone verifies it</h3>
+    <p class="who">Holder · Alice Holder</p>
+    <ul>
+      <li>The real email lands in her Gmail.</li>
+      <li>She downloads the PDF and creates a free share link. The recruiter needs no account.</li>
+      <li>Verification recomputes the hash, both seals and both signatures on the server. Five checks, all green. The on-chain badge still reads "pending", and that doesn't affect validity.</li>
+    </ul>
+    <div class="evidence">Evidence: the issuance email in <code>imperialsample@gmail.com</code>.</div>
+  </div></div>
+
+  <div class="seg"><div class="time">—</div><div>
+    <h3>6 · Anchoring on Polygon</h3>
+    <p class="who">Org admin · Olivia Admin</p>
+    <ul>
+      <li>Every night (or with "Anchor now"), issued documents are hashed into one Merkle tree. Only the 32-byte root goes on-chain, never any personal data.</li>
+      <li>One transaction per batch, however many documents it holds.</li>
+      <li>We paste the root into PolygonScan's <code>verifyRoot</code>. The chain itself answers "exists: true", not CareerVault.</li>
+      <li>Verifying again shows the same verdict, now timestamped on-chain. The chain is a receipt, never a condition.</li>
+    </ul>
+    <div class="evidence">Evidence: the anchor transaction, and the <code>verifyRoot</code> read on PolygonScan (contract <span class="mono">0x483f…B12a</span>, Polygon Amoy).</div>
+  </div></div>
+
+  <div class="seg"><div class="time">—</div><div>
+    <h3>7 · Revocation</h3>
+    <p class="who">HR · Hannah HR</p>
+    <ul>
+      <li>HR revokes Bob's letter with a reason. The register is authoritative, so verification says "Revoked" immediately.</li>
+      <li>A <code>DocumentRevoked</code> event then follows on the contract, as a public trail.</li>
+    </ul>
+    <div class="evidence">Evidence: the contract's Events tab on PolygonScan.</div>
+  </div></div>
+
+  <div class="seg"><div class="time">—</div><div>
+    <h3>8 · Organisation oversight</h3>
+    <p class="who">Org admin · Olivia Admin</p>
+    <ul>
+      <li>Members and their roles. Signers enrol their own keys, and an admin can reset someone else's but never their own.</li>
+      <li>The audit log records every sign, issue, verify and revoke.</li>
+    </ul>
+  </div></div>
+
+  <div class="seg"><div class="time">—</div><div>
+    <h3>9 · Built on top: matching on verified evidence</h3>
+    <p class="who">Recruiter · Riya Recruiter, then Holder · Alice Holder</p>
+    <ul>
+      <li>Keep this short. Once credentials are trustworthy, you can build on them.</li>
+      <li>A recruiter's opening is matched only against consented, verified documents, and every score has a plain "why".</li>
+      <li>Alice controls discovery and sees which skills were extracted.</li>
+    </ul>
+    <div class="evidence brief">Be honest if asked: the ranker is a transparent baseline. It isn't trained on real hiring outcomes; that's future work.</div>
+  </div></div>
+
+  <h2>Live documents (production)</h2>
+  <table>
+    <tr><th>Document</th><th>ID</th></tr>
+    <tr><td colspan="2" class="mono">Filled in after the production reset (<code>npm run demo:reset-prod</code> prints them).</td></tr>
+  </table>
+
+  <h2>If you're asked about…</h2>
+  <table>
+    <tr><td>Billing, the Verifier API, bulk issuance</td><td>Future scope, deliberately cut to keep the story clear. See <code>SCOPE.md</code>.</td></tr>
+    <tr><td>"Is the server trusted?"</td><td>Yes: it is a custodial attestation. Two people act and each seal is personal, but the organisation key and the master key are held by the service. Independent personal signatures are future work.</td></tr>
+    <tr><td>"Why not put documents on-chain?"</td><td>Personal data must stay erasable. The chain only holds a hash root, as a public timestamp.</td></tr>
+  </table>
+</main>
+</body>
+</html>
