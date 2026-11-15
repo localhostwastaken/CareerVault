@@ -26,8 +26,8 @@ async function show(context: BrowserContext, url: string, act?: (page: Page) => 
   await bringToFront()
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded' })
+    await hideCookieBanner(page)
     await page.waitForTimeout(HOLD.read)
-    await dismissCookieBanner(page)
     if (act) await act(page)
     await page.waitForTimeout(HOLD.talk)
   } catch (error) {
@@ -37,15 +37,10 @@ async function show(context: BrowserContext, url: string, act?: (page: Page) => 
   }
 }
 
-// PolygonScan's banner: take the least-permissive choice that closes it.
-async function dismissCookieBanner(page: Page): Promise<void> {
-  for (const name of [/reject/i, /necessary only/i, /essential/i, /^ok$/i, /got it/i]) {
-    const button = page.getByRole('button', { name }).first()
-    if (await button.isVisible().catch(() => false)) {
-      await button.click()
-      return
-    }
-  }
+// PolygonScan's banner offers only "Got it!", which agrees to its cookie terms. That is not the
+// take's call to make, so the banner is hidden in this tab instead and no consent is given.
+async function hideCookieBanner(page: Page): Promise<void> {
+  await page.addStyleTag({ content: '#masterDivCookie { display: none !important; }' }).catch(() => {})
 }
 
 export function liveEvidence(context: BrowserContext, opts: { supabaseRef: string | null; bucket: string }): Evidence {
@@ -53,29 +48,41 @@ export function liveEvidence(context: BrowserContext, opts: { supabaseRef: strin
   return {
     supabaseStorage: async () => {
       if (!dashboard) return console.log('  (no SUPABASE_PROJECT_REF; skipped storage)')
+      // Issued PDFs live at objects/documents/<document id>.pdf (sealed by EncryptedStorageService).
       await show(context, `${dashboard}/storage/buckets/${opts.bucket}`, async (page) => {
-        await page.getByText('pdfs', { exact: false }).first().click().catch(() => {})
+        await page.getByText('objects', { exact: true }).first().click()
+        await page.waitForTimeout(HOLD.beat)
+        await page.getByText('documents', { exact: true }).first().click()
         await page.waitForTimeout(HOLD.read)
       })
     },
     supabaseTable: async () => {
       if (!dashboard) return console.log('  (no SUPABASE_PROJECT_REF; skipped table)')
       await show(context, `${dashboard}/editor`, async (page) => {
-        await page.getByRole('button', { name: 'documents', exact: true }).first().click()
+        // The table list entries are links styled as buttons, so match the visible name.
+        await page.getByText('documents', { exact: true }).first().click()
+        await page.getByRole('columnheader', { name: /^status/ }).waitFor({ timeout: 20_000 })
+        await page.getByRole('button', { name: 'Close banner' }).click({ timeout: 2_000 }).catch(() => {})
         await page.waitForTimeout(HOLD.read)
-        await page.mouse.wheel(600, 0)
+        // Scroll right to content_json: every value is a "cvenc:v1:…" envelope, not plaintext.
+        await page.mouse.move(700, 350)
+        await page.mouse.wheel(900, 0)
       })
     },
     polygonTx: async (txUrl) => {
       if (txUrl) await show(context, txUrl)
       await show(context, `${AMOY.explorer}/address/${AMOY.contract}#readContract`, async (page) => {
-        await page.getByText('verifyRoot', { exact: false }).first().click()
+        // The Read Contract tab lives in an iframe. The take copied the root (bytes32) in the app.
+        const frame = page.frameLocator('iframe#readcontractiframe')
+        await frame.getByText('verifyRoot').first().click()
         await page.waitForTimeout(HOLD.beat)
-        const input = page.locator('input[placeholder*="rootHash" i], input[name*="rootHash" i]').first()
-        await input.click()
+        await frame.locator('input[placeholder^="rootHash" i]').first().click()
         await page.keyboard.press('Meta+V')
         await page.waitForTimeout(HOLD.beat)
-        await page.getByRole('button', { name: 'Query' }).first().click()
+        await frame.getByRole('button', { name: 'Query' }).first().click()
+        // The chain's own answer: exists = true, the document count and the anchoring wallet.
+        await frame.getByText('anchoredBy').first().waitFor({ timeout: 15_000 })
+        await frame.getByText('anchoredBy').first().scrollIntoViewIfNeeded()
         await page.waitForTimeout(HOLD.read)
       })
     },

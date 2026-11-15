@@ -10,6 +10,8 @@ export interface PreflightDeps {
   pollIntervalMs: number
   /** Host of the production Supabase project, or null to skip the check. */
   supabaseHost: string | null
+  /** Progress lines, so a minutes-long cold start never looks like a frozen take. */
+  log: (message: string) => void
 }
 
 export const realDeps: PreflightDeps = {
@@ -19,14 +21,18 @@ export const realDeps: PreflightDeps = {
   healthTimeoutMs: 6 * 60_000,
   pollIntervalMs: 10_000,
   supabaseHost: TARGETS.prod.supabaseHost,
+  log: (message) => console.log(message),
 }
 
 // Polls a health URL until it answers 200: Render's free tier can take minutes to boot.
 async function healthy(url: string, deps: PreflightDeps): Promise<boolean> {
   const deadline = Date.now() + deps.healthTimeoutMs
+  let announced = false
   do {
     const ok = await deps.fetch(url, { signal: AbortSignal.timeout(60_000) }).then((r) => r.ok, () => false)
     if (ok) return true
+    if (!announced) deps.log(`Waiting for ${url} to wake (Render free tier: up to ~5 minutes)…`)
+    announced = true
     await new Promise((resolve) => setTimeout(resolve, deps.pollIntervalMs))
   } while (Date.now() < deadline)
   return false
@@ -46,6 +52,7 @@ async function walletBalancePol(wallet: string, deps: PreflightDeps): Promise<nu
 // that cannot be paid for. A local rehearsal only needs the API.
 export async function preflight(target: Target, deps: PreflightDeps = realDeps): Promise<PreflightResult> {
   const { api, ai } = TARGETS[target]
+  deps.log('Preflight: checking the services before the take starts…')
   // A paused Supabase project makes the API hang at boot, so name that cause first rather
   // than waiting out the health timeout and blaming the API.
   if (target === 'prod' && deps.supabaseHost && !(await deps.resolveHost(deps.supabaseHost))) {

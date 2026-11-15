@@ -4,6 +4,8 @@
 // Optional: --from=<n> / --until=<n> run a slice (DOC_ID supplies the take's document when
 // starting after segment 3); SUPABASE_PROJECT_REF / SUPABASE_STORAGE_BUCKET
 // enable the Supabase cut-ins; SUPABASE_HOST enables the paused-project preflight check.
+// LIVE_EVIDENCE=1 runs the PolygonScan cut-ins in a local rehearsal whose API anchors on Amoy
+// (BLOCKCHAIN_DRIVER=amoy), so the explorer steps are rehearsed before a production take.
 import { startCapture } from './capture.js'
 import { OUT_DIR, bringToFront, keepInFront, openBrowser } from './browser.js'
 import { TARGETS, type Target } from './config.js'
@@ -51,7 +53,7 @@ const take: TakeContext = {
   // Resuming a rehearsal mid-take: the document segment 3 would have discovered.
   documentId: process.env.DOC_ID,
   evidence:
-    target === 'local'
+    target === 'local' && !process.env.LIVE_EVIDENCE
       ? noEvidence
       : liveEvidence(context, {
           supabaseRef: process.env.SUPABASE_PROJECT_REF ?? null,

@@ -146,7 +146,11 @@ export async function adminAnchors(t: TakeContext) {
   await settle(page)
   await page.getByText('On-chain proof').scrollIntoViewIfNeeded()
   await hold(page, HOLD.read)
-  await page.getByRole('button', { name: 'Copy Merkle root' }).click()
+  // On Amoy the card adds "Check it yourself on PolygonScan" with the root in the bytes32 form
+  // verifyRoot takes (a second "Copy Merkle root…" button); the simulator has only the plain root.
+  const bytes32 = page.getByRole('button', { name: 'Copy Merkle root as bytes32', exact: true })
+  const plainRoot = page.getByRole('button', { name: 'Copy Merkle root', exact: true })
+  await ((await bytes32.count()) > 0 ? bytes32 : plainRoot).click()
   await t.evidence.polygonTx(txUrl)
   await out(t, 'olivia')
   // Re-verify publicly: same verdict, now with the on-chain badge, and the root on PolygonScan.

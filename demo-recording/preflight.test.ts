@@ -9,8 +9,9 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const WEI_0_05_POL = '0x' + (5n * 10n ** 16n).toString(16)
 const WEI_0_004_POL = '0x' + (4n * 10n ** 15n).toString(16)
 
-function deps(overrides: { health?: number; ai?: number; driver?: string; balanceHex?: string; rpcError?: boolean; resolves?: boolean } = {}): PreflightDeps {
+function deps(overrides: { health?: number; ai?: number; driver?: string; balanceHex?: string; rpcError?: boolean; resolves?: boolean; log?: (message: string) => void } = {}): PreflightDeps {
   return {
+    log: overrides.log ?? (() => {}),
     fetch: async (url: string | URL | Request) => {
       const u = String(url)
       if (u.includes('ai-service')) return json({ status: 'ok' }, overrides.ai ?? 200)
@@ -74,4 +75,10 @@ test('reports an RPC error instead of crashing on the balance check', async () =
   const result = await preflight('prod', deps({ rpcError: true }))
   assert.equal(result.ok, false)
   assert.match(result.ok ? '' : result.reason, /balance/)
+})
+
+test('says what it is waiting for while a sleeping service wakes, so the take never looks frozen', async () => {
+  const lines: string[] = []
+  await preflight('prod', deps({ health: 503, log: (line) => lines.push(line) }))
+  assert.ok(lines.some((line) => /waiting/i.test(line) && line.includes('/health')), lines.join('\n'))
 })
