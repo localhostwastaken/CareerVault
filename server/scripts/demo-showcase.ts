@@ -62,14 +62,17 @@ async function issue(
   return requested.id;
 }
 
-async function waitForAiService(): Promise<void> {
+// The AI service loads its embedding model lazily on the first /embed, which can take a
+// minute on a cold Render instance. One warm-up call here keeps that out of the job opening.
+async function warmAiService(): Promise<void> {
   const base = process.env.AI_SERVICE_URL ?? 'http://localhost:9910';
-  for (let attempt = 0; attempt < 36; attempt++) {
-    const body = await fetch(`${base}/health`).then((r) => r.json()).catch(() => null);
-    if (body?.status === 'ok' && body.embedding_model !== 'loading') return;
-    await new Promise((resolve) => setTimeout(resolve, 5_000));
-  }
-  throw new Error('AI service did not become ready within 3 minutes');
+  const response = await fetch(`${base}/embed`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ text: 'warm up' }),
+    signal: AbortSignal.timeout(300_000),
+  });
+  if (!response.ok) throw new Error(`AI service warm-up failed with ${response.status}`);
 }
 
 try {
@@ -79,7 +82,7 @@ try {
   );
   const holders = { alice, bob };
 
-  await waitForAiService();
+  await warmAiService();
   const issued: Record<string, string> = {};
   for (const item of SHOWCASE.documents) {
     issued[item.label] = await issue(holders[item.holder], marcus, hannah, item, techCorp.id);
