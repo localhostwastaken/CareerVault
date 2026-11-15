@@ -108,7 +108,7 @@ curl -s -m 120 https://careervault-ai-service.onrender.com/health</pre>
       <li>She downloads the PDF and creates a free share link. The recruiter needs no account.</li>
       <li>Verification recomputes the hash, both seals and both signatures on the server. Five checks, all green. The on-chain badge still reads "pending", and that doesn't affect validity.</li>
     </ul>
-    <div class="evidence">Evidence (slide, not in the video): the real issuance email in <code>imperialsample@gmail.com</code>, <code>demo-guide/img/gmail-issued.png</code>.</div>
+    <div class="evidence">Evidence (slide, not in the video): the real emails in <code>imperialsample@gmail.com</code>.<br><img src="img/gmail-issued.png" alt="Gmail inbox with the two CareerVault emails: Your document is ready, and Document anchored on-chain" style="width:100%;margin-top:8px;border:1px solid var(--rule)"></div>
   </div></div>
 
   <div class="seg"><div class="time">—</div><div>
@@ -156,7 +156,11 @@ curl -s -m 120 https://careervault-ai-service.onrender.com/health</pre>
   <h2>Live documents (production)</h2>
   <table>
     <tr><th>Document</th><th>ID</th></tr>
-    <tr><td colspan="2" class="mono">Filled in after the production reset (<code>npm run demo:reset-prod</code> prints them).</td></tr>
+    <tr><td>Alice · Salary Certificate</td><td class="mono">cf95a30a-d5f5-4e55-984a-e0ac179b32f8</td></tr>
+    <tr><td>Alice · Letter of Recommendation</td><td class="mono">70f9aea7-867d-47d5-b249-58a07d835be7</td></tr>
+    <tr><td>Bob · Experience Letter (revoked during the take)</td><td class="mono">6ffdb3f7-e49d-4497-947b-9971a39e93a0</td></tr>
+    <tr><td>Background anchor (Polygon Amoy)</td><td class="mono"><a href="https://amoy.polygonscan.com/tx/0xc5ff4a285ac2c18edcb8728ee2c4e9b54f6c431fff75d8d5866883b523a5cc29">0xc5ff4a28…a5cc29</a></td></tr>
+    <tr><td colspan="2">Reset on 15 Nov 2026. The take adds Alice's experience letter and a second anchor; its ID is on screen in the video.</td></tr>
   </table>
 
   <h2>If you're asked about…</h2>
