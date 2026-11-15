@@ -9,6 +9,7 @@ export const hold = (page: Page, ms: number) => page.waitForTimeout(ms)
 // Human-speed typing so the room can read what goes in.
 export async function typeInto(field: Locator, text: string): Promise<void> {
   await field.click()
+  await field.fill('')
   await field.pressSequentially(text, { delay: TYPE_DELAY_MS })
 }
 
@@ -46,7 +47,6 @@ export async function stepUp(page: Page, opts: { wrong?: boolean } = {}): Promis
   const answers = dialog.getByPlaceholder('Your answer')
   for (let i = 0; i < 3; i++) {
     const answer = opts.wrong && i === 1 ? STEP_UP.wrongAnswer : STEP_UP.answers[i]
-    await answers.nth(i).fill('')
     await typeInto(answers.nth(i), answer)
   }
   await hold(page, HOLD.beat)

@@ -50,15 +50,15 @@ export async function holderRequests(t: TakeContext) {
 export async function managerSigns(t: TakeContext) {
   const { page } = t
   await as(t, 'marcus')
-  await page.getByRole('link', { name: /Alice Holder/ }).first().click()
+  await page.getByRole('link', { name: /Draft & sign: .*Alice Holder/ }).click()
+  await page.waitForURL(/\/sign$/)
   await settle(page)
-  if (!page.url().endsWith('/sign')) await page.getByRole('link', { name: 'Draft & sign' }).click()
   t.documentId = page.url().match(/documents\/([0-9a-f-]{36})/)?.[1]
-  await typeInto(page.getByLabel('Employee code'), 'TC-2041')
-  await typeInto(page.getByLabel('Designation'), 'Software Engineer')
-  await page.getByLabel('Date of joining').fill('2022-06-01')
+  await typeInto(page.getByRole('textbox', { name: 'Employee code', exact: true }), 'TC-2041')
+  await typeInto(page.getByRole('textbox', { name: 'Designation', exact: true }), 'Software Engineer')
+  await page.getByRole('textbox', { name: 'Date of joining', exact: true }).fill('2022-06-01')
   await typeInto(
-    page.getByLabel('Conduct summary'),
+    page.getByRole('textbox', { name: 'Conduct summary', exact: true }),
     'Alice built our payment settlement service in Node.js and TypeScript on PostgreSQL and conducted herself professionally throughout.',
   )
   await hold(page, HOLD.read)
@@ -67,7 +67,8 @@ export async function managerSigns(t: TakeContext) {
   await hold(page, HOLD.talk)
   await stepUp(page, { wrong: true })
   await page.getByRole('dialog').getByRole('button', { name: /sign/i }).last().click()
-  await page.getByRole('dialog').getByRole('alert').first().waitFor()
+  // The refusal arrives as a toast; hold while the room reads it.
+  await page.locator('[data-sonner-toast]').first().waitFor()
   await hold(page, HOLD.talk)
   await stepUp(page)
   await page.getByRole('dialog').getByRole('button', { name: /sign/i }).last().click()
@@ -80,7 +81,7 @@ export async function managerSigns(t: TakeContext) {
 export async function hrIssues(t: TakeContext) {
   const { page } = t
   await as(t, 'hannah')
-  await page.getByRole('link', { name: 'Review' }).first().click()
+  await page.getByRole('link', { name: /Review.*Alice Holder/ }).click()
   await settle(page)
   await hold(page, HOLD.talk)
   await page.getByRole('button', { name: 'Approve & issue' }).click()
@@ -102,14 +103,13 @@ export async function holderSharesAndVerifies(t: TakeContext) {
   await page.goto(`/app/documents/${t.documentId}`)
   await settle(page)
   await hold(page, HOLD.talk)
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download PDF' }).click()])
-  const pdfPath = `${t.outDir}/experience-letter.pdf`
-  await download.saveAs(pdfPath)
-  const pdf = await context.newPage()
-  await pdf.goto(`file://${pdfPath}`)
+  // The app opens the decrypted PDF in a new tab.
+  const [pdf] = await Promise.all([context.waitForEvent('page'), page.getByRole('button', { name: 'Download PDF' }).click()])
+  await pdf.waitForLoadState().catch(() => {})
   await hold(pdf, HOLD.talk)
+  await scrollThrough(pdf, 2, HOLD.read)
   await pdf.close()
-  await page.getByRole('link', { name: 'Share' }).click()
+  await page.getByRole('link', { name: 'Share', exact: true }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Continue' }).click()
   await hold(page, HOLD.talk)
   const [shared] = await Promise.all([context.waitForEvent('page'), page.getByRole('link', { name: "Preview what they'll see" }).click()])
@@ -120,7 +120,9 @@ export async function holderSharesAndVerifies(t: TakeContext) {
   await page.goto(`/verify/${t.documentId}`)
   await settle(page)
   await hold(page, HOLD.talk)
-  await out(t, 'alice').catch(() => page.goto('/auth/login'))
+  await page.goto('/app/wallet')
+  await settle(page)
+  await out(t, 'alice')
 }
 
 export async function adminAnchors(t: TakeContext) {
@@ -157,7 +159,9 @@ export async function hrRevokes(t: TakeContext) {
   await settle(page)
   const bobDocument = page.url().match(/documents\/([0-9a-f-]{36})/)?.[1]
   await page.getByRole('button', { name: 'Revoke' }).click()
-  await typeInto(page.getByRole('dialog').getByLabel('Revocation reason'), 'Issued with the wrong last working day.')
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Revocation reason').selectOption({ index: 1 })
+  await typeInto(dialog.getByLabel('Note for the holder'), 'Issued with the wrong last working day.')
   await hold(page, HOLD.beat)
   await page.getByRole('dialog').getByRole('button', { name: 'Revoke' }).click()
   await page.getByRole('dialog').waitFor({ state: 'detached' })
@@ -185,7 +189,7 @@ export async function adminOversight(t: TakeContext) {
 export async function builtOnTop(t: TakeContext) {
   const { page } = t
   await as(t, 'riya')
-  await page.getByRole('button', { name: 'Find candidates' }).click()
+  await page.getByRole('button', { name: 'Find candidates' }).first().click()
   await page.getByText('Alice Holder').first().waitFor({ timeout: 120_000 })
   await hold(page, HOLD.talk)
   await page.getByText('Alice Holder').first().scrollIntoViewIfNeeded()

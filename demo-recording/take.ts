@@ -1,7 +1,8 @@
 // Runs the continuous demo take.
 //   TARGET=local npm run rehearse          no capture, external evidence skipped
 //   DEMO_PASSWORD=… TARGET=prod npm run record
-// Optional: --until=<n> stops after segment n; SUPABASE_PROJECT_REF / SUPABASE_STORAGE_BUCKET
+// Optional: --from=<n> / --until=<n> run a slice (DOC_ID supplies the take's document when
+// starting after segment 3); SUPABASE_PROJECT_REF / SUPABASE_STORAGE_BUCKET
 // enable the Supabase cut-ins; SUPABASE_HOST enables the paused-project preflight check.
 import { startCapture } from './capture.js'
 import { OUT_DIR, openBrowser } from './browser.js'
@@ -13,6 +14,7 @@ import { SEGMENTS, type TakeContext } from './segments.js'
 
 const target = (process.env.TARGET ?? 'local') as Target
 const capture = !process.argv.includes('--no-capture')
+const from = Number(process.argv.find((a) => a.startsWith('--from='))?.split('=')[1] ?? 1)
 const until = Number(process.argv.find((a) => a.startsWith('--until='))?.split('=')[1] ?? SEGMENTS.length)
 // Local rehearsals use the published seed default; production reads it from the environment.
 const password = process.env.DEMO_PASSWORD ?? (target === 'local' ? 'Password123@' : '')
@@ -25,6 +27,11 @@ if (!check.ok) {
 }
 
 const context = await openBrowser(TARGETS[target].app)
+// The profile is persistent (for the Supabase and Gmail sessions), so a CareerVault session
+// left by an earlier take would skip the sign-in screen. Start every take signed out.
+for (const url of [TARGETS[target].app, TARGETS[target].api]) {
+  await context.clearCookies({ domain: new URL(url).hostname })
+}
 await installOverlay(context)
 const page = context.pages()[0] ?? (await context.newPage())
 await page.goto('/')
@@ -37,6 +44,8 @@ const take: TakeContext = {
   context,
   password,
   outDir: OUT_DIR,
+  // Resuming a rehearsal mid-take: the document segment 3 would have discovered.
+  documentId: process.env.DOC_ID,
   evidence:
     target === 'local'
       ? noEvidence
@@ -48,13 +57,14 @@ const take: TakeContext = {
 
 let failed = false
 try {
-  for (const [index, segment] of SEGMENTS.slice(0, until).entries()) {
+  for (const [index, segment] of SEGMENTS.entries()) {
+    if (index + 1 < from || index + 1 > until) continue
     console.log(`Segment ${index + 1}: ${segment.name}`)
     await segment(take)
   }
 } catch (error) {
   failed = true
-  console.error(`Take stopped: ${(error as Error).message.split('\n')[0]}`)
+  console.error(`Take stopped: ${(error as Error).message.split('\n').slice(0, 12).join('\n')}`)
   await page.screenshot({ path: `${OUT_DIR}failure-${stamp}.png` }).catch(() => {})
 } finally {
   await recording?.stop()
