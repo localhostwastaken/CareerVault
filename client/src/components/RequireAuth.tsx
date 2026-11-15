@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth'
 // is what used to paint the sign-in screen for a moment on every reload before bouncing
 // the user back. Public routes are unaffected — they render outside this guard.
 export function RequireAuth() {
-  const { status } = useAuth()
+  const { status, endedByUser } = useAuth()
   const location = useLocation()
 
   if (status === 'restoring') return <LoadingScreen />
@@ -22,7 +22,7 @@ export function RequireAuth() {
       <Navigate
         to="/auth/login"
         replace
-        state={{ from: location.pathname + location.search + location.hash }}
+        state={endedByUser ? null : { from: location.pathname + location.search + location.hash }}
       />
     )
   }

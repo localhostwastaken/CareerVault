@@ -19,6 +19,9 @@ interface AuthState {
   // to sessionStorage (see ./persona) so it survives a hard refresh.
   activeRole: AppRole
   activeOrgId: string | null
+  // True after an explicit sign-out. The guard then drops the "return to" path, so the next
+  // person to sign in on this tab lands on their own home, not the previous person's page.
+  endedByUser: boolean
 }
 
 const persisted = loadPersona()
@@ -28,6 +31,7 @@ const initialState: AuthState = {
   user: null,
   activeRole: persisted?.role ?? 'HOLDER',
   activeOrgId: persisted?.organizationId ?? null,
+  endedByUser: false,
 }
 
 const authSlice = createSlice({
@@ -37,6 +41,7 @@ const authSlice = createSlice({
     setCredentials(state, action: PayloadAction<AuthResponse>) {
       const user = action.payload.user
       state.status = 'authenticated'
+      state.endedByUser = false
       state.token = action.payload.token
       state.user = user
       // Restore the persona the user last worked in (across a hard refresh) when it is
@@ -83,6 +88,7 @@ const authSlice = createSlice({
     },
     logout(state) {
       state.status = 'anonymous'
+      state.endedByUser = true
       state.token = null
       state.user = null
       state.activeRole = 'HOLDER'
