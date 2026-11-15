@@ -99,7 +99,6 @@ export async function hrIssues(t: TakeContext) {
 export async function holderSharesAndVerifies(t: TakeContext) {
   const { page, context } = t
   await as(t, 'alice')
-  await t.evidence.gmail()
   await page.goto(`/app/documents/${t.documentId}`)
   await settle(page)
   await hold(page, HOLD.talk)

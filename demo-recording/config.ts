@@ -44,8 +44,6 @@ export const STEP_UP = {
   wrongAnswer: 'Andheri',
 }
 
-export const GMAIL_SEARCH = 'https://mail.google.com/mail/u/0/#search/CareerVault'
-
 // Milliseconds. "talk" holds are the screens the presenter explains; "beat" is a breath
 // between actions so the viewer can follow the cursor.
 export const HOLD = { beat: 1_200, read: 4_500, talk: 8_000 }

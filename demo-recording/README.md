@@ -11,9 +11,10 @@ with ffmpeg. You narrate live over it. The design is in
 2. Run `brew install ffmpeg` if it isn't installed.
 3. Grant Screen Recording permission to your terminal: System Settings → Privacy & Security →
    Screen Recording. Restart the terminal afterwards.
-4. Run `npm run login`. In the window that opens, sign into Supabase and
-   `imperialsample@gmail.com`, and clear any PolygonScan check. Then close the window. The
-   sessions are kept in `.profile/` (git-ignored).
+4. Run `npm run login`. In the window that opens, sign into Supabase and clear any
+   PolygonScan check. Then close the window. The session is kept in `.profile/` (git-ignored).
+   Gmail is not part of the take: Google refuses sign-in in a script-controlled browser, so
+   the issuance email is captured as a still from a normal browser after the take.
 
 ## Before every production take
 

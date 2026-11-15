@@ -1,14 +1,15 @@
-// Integration evidence, opened as new tabs inside the same take. Best-effort by design: a
+// Integration evidence, opened as new tabs inside the same take. Gmail is not among them:
+// Google refuses sign-in in a script-controlled browser, so the issuance email is captured
+// as a still from a normal browser instead (see demo-guide/talk-track.html). Best-effort by design: a
 // third-party page that changed its layout must not cost a whole take, so each step logs
 // what it skipped instead of throwing. A local rehearsal skips them all.
 import type { BrowserContext, Page } from 'playwright'
 import { bringToFront } from './browser.js'
-import { AMOY, GMAIL_SEARCH, HOLD } from './config.js'
+import { AMOY, HOLD } from './config.js'
 
 export interface Evidence {
   supabaseStorage(): Promise<void>
   supabaseTable(): Promise<void>
-  gmail(): Promise<void>
   polygonTx(txUrl: string | null): Promise<void>
   polygonEvents(): Promise<void>
 }
@@ -16,7 +17,6 @@ export interface Evidence {
 export const noEvidence: Evidence = {
   supabaseStorage: async () => console.log('  (skipped Supabase storage on local)'),
   supabaseTable: async () => console.log('  (skipped Supabase table on local)'),
-  gmail: async () => console.log('  (skipped Gmail on local)'),
   polygonTx: async () => console.log('  (skipped PolygonScan on local)'),
   polygonEvents: async () => console.log('  (skipped PolygonScan events on local)'),
 }
@@ -66,7 +66,6 @@ export function liveEvidence(context: BrowserContext, opts: { supabaseRef: strin
         await page.mouse.wheel(600, 0)
       })
     },
-    gmail: () => show(context, GMAIL_SEARCH),
     polygonTx: async (txUrl) => {
       if (txUrl) await show(context, txUrl)
       await show(context, `${AMOY.explorer}/address/${AMOY.contract}#readContract`, async (page) => {
