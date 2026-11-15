@@ -22,8 +22,8 @@
     "test:cov": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json",
     "demo:showcase": "WORKER=false TS_NODE_TRANSPILE_ONLY=1 node --no-warnings --loader ts-node/esm scripts/demo-showcase.ts",
-    "demo:reset": "prisma migrate reset --force && tsx prisma/seed.ts && WORKER=false TS_NODE_TRANSPILE_ONLY=1 node --no-warnings --loader ts-node/esm scripts/demo-showcase.ts",
-    "demo:reset-prod": "DOTENV_CONFIG_PATH=.env.production.local sh -c 'tsx scripts/wipe-storage.ts && prisma migrate reset --force && tsx prisma/seed.ts && WORKER=false TS_NODE_TRANSPILE_ONLY=1 node --no-warnings --loader ts-node/esm scripts/demo-showcase.ts --yes-reset-production'"
+    "demo:reset": "tsx scripts/reset-guard.ts --mode=local && prisma migrate reset --force && tsx prisma/seed.ts && WORKER=false TS_NODE_TRANSPILE_ONLY=1 node --no-warnings --loader ts-node/esm scripts/demo-showcase.ts",
+    "demo:reset-prod": "DOTENV_CONFIG_PATH=.env.production.local sh -c 'tsx scripts/reset-guard.ts --mode=production && prisma migrate reset --force && tsx scripts/wipe-storage.ts && tsx prisma/seed.ts && WORKER=false TS_NODE_TRANSPILE_ONLY=1 node --no-warnings --loader ts-node/esm scripts/demo-showcase.ts'"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

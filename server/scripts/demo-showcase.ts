@@ -13,15 +13,19 @@ import { MerkleService } from '../src/modules/merkle/merkle.service.js';
 import { RecruiterService } from '../src/modules/recruiter/recruiter.service.js';
 import { SkillService } from '../src/modules/skill/skill.service.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { AiClientService } from '../src/services/ai/ai-client.service.js';
+import { checkResetTarget } from './reset-guard.js';
 import { SHOWCASE } from './showcase-content.js';
 
-if (
-  process.env.NODE_ENV === 'production' &&
-  !process.argv.includes('--yes-reset-production')
-) {
-  console.error(
-    'Refusing to write showcase data to production without --yes-reset-production.',
-  );
+// Same guard as the reset: production data is only ever written to the host the operator
+// confirmed with CONFIRM_RESET_HOST.
+const guard = checkResetTarget(
+  process.env.DIRECT_URL ?? process.env.DATABASE_URL,
+  process.env.NODE_ENV === 'production' ? 'production' : 'local',
+  process.env.CONFIRM_RESET_HOST,
+);
+if (!guard.ok) {
+  console.error(guard.reason);
   process.exit(1);
 }
 
@@ -76,17 +80,10 @@ async function issue(
 }
 
 // The AI service loads its embedding model lazily on the first /embed, which can take a
-// minute on a cold Render instance. One warm-up call here keeps that out of the job opening.
+// minute on a cold Render instance. One warm-up call through the app's own client (which
+// sends the service secret) keeps that out of the job opening.
 async function warmAiService(): Promise<void> {
-  const base = process.env.AI_SERVICE_URL ?? 'http://localhost:9910';
-  const response = await fetch(`${base}/embed`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text: 'warm up' }),
-    signal: AbortSignal.timeout(300_000),
-  });
-  if (!response.ok)
-    throw new Error(`AI service warm-up failed with ${response.status}`);
+  await app.get(AiClientService).embed('warm up');
 }
 
 try {

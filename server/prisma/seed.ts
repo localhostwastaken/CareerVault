@@ -37,12 +37,15 @@ import {
 } from '../src/modules/employee-key/key-derivation.js';
 import { FieldCipher } from '../src/services/key-management/field-cipher.js';
 import { LocalKmsService } from '../src/services/key-management/local-kms.service.js';
+import { seedPassword } from './seed-password.js';
 
 // R10: seeded documents are sealed exactly as the app seals them, under the master key
 // that ConfigService resolves from process.env (loaded by dotenv above). Seeding a REMOTE
 // database must therefore use that deployment's KMS_MASTER_KEY and STORAGE_LOCAL_DIR, or
 // the rows it writes are undecryptable there.
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL as string });
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL as string,
+});
 const kms = new LocalKmsService(new ConfigService());
 const prisma = new PrismaClient({ adapter }).$extends(
   fieldEncryption(new FieldCipher(kms)),
@@ -61,7 +64,7 @@ const SIGNER_STEP_UP = {
   ],
 };
 
-const DEMO_PASSWORD = process.env.SEED_DEMO_PASSWORD || 'Password123@';
+const DEMO_PASSWORD = seedPassword(process.env);
 // A password set through the environment is a secret, so it is never echoed back.
 const PASSWORD_NOTE = process.env.SEED_DEMO_PASSWORD
   ? 'the SEED_DEMO_PASSWORD you set'
@@ -73,21 +76,71 @@ async function main(): Promise<void> {
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
 
   // ── Organizations (both pre-verified so holders can request immediately) ───────
-  const techCorp = await upsertOrg('TechCorp', 'techcorp.example.com', 'demo_techcorp', 'STARTER');
-  const globalSolutions = await upsertOrg('GlobalSolutions', 'globalsolutions.example.com', 'demo_globalsolutions', 'FREE');
+  const techCorp = await upsertOrg(
+    'TechCorp',
+    'techcorp.example.com',
+    'demo_techcorp',
+    'STARTER',
+  );
+  const globalSolutions = await upsertOrg(
+    'GlobalSolutions',
+    'globalsolutions.example.com',
+    'demo_globalsolutions',
+    'FREE',
+  );
 
   // ── Org staff ──────────────────────────────────────────────────────────────
-  const olivia = await upsertUser('admin@techcorp.example.com', 'Olivia Admin', passwordHash);
-  const marcus = await upsertUser('marcus@techcorp.example.com', 'Marcus Manager', passwordHash);
-  const hannah = await upsertUser('hr@techcorp.example.com', 'Hannah HR', passwordHash);
-  const gabriel = await upsertUser('gabriel@globalsolutions.example.com', 'Gabriel Manager', passwordHash);
-  const riya = await upsertUser('recruiter@techcorp.example.com', 'Riya Recruiter', passwordHash);
+  const olivia = await upsertUser(
+    'admin@techcorp.example.com',
+    'Olivia Admin',
+    passwordHash,
+  );
+  const marcus = await upsertUser(
+    'marcus@techcorp.example.com',
+    'Marcus Manager',
+    passwordHash,
+  );
+  const hannah = await upsertUser(
+    'hr@techcorp.example.com',
+    'Hannah HR',
+    passwordHash,
+  );
+  const gabriel = await upsertUser(
+    'gabriel@globalsolutions.example.com',
+    'Gabriel Manager',
+    passwordHash,
+  );
+  const riya = await upsertUser(
+    'recruiter@techcorp.example.com',
+    'Riya Recruiter',
+    passwordHash,
+  );
 
-  await upsertMember(olivia.id, techCorp.id, 'ORG_ADMIN', 'admin@techcorp.example.com');
-  const marcusMember = await upsertMember(marcus.id, techCorp.id, 'MANAGER', 'marcus@techcorp.example.com');
+  await upsertMember(
+    olivia.id,
+    techCorp.id,
+    'ORG_ADMIN',
+    'admin@techcorp.example.com',
+  );
+  const marcusMember = await upsertMember(
+    marcus.id,
+    techCorp.id,
+    'MANAGER',
+    'marcus@techcorp.example.com',
+  );
   await upsertMember(hannah.id, techCorp.id, 'HR', 'hr@techcorp.example.com');
-  await upsertMember(gabriel.id, globalSolutions.id, 'MANAGER', 'gabriel@globalsolutions.example.com');
-  await upsertMember(riya.id, techCorp.id, 'RECRUITER', 'recruiter@techcorp.example.com');
+  await upsertMember(
+    gabriel.id,
+    globalSolutions.id,
+    'MANAGER',
+    'gabriel@globalsolutions.example.com',
+  );
+  await upsertMember(
+    riya.id,
+    techCorp.id,
+    'RECRUITER',
+    'recruiter@techcorp.example.com',
+  );
 
   // ── Signing keys (per signer, per org) ─────────────────────────────────────
   await enrolSigner(marcus.id, techCorp.id);
@@ -97,20 +150,33 @@ async function main(): Promise<void> {
   // ── Holders (plain users; "holder" is implicit, not an org membership) ────────
   // Alice starts with NO documents here; demo:showcase issues her background documents.
   // Bob carries one open request so the manager inbox is not empty.
-  const alice = await upsertUser('imperialsample+alice@gmail.com', 'Alice Holder', passwordHash, true);
-  const bob = await upsertUser('bob@holder.example.com', 'Bob Holder', passwordHash);
+  const alice = await upsertUser(
+    'imperialsample+alice@gmail.com',
+    'Alice Holder',
+    passwordHash,
+    true,
+  );
+  const bob = await upsertUser(
+    'bob@holder.example.com',
+    'Bob Holder',
+    passwordHash,
+  );
 
   // ── Bob's open request, so Marcus's inbox has something waiting ───────────────
   await prisma.auditLog.deleteMany({});
-  await prisma.document.deleteMany({ where: { holderId: bob.id, status: { in: ['REQUESTED', 'DRAFT'] } } });
+  await prisma.document.deleteMany({
+    where: { holderId: bob.id, status: { in: ['REQUESTED', 'DRAFT'] } },
+  });
   await prisma.document.create({
     data: {
-      type:            'EXPERIENCE_LETTER',
-      status:          'REQUESTED',
-      holderId:        bob.id,
-      organizationId:  techCorp.id,
-      signerMemberId:  marcusMember.id,
-      contentJson:     { note: 'Requesting an experience letter for a visa application.' },
+      type: 'EXPERIENCE_LETTER',
+      status: 'REQUESTED',
+      holderId: bob.id,
+      organizationId: techCorp.id,
+      signerMemberId: marcusMember.id,
+      contentJson: {
+        note: 'Requesting an experience letter for a visa application.',
+      },
     },
   });
 
@@ -120,12 +186,22 @@ async function main(): Promise<void> {
   console.log('    ORG_ADMIN  admin@techcorp.example.com');
   console.log('    MANAGER    marcus@techcorp.example.com   (TechCorp)');
   console.log('    HR         hr@techcorp.example.com');
-  console.log('    MANAGER    gabriel@globalsolutions.example.com  (GlobalSolutions)');
+  console.log(
+    '    MANAGER    gabriel@globalsolutions.example.com  (GlobalSolutions)',
+  );
   console.log('    RECRUITER  recruiter@techcorp.example.com');
-  console.log('    HOLDER     imperialsample+alice@gmail.com   (discoverable; background docs from demo:showcase)');
-  console.log('    HOLDER     bob@holder.example.com     (one REQUESTED letter)');
-  console.log('  Signers are enrolled; step-up: DOB 1990-01-15 · ID DEMO-0001 ·');
-  console.log('    first school "Somaiya" · birth city "Mumbai" · first pet "Bruno"');
+  console.log(
+    '    HOLDER     imperialsample+alice@gmail.com   (discoverable; background docs from demo:showcase)',
+  );
+  console.log(
+    '    HOLDER     bob@holder.example.com     (one REQUESTED letter)',
+  );
+  console.log(
+    '  Signers are enrolled; step-up: DOB 1990-01-15 · ID DEMO-0001 ·',
+  );
+  console.log(
+    '    first school "Somaiya" · birth city "Mumbai" · first pet "Bruno"',
+  );
 }
 
 function upsertOrg(
@@ -151,17 +227,31 @@ function upsertOrg(
 
 // The hash is rewritten on update too, so re-seeding with a new SEED_DEMO_PASSWORD takes
 // effect on accounts an earlier seed created, not only on a fresh database.
-function upsertUser(email: string, fullName: string, passwordHash: string | null, isDiscoverable = false) {
+function upsertUser(
+  email: string,
+  fullName: string,
+  passwordHash: string | null,
+  isDiscoverable = false,
+) {
   return prisma.user.upsert({
     where: { email },
     update: { fullName, passwordHash },
-    create: { email, fullName, passwordHash, emailVerified: true, isDiscoverable },
+    create: {
+      email,
+      fullName,
+      passwordHash,
+      emailVerified: true,
+      isDiscoverable,
+    },
   });
 }
 
 // Idempotent: a signer who already has an ACTIVE key keeps it. Documents pin the key they
 // were sealed with, so an existing key is never replaced or deleted here.
-async function enrolSigner(userId: string, organizationId: string): Promise<void> {
+async function enrolSigner(
+  userId: string,
+  organizationId: string,
+): Promise<void> {
   const active = await prisma.employeeKey.findFirst({
     where: { userId, organizationId, status: 'ACTIVE' },
   });
@@ -186,17 +276,32 @@ async function enrolSigner(userId: string, organizationId: string): Promise<void
       kdfSalt,
       kdfIterations: KDF_ITERATIONS,
       questionIds,
-      wrappedKey: await kms.wrapEmployeeKey(key, { organizationId, userId, version }),
+      wrappedKey: await kms.wrapEmployeeKey(key, {
+        organizationId,
+        userId,
+        version,
+      }),
     },
   });
   key.fill(0);
 }
 
-function upsertMember(userId: string, organizationId: string, role: MemberRole, corporateEmail: string) {
+function upsertMember(
+  userId: string,
+  organizationId: string,
+  role: MemberRole,
+  corporateEmail: string,
+) {
   return prisma.organizationMember.upsert({
     where: { userId_organizationId_role: { userId, organizationId, role } },
     update: { isActive: true },
-    create: { userId, organizationId, role, corporateEmail, joinedAt: new Date() },
+    create: {
+      userId,
+      organizationId,
+      role,
+      corporateEmail,
+      joinedAt: new Date(),
+    },
   });
 }
 

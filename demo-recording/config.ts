@@ -6,11 +6,14 @@ export const TARGETS = {
   local: {
     app: 'http://localhost:5173',
     api: 'http://localhost:9900/api/v1',
+    ai: null,
     supabaseHost: null,
   },
   prod: {
     app: 'https://career-vault-steel.vercel.app',
     api: 'https://careervault-fsov.onrender.com/api/v1',
+    // Talent search calls it live in the last segment; preflight wakes it from Render's sleep.
+    ai: 'https://careervault-ai-service.onrender.com',
     // The Supabase project host. When the free project pauses, this name stops resolving.
     supabaseHost: process.env.SUPABASE_HOST ?? null,
   },

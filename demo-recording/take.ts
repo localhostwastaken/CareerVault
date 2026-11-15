@@ -1,6 +1,6 @@
 // Runs the continuous demo take.
 //   TARGET=local npm run rehearse          no capture, external evidence skipped
-//   DEMO_PASSWORD=… TARGET=prod npm run record
+//   TARGET=prod npm run record              password read from server/.env.production.local
 // Optional: --from=<n> / --until=<n> run a slice (DOC_ID supplies the take's document when
 // starting after segment 3); SUPABASE_PROJECT_REF / SUPABASE_STORAGE_BUCKET
 // enable the Supabase cut-ins; SUPABASE_HOST enables the paused-project preflight check.
@@ -11,14 +11,16 @@ import { liveEvidence, noEvidence } from './evidence.js'
 import { installOverlay } from './overlay.js'
 import { preflight } from './preflight.js'
 import { SEGMENTS, type TakeContext } from './segments.js'
+import { productionPassword, redact } from './secrets.js'
 
 const target = (process.env.TARGET ?? 'local') as Target
 const capture = !process.argv.includes('--no-capture')
 const from = Number(process.argv.find((a) => a.startsWith('--from='))?.split('=')[1] ?? 1)
 const until = Number(process.argv.find((a) => a.startsWith('--until='))?.split('=')[1] ?? SEGMENTS.length)
-// Local rehearsals use the published seed default; production reads it from the environment.
-const password = process.env.DEMO_PASSWORD ?? (target === 'local' ? 'Password123@' : '')
-if (!password) throw new Error('Set DEMO_PASSWORD for a production take')
+// Local rehearsals use the published seed default; production reads the non-public seed
+// password from the git-ignored server/.env.production.local (never from the shell).
+const password = target === 'local' ? 'Password123@' : (process.env.DEMO_PASSWORD ?? productionPassword() ?? '')
+if (!password) throw new Error('No production password: SEED_DEMO_PASSWORD is missing from server/.env.production.local')
 
 const check = await preflight(target)
 if (!check.ok) {
@@ -67,7 +69,8 @@ try {
   }
 } catch (error) {
   failed = true
-  console.error(`Take stopped: ${(error as Error).message.split('\n').slice(0, 12).join('\n')}`)
+  const message = (error as Error).message.split('\n').slice(0, 12).join('\n')
+  console.error(`Take stopped: ${redact(message, [password])}`)
   await page.screenshot({ path: `${OUT_DIR}failure-${stamp}.png` }).catch(() => {})
 } finally {
   await recording?.stop()

@@ -18,8 +18,11 @@ with ffmpeg. You narrate live over it. The design is in
 
 ## Before every production take
 
-1. In `server/`, run `npm run demo:reset-prod`. This wipes production and creates the
-   showcase data. It costs one anchor transaction.
+1. In `server/`, run `npm run demo:reset-prod`. The first run only prints the database host
+   it would wipe and refuses. Re-run it as `CONFIRM_RESET_HOST=<that host> npm run
+   demo:reset-prod` to wipe production and create the showcase data. It costs one anchor
+   transaction. The seeded accounts get the non-public `SEED_DEMO_PASSWORD` from
+   `server/.env.production.local`.
 2. Don't touch the browser window while it records. Keep the Mac awake, and turn on Do Not
    Disturb so notifications stay off camera.
 
@@ -30,9 +33,8 @@ with ffmpeg. You narrate live over it. The design is in
 TARGET=local npm run rehearse
 
 # The real take, on production:
-DEMO_PASSWORD='…' TARGET=prod \
-  SUPABASE_PROJECT_REF=… SUPABASE_HOST=….supabase.co \
-  npm run record
+TARGET=prod SUPABASE_PROJECT_REF=… SUPABASE_HOST=….supabase.co npm run record
+# The password is read from server/.env.production.local (SEED_DEMO_PASSWORD), never typed.
 ```
 
 The video lands in `out/careervault-demo-prod-<timestamp>.mp4`. Use `--until=5` to stop after

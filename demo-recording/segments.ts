@@ -134,9 +134,13 @@ export async function adminAnchors(t: TakeContext) {
   await hold(page, HOLD.read)
   await page.getByRole('button', { name: 'Anchor now' }).click()
   const txLink = page.getByRole('link', { name: 'Open the transaction on PolygonScan' })
-  await page.getByText(/anchored|batch/i).first().waitFor({ timeout: 180_000 })
+  // The result notice, not the "Anchored on-chain" stat label that is always on screen.
+  // On Amoy this includes waiting for the transaction to confirm.
+  await page.getByText(/^Anchored \d+ documents? on-chain$/).waitFor({ timeout: 240_000 })
   await hold(page, HOLD.talk)
-  const txUrl = await txLink.getAttribute('href').catch(() => null)
+  // The explorer link appears once the batch list refreshes; the simulator has none.
+  const txUrl = await txLink.getAttribute('href', { timeout: 15_000 }).catch(() => null)
+  if (!txUrl) console.log('  (no explorer link for this batch)')
   // The document's on-chain card carries the full root; copy it to paste into PolygonScan.
   await page.goto(`/app/documents/${t.documentId}`)
   await settle(page)

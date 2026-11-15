@@ -22,7 +22,7 @@ export async function signIn(page: Page, context: BrowserContext, who: AccountKe
   await page.goto('/auth/login')
   await setActor(context, `${account.role} · ${account.name}`)
   await typeInto(page.getByLabel('Email'), account.email)
-  // The password is typed fast and is masked on screen; it never appears in logs.
+  // The password is typed fast and is masked on screen; take.ts redacts it from anything it prints.
   await page.getByLabel('Password').fill(password)
   await hold(page, HOLD.beat)
   await page.getByRole('button', { name: 'Sign in' }).click()

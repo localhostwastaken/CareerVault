@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Scripted, continuous demo take of CareerVault, captured off the screen with ffmpeg.",
   "scripts": {
-    "test": "tsx --test preflight.test.ts",
+    "test": "tsx --test preflight.test.ts secrets.test.ts",
     "login": "tsx login.ts",
     "rehearse": "tsx take.ts --no-capture",
     "record": "tsx take.ts"
