@@ -2,6 +2,7 @@
 // third-party page that changed its layout must not cost a whole take, so each step logs
 // what it skipped instead of throwing. A local rehearsal skips them all.
 import type { BrowserContext, Page } from 'playwright'
+import { bringToFront } from './browser.js'
 import { AMOY, GMAIL_SEARCH, HOLD } from './config.js'
 
 export interface Evidence {
@@ -22,6 +23,7 @@ export const noEvidence: Evidence = {
 
 async function show(context: BrowserContext, url: string, act?: (page: Page) => Promise<void>): Promise<void> {
   const page = await context.newPage()
+  await bringToFront()
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded' })
     await page.waitForTimeout(HOLD.read)

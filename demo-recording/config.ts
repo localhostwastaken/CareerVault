@@ -48,8 +48,8 @@ export const GMAIL_SEARCH = 'https://mail.google.com/mail/u/0/#search/CareerVaul
 
 // Milliseconds. "talk" holds are the screens the presenter explains; "beat" is a breath
 // between actions so the viewer can follow the cursor.
-export const HOLD = { beat: 900, read: 2_500, talk: 4_000 }
-export const TYPE_DELAY_MS = 55
+export const HOLD = { beat: 1_200, read: 4_500, talk: 8_000 }
+export const TYPE_DELAY_MS = 70
 
 // The recorded browser window in screen points, browser chrome included: 16:9 so it scales
 // cleanly to 1920×1080, and placed below the menu bar of a 1470×956-point MacBook screen.

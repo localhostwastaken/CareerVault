@@ -52,6 +52,12 @@ export async function stepUp(page: Page, opts: { wrong?: boolean } = {}): Promis
   await hold(page, HOLD.beat)
 }
 
+// Public verification checks run on the server after the page paints; hold on the verdict,
+// not on the "Running verification…" state.
+export async function awaitVerdict(page: Page): Promise<void> {
+  await page.getByText(/^Document (verified|revoked|expired|invalid)/i).first().waitFor({ timeout: 90_000 })
+}
+
 export async function scrollThrough(page: Page, steps: number, pauseMs: number): Promise<void> {
   for (let i = 0; i < steps; i++) {
     await page.mouse.wheel(0, 420)

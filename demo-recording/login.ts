@@ -3,7 +3,7 @@
 import { openBrowser } from './browser.js'
 import { AMOY } from './config.js'
 
-const context = await openBrowser()
+const context = await openBrowser({ recordVideo: false })
 const pages = [
   'https://supabase.com/dashboard/sign-in',
   'https://mail.google.com/',

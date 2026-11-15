@@ -5,7 +5,7 @@
 // starting after segment 3); SUPABASE_PROJECT_REF / SUPABASE_STORAGE_BUCKET
 // enable the Supabase cut-ins; SUPABASE_HOST enables the paused-project preflight check.
 import { startCapture } from './capture.js'
-import { OUT_DIR, openBrowser } from './browser.js'
+import { OUT_DIR, bringToFront, keepInFront, openBrowser } from './browser.js'
 import { TARGETS, type Target } from './config.js'
 import { liveEvidence, noEvidence } from './evidence.js'
 import { installOverlay } from './overlay.js'
@@ -26,7 +26,8 @@ if (!check.ok) {
   process.exit(1)
 }
 
-const context = await openBrowser(TARGETS[target].app)
+const context = await openBrowser({ baseURL: TARGETS[target].app, recordVideo: true })
+if (capture) keepInFront()
 // The profile is persistent (for the Supabase and Gmail sessions), so a CareerVault session
 // left by an earlier take would skip the sign-in screen. Start every take signed out.
 for (const url of [TARGETS[target].app, TARGETS[target].api]) {
@@ -37,6 +38,7 @@ const page = context.pages()[0] ?? (await context.newPage())
 await page.goto('/')
 await page.waitForTimeout(1_500)
 
+await bringToFront()
 const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')
 const recording = capture ? startCapture(`${OUT_DIR}careervault-demo-${target}-${stamp}.mp4`) : null
 const take: TakeContext = {
@@ -60,6 +62,7 @@ try {
   for (const [index, segment] of SEGMENTS.entries()) {
     if (index + 1 < from || index + 1 > until) continue
     console.log(`Segment ${index + 1}: ${segment.name}`)
+    await bringToFront()
     await segment(take)
   }
 } catch (error) {

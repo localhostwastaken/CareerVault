@@ -2,7 +2,7 @@
 // the take stops. External evidence (PolygonScan, Supabase, Gmail) goes through `evidence`,
 // which a local rehearsal skips.
 import type { BrowserContext, Page } from 'playwright'
-import { hold, scrollThrough, settle, signIn, signOut, stepUp, typeInto, type AccountKey } from './actions.js'
+import { awaitVerdict, hold, scrollThrough, settle, signIn, signOut, stepUp, typeInto, type AccountKey } from './actions.js'
 import { HOLD } from './config.js'
 import type { Evidence } from './evidence.js'
 
@@ -114,11 +114,13 @@ export async function holderSharesAndVerifies(t: TakeContext) {
   await hold(page, HOLD.talk)
   const [shared] = await Promise.all([context.waitForEvent('page'), page.getByRole('link', { name: "Preview what they'll see" }).click()])
   await settle(shared)
+  await awaitVerdict(shared)
   await hold(shared, HOLD.talk)
   await scrollThrough(shared, 3, HOLD.read)
   await shared.close()
   await page.goto(`/verify/${t.documentId}`)
   await settle(page)
+  await awaitVerdict(page)
   await hold(page, HOLD.talk)
   await page.goto('/app/wallet')
   await settle(page)
@@ -147,6 +149,7 @@ export async function adminAnchors(t: TakeContext) {
   // Re-verify publicly: same verdict, now with the on-chain badge, and the root on PolygonScan.
   await page.goto(`/verify/${t.documentId}`)
   await settle(page)
+  await awaitVerdict(page)
   await hold(page, HOLD.talk)
 }
 
@@ -155,7 +158,7 @@ export async function hrRevokes(t: TakeContext) {
   await as(t, 'hannah')
   await page.getByRole('link', { name: 'Issued' }).click()
   await settle(page)
-  await page.getByRole('link', { name: /Bob Holder|Experience Letter/ }).filter({ hasText: /Bob|Experience/ }).first().click()
+  await page.getByRole('link', { name: 'Experience Letter — For Bob Holder' }).click()
   await settle(page)
   const bobDocument = page.url().match(/documents\/([0-9a-f-]{36})/)?.[1]
   await page.getByRole('button', { name: 'Revoke' }).click()
@@ -168,6 +171,7 @@ export async function hrRevokes(t: TakeContext) {
   await hold(page, HOLD.read)
   await page.goto(`/verify/${bobDocument}`)
   await settle(page)
+  await awaitVerdict(page)
   await hold(page, HOLD.talk)
   await t.evidence.polygonEvents()
   await page.goto('/app/issued')
