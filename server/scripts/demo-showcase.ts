@@ -79,11 +79,23 @@ async function issue(
   return requested.id;
 }
 
-// The AI service loads its embedding model lazily on the first /embed, which can take a
-// minute on a cold Render instance. One warm-up call through the app's own client (which
-// sends the service secret) keeps that out of the job opening.
-async function warmAiService(): Promise<void> {
-  await app.get(AiClientService).embed('warm up');
+// The AI service loads its embedding model lazily on the first /embed, which can take
+// minutes on a cold Render instance and outlasts the client's timeout (it failed the
+// 16 Nov reset). Warm it through the app's own client, which sends the service secret,
+// retrying while the model loads server-side.
+async function warmAiService(attempts = 6): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await app.get(AiClientService).embed('warm up');
+      return;
+    } catch (error) {
+      if (attempt >= attempts) throw error;
+      console.log(
+        `AI service still waking (attempt ${attempt}/${attempts}); retrying in 20s…`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+    }
+  }
 }
 
 try {
