@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CareerVault Study Guide</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --ink: #1F2937; --muted: #4B5563; --subtle: #6B7280; --rule: #E5E7EB;
+    --maroon: #A42530; --tint: #F8EDEE; --grey: #F3F4F6; --card: #F9FAFB;
+    --green: #15803D; --green-t: #EAF5EE; --red: #B4231F; --red-t: #FBEAEA;
+  }
+  @page { size: A4; margin: 15mm 15mm 16mm 15mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: var(--ink); font: 9.8pt/1.4 Arial, Helvetica, sans-serif; }
+  main { max-width: 180mm; margin: 0 auto; }
+  h1 { font-size: 26pt; margin: 0 0 4pt; color: var(--maroon); }
+  h2 { font-size: 15pt; margin: 0 0 6pt; padding-top: 2pt; break-after: avoid; }
+  h2 .n { color: var(--maroon); margin-right: 6pt; }
+  .tm { display: inline-block; background: var(--maroon); color: #fff; font-size: 8pt; font-weight: 700; letter-spacing: .03em;
+        padding: 1.5pt 6pt; border-radius: 8pt; margin-right: 7pt; vertical-align: 3pt; white-space: nowrap; }
+  .tm.all { background: var(--grey); color: var(--muted); }
+  h3 { font-size: 11pt; margin: 10pt 0 4pt; break-after: avoid; }
+  p { margin: 0 0 6pt; }
+  ul, ol { margin: 0 0 6pt; padding-left: 16pt; }
+  li { margin: 0 0 2.5pt; }
+  section { margin: 0 0 12pt; break-inside: avoid; }
+  .page { break-before: page; }
+  .lede { color: var(--muted); font-size: 11pt; margin-bottom: 10pt; }
+  .bw { background: var(--tint); color: var(--maroon); font-weight: 700; padding: 0 3pt; border-radius: 3pt; white-space: nowrap; }
+  .m { color: var(--muted); font-style: italic; }
+  code, .mono { font-family: "Courier New", monospace; font-size: 9.2pt; background: var(--grey); padding: 0 2pt; border-radius: 2pt; }
+  table { border-collapse: collapse; width: 100%; margin: 4pt 0 8pt; font-size: 9.4pt; break-inside: auto; }
+  th { background: var(--maroon); color: #fff; text-align: left; padding: 3pt 6pt; font-weight: 700; }
+  td { border-bottom: 1px solid var(--rule); padding: 3pt 6pt; vertical-align: top; }
+  tr { break-inside: avoid; }
+  tr:nth-child(even) td { background: var(--card); }
+  .box { border-radius: 5pt; padding: 7pt 9pt; margin: 6pt 0 8pt; break-inside: avoid; }
+  .box .label { font-size: 8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 3pt; }
+  .say { background: var(--tint); }
+  .say .label { color: var(--maroon); }
+  .quiet { background: var(--grey); }
+  .quiet .label { color: var(--subtle); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8pt 14pt; }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 5pt; padding: 7pt 9pt; break-inside: avoid; }
+  .card h3 { margin-top: 0; }
+  figure { margin: 6pt 0 8pt; break-inside: avoid; }
+  figure img { width: 100%; display: block; }
+  figure.side { float: right; width: 44%; margin: 0 0 6pt 12pt; }
+  figcaption { font-size: 8.5pt; color: var(--subtle); margin-top: 3pt; }
+  .steps { counter-reset: s; list-style: none; padding-left: 0; }
+  .steps > li { counter-increment: s; position: relative; padding-left: 22pt; margin-bottom: 5pt; break-inside: avoid; }
+  .steps > li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 15pt; height: 15pt; border-radius: 50%;
+    background: var(--maroon); color: #fff; font-size: 8pt; font-weight: 700; text-align: center; line-height: 15pt; }
+  .qa dt { font-weight: 700; margin-top: 6pt; break-after: avoid; }
+  .qa dd { margin: 1pt 0 0 0; color: var(--ink); break-inside: avoid; }
+  .qa dd::before { content: "→ "; color: var(--maroon); font-weight: 700; }
+  .gloss { columns: 3; column-gap: 12pt; font-size: 8.7pt; line-height: 1.35; }
+  .gloss p { break-inside: avoid; margin-bottom: 4pt; }
+  .plan { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6pt; margin: 6pt 0 10pt; }
+  .plan div { background: var(--card); border: 1px solid var(--rule); border-radius: 5pt; padding: 6pt 7pt; font-size: 9pt; }
+  .plan b { display: block; color: var(--maroon); font-size: 9.5pt; margin-bottom: 2pt; }
+  .stat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6pt; margin: 4pt 0 8pt; }
+  .stat div { background: var(--card); border: 1px solid var(--rule); border-radius: 5pt; padding: 6pt 8pt; }
+  .stat b { display: block; font-size: 15pt; color: var(--maroon); }
+  .small { font-size: 8.8pt; color: var(--subtle); }
+</style>
+</head>
+<body><main>
+
+<!-- ============================== COVER ============================== -->
+<section>
+  <h1>CareerVault: Team Study Guide</h1>
+  <p class="lede">Final external evaluation. Everything you need to present the deck, narrate the demo and answer questions about the code, in one day.</p>
+
+  <div class="plan">
+    <div><b>Morning</b>Sections 1–5: the story, the demo, the architecture, how trust is built.</div>
+    <div><b>Midday</b>Sections 6–9: verification, blockchain, AI, security.</div>
+    <div><b>Afternoon</b>Section 10, the code map, then rehearse your own slides (section 3).</div>
+    <div><b>Evening</b>Quiz each other with section 11 and learn the numbers in section 12.</div>
+  </div>
+
+  <p><b>How to read this.</b> Every <span class="bw">highlighted term</span><span class="m"> is a buzzword, with its meaning right after it in grey italics.</span> Use those words on stage. <b>Say it on stage</b> boxes give you a ready sentence. <b>Know, don't volunteer</b> boxes hold the honest details: don't bring them up yourself, but answer them calmly if asked. The tag before each topic shows who presents it (<span class="tm">TM1</span>…<span class="tm">TM4</span>); <span class="tm all">All</span> means everyone must know it for the Q&amp;A.</p>
+
+  <div class="box say"><div class="label">The 30-second pitch</div>
+  A fake experience letter takes minutes to make and weeks to disprove. CareerVault lets a company issue career documents that <b>prove themselves</b>: two different people sign each letter with personal keys, everything is stored encrypted, anyone can verify it in seconds with no account, and a fingerprint of every batch is timestamped on the Polygon blockchain. It is a <span class="bw">Web 2.5</span><span class="m"> system: a normal web app for speed and privacy, with a blockchain used only as a public receipt.</span></div>
+</section>
+
+<!-- ============================== 1. PROBLEM ============================== -->
+<section>
+  <h2><span class="n">1</span><span class="tm">TM1</span>The problem and our answer</h2>
+  <div class="stat">
+    <div><b>6%</b>of white-collar background checks found a discrepancy (AuthBridge, India, 2025)</div>
+    <div><b>9.46%</b>in IT and ITES: inflated titles, fake tenures, fake employers (AuthBridge)</div>
+    <div><b>23%</b>of 2.18 lakh checks in India had discrepancies (HireRight study)</div>
+  </div>
+  <p>Today an employer checks a letter by calling HR, emailing, or paying an agency: days to weeks, repeated by every new employer. Earlier blockchain projects (MIT's Blockcerts diplomas, EduCTX credits, Marella &amp; Vijayan on Hyperledger) mostly store a hash and focus on education.</p>
+  <p><b>What we add:</b> <span class="bw">separation of duties</span><span class="m"> (two named people must approve every document)</span>, personal data kept <b>off-chain</b>, and a working, deployed system.</p>
+</section>
+
+<!-- ============================== 2. STORY = LIFECYCLE ============================== -->
+<section class="page">
+  <h2><span class="n">2</span><span class="tm">TM1</span>The story is the document lifecycle</h2>
+  <p>The deck and the video follow one letter: <b>Alice's experience letter from TechCorp</b>. The cast: Alice (employee), Marcus (manager), Hannah (HR), Olivia (company admin), Riya (recruiter), Bob (the employee whose letter is revoked).</p>
+  <table>
+    <tr><th>Step</th><th>Who</th><th>Status stored</th><th>What happens behind the screen</th></tr>
+    <tr><td>Request</td><td>Alice</td><td><code>REQUESTED</code></td><td>Alice only asks; the company writes the content. She can opt in to AI skill extraction.</td></tr>
+    <tr><td>Sign</td><td>Marcus</td><td><code>DRAFT</code> → <code>PENDING_HR</code></td><td>Marcus fills in the facts, passes a <span class="bw">step-up check</span><span class="m"> (re-enters personal details)</span>, and his key seals and signs the letter.</td></tr>
+    <tr><td>Co-sign &amp; issue</td><td>Hannah</td><td><code>ISSUED</code></td><td>A different person must approve. Her side re-checks the fingerprint, then she seals and signs too. The PDF is generated and stored encrypted; Alice gets an email.</td></tr>
+    <tr><td>Share &amp; verify</td><td>Anyone</td><td><code>ISSUED</code></td><td>Alice creates a free share link; anyone opens it with no account. The server runs five checks.</td></tr>
+    <tr><td>Anchor</td><td>Olivia</td><td><code>ANCHORED</code></td><td>Nightly (or "Anchor now"), all new fingerprints become one <span class="bw">Merkle root</span><span class="m"> (one 32-byte summary of the whole batch)</span> sent to our smart contract on Polygon.</td></tr>
+    <tr><td>Revoke</td><td>Hannah</td><td><code>REVOKED</code></td><td>Our database decides immediately; a <code>DocumentRevoked</code> event follows on-chain as a public record.</td></tr>
+  </table>
+  <p class="small">Other states: <code>EXPIRED</code> after 90 days (letters of recommendation never expire). Rejecting a letter sends it back to <code>DRAFT</code>; there is no "rejected" state.</p>
+</section>
+
+<!-- ============================== 10. DEMO + WHO SAYS WHAT ============================== -->
+<section>
+  <h2><span class="n">3</span><span class="tm">TM2 · TM3</span>The demo video and who says what</h2>
+  <p>One continuous take on the <b>live production site</b>, 9 min 49 s, recorded 16 Nov 2026 by a scripted browser. It shows real evidence: a real Gmail email, encrypted Supabase rows, and real PolygonScan transactions. Play it from the <b>local file</b>, not over Wi-Fi.</p>
+  <table>
+    <tr><th style="width:17%">Speaker</th><th style="width:30%">Slides / video</th><th>Your key lines</th></tr>
+    <tr><td><b>Team Member 1</b></td><td>Slides 1–5 (~3 min)</td><td>Alice's problem and the stats; what exists; our four goals; meet TechCorp; the lifecycle statuses. End: "Over to Team Member 2."</td></tr>
+    <tr><td><b>Team Member 2</b></td><td>Slide 6 + video 00:00–05:42</td><td>Request; Marcus's step-up and refusal; Hannah co-signs; the Supabase cut-in shows ciphertext (talk over the 3 s glitch at ~03:36); five green checks. At 05:42: "Over to Team Member 3."</td></tr>
+    <tr><td><b>Team Member 3</b></td><td>Video 05:42–end + slides 7–9</td><td>Anchor now; verifyRoot answers true; Bob revoked; admin and audit; Riya matching. Then the architecture, Marcus's keys and Hannah's fingerprint. End: "Over to Team Member 4."</td></tr>
+    <tr><td><b>Team Member 4</b></td><td>Slides 10–16 (~5 min)</td><td>Encryption; five checks; Merkle and revocation; AI; results per person; future scope; "a career document that proves itself". Then Q&amp;A.</td></tr>
+  </table>
+  <p class="small">The full minute-by-minute talk track is in each slide's speaker notes (slide 6 for the video).</p>
+</section>
+
+<!-- ============================== 3. ARCHITECTURE ============================== -->
+<section class="page">
+  <h2><span class="n">4</span><span class="tm">TM3</span>Architecture: what runs where</h2>
+  <figure><img src="diagrams/architecture.png" alt="Architecture diagram: Web app, API server with modules and security layer, and Supabase, AI service, Polygon Amoy, Gmail">
+</figure>
+  <table>
+    <tr><th style="width:21%">Part</th><th style="width:27%">Technology</th><th>What it does, and why we chose it</th></tr>
+    <tr><td><b>Web app</b></td><td>React 19, Vite, Tailwind, Redux Toolkit (RTK Query); hosted on <b>Vercel</b></td><td>One <span class="bw">SPA</span><span class="m"> (single-page app)</span> with a portal per role plus the public verify page. Vercel serves it from a global <span class="bw">CDN</span><span class="m"> (copies close to users).</span></td></tr>
+    <tr><td><b>API server</b></td><td>NestJS 11 (TypeScript), Prisma 7; <span class="bw">Docker</span><span class="m"> container</span> on <b>Render</b></td><td>All business rules. Modular: auth, documents, signing keys, verification, share links, anchoring, audit, matching, notifications. TypeScript end to end, shared with the frontend.</td></tr>
+    <tr><td><b>Database</b></td><td>PostgreSQL + <b>pgvector</b> on <b>Supabase</b>, via Prisma <span class="bw">ORM</span><span class="m"> (code talks to the DB as typed objects)</span></td><td>Users, organisations, documents, audit log, AI embeddings. pgvector stores AI vectors in the same database, so no separate vector DB.</td></tr>
+    <tr><td><b>File storage</b></td><td>Supabase Storage</td><td>Issued PDFs and each organisation's private key file, both encrypted before upload.</td></tr>
+    <tr><td><b>AI service</b></td><td>Python, FastAPI, on Render</td><td>Skill extraction (Groq LLM), embeddings (MiniLM), ranking (LightGBM + SHAP). Separate so heavy ML code never slows the API.</td></tr>
+    <tr><td><b>Blockchain</b></td><td>Solidity contract <b>AnchorRegistry</b> (Hardhat) on <b>Polygon Amoy</b>, called with <b>ethers.js v6</b></td><td>Stores Merkle roots and revocation flags; anyone can read it on PolygonScan.</td></tr>
+    <tr><td><b>Email</b></td><td>Gmail SMTP via nodemailer</td><td>"Your document is ready" and "anchored on-chain" emails.</td></tr>
+    <tr><td><b>Scheduled jobs</b></td><td><span class="bw">Cron</span><span class="m"> (timed jobs)</span> inside the API container</td><td>Midnight (IST) Merkle anchoring, share-link expiry, data retention clean-up.</td></tr>
+  </table>
+  <p><b>Design pattern to name-drop:</b> the <span class="bw">adapter pattern</span><span class="m"> — every outside service (storage, email, keys, blockchain, DNS) sits behind an interface with a local version and a real version, chosen by configuration.</span> That is why the same code runs a local simulated chain on a laptop and real Polygon in production.</p>
+  <div class="box say"><div class="label">Say it on stage</div>A React <span class="bw">single-page app</span> on Vercel talks over <span class="bw">REST</span><span class="m"> (standard HTTP API calls)</span> to a modular NestJS server in Docker on Render. Data lives in Supabase PostgreSQL with pgvector, every sensitive field is encrypted at the application layer, a Python FastAPI service does the AI, and a Solidity contract on Polygon keeps the public receipts.</div>
+</section>
+
+<!-- ============================== 4. TRUST PIPELINE ============================== -->
+<section class="page">
+  <h2><span class="n">5</span><span class="tm">TM3 · TM4</span>How trust is built (slides 8–10)</h2>
+  <p>First, the three words people mix up. Learn this table; it answers half the crypto questions.</p>
+  <table>
+    <tr><th style="width:18%">Word</th><th style="width:32%">What it does</th><th style="width:22%">Can you undo it?</th><th>Where we use it</th></tr>
+    <tr><td><span class="bw">Hashing</span></td><td>Turns data into a fixed fingerprint</td><td>No: one-way</td><td>SHA-256 fingerprint of the letter</td></tr>
+    <tr><td><span class="bw">Encryption</span></td><td>Locks data so only a key holder can read it</td><td>Yes, with the key</td><td>AES-256-GCM on stored fields and PDFs</td></tr>
+    <tr><td><span class="bw">Signing</span></td><td>Proves who approved exact data</td><td>Anyone with the public key can check it</td><td>RSA-2048 signatures by Marcus and Hannah's company</td></tr>
+  </table>
+
+  <h3>The pipeline, step by step</h3>
+  <ol class="steps">
+    <li><b>Exact bytes.</b> The letter is written in <span class="bw">our own byte format</span><span class="m"> ("CVDOC": every field as tag, length, value)</span>, so the same letter always gives identical bytes. The document ID, organisation and holder are inside the bytes, so a letter can't be moved to someone else. (We replaced the JSON library, JCS, with our own format.)</li>
+    <li><b>Salt.</b> 32 random bytes added to every letter. A <span class="bw">salt</span><span class="m"> stops anyone guessing a salary from its fingerprint, and makes identical letters hash differently.</span></li>
+    <li><b>Fingerprint.</b> <span class="bw">SHA-256</span><span class="m"> turns the bytes into a 32-byte code (64 hex characters).</span> Change one character and the whole code changes: the <span class="bw">avalanche effect</span>. Slide 9: "3 years" → <code>a3b4e6b2…</code>, "8 years" → <code>ec0a4d88…</code>.</li>
+    <li><b>Personal key.</b> At enrolment Marcus gives date of birth, an ID and three answers. <span class="bw">PBKDF2</span><span class="m"> (a key-stretching function)</span> runs them 600,000 times (the OWASP recommendation) into his 256-bit key. The answers are <b>never stored</b>; the key is stored only encrypted.</li>
+    <li><b>Step-up.</b> Before every signature he re-enters his details; the server re-derives the key and compares it in <span class="bw">constant time</span><span class="m"> (so timing reveals nothing).</span> A wrong answer is refused; <b>5 failures in 15 minutes lock signing</b>.</li>
+    <li><b>Personal seal.</b> <span class="bw">HMAC-SHA256</span><span class="m"> is a fingerprint that also needs a secret key,</span> so only Marcus's key can make his seal over the letter's bytes.</li>
+    <li><b>Company signature.</b> TechCorp's <span class="bw">RSA-2048</span><span class="m"> key (public/private key pair)</span> signs a statement of fingerprint + seal + role + member. A <span class="bw">digital signature</span><span class="m"> proves who approved exactly this data.</span></li>
+    <li><b>Second person.</b> HR must be a different user (<span class="bw">four-eyes principle</span><span class="m">, also called maker–checker</span>). Hannah's side re-checks the fingerprint, then she does her own step-up, seal and signature.</li>
+    <li><span class="tm">TM4</span> <b>Encrypted storage.</b> <span class="bw">AES-256-GCM</span><span class="m"> encryption that also detects tampering (authenticated encryption)</span> in an <span class="bw">envelope encryption</span><span class="m"> scheme: a fresh data key per record, and those keys locked by a key derived from one master key.</span> The database only holds text like <code>cvenc:v1:…</code>. PDFs are encrypted the same way. In production, strict mode refuses to read any plaintext.</li>
+  </ol>
+  <div class="box say"><div class="label">Say it on stage</div>Each letter is turned into deterministic bytes, salted and hashed with SHA-256. Two different people approve it, each with a personal key stretched by PBKDF2 and checked by a step-up, each adding an HMAC seal and an RSA-2048 signature. Everything at rest is protected by AES-256-GCM envelope encryption.</div>
+  <div class="box quiet"><div class="label">Know, don't volunteer</div>The company's RSA key and the master key are held by our server: a <span class="bw">custodial</span><span class="m"> design (the service keeps the keys).</span> What stops a stolen login from signing is the personal seal, which needs the employee's answers. If asked: "the organisation key is custodial; the personal seals make each signature one person's act; passkey signing on the signer's phone is our future scope."</div>
+</section>
+
+<!-- ============================== 5. VERIFICATION ============================== -->
+<section class="page">
+  <h2><span class="n">6</span><span class="tm">TM4</span>Verification (slide 11)</h2>
+  <p>The employer sends only a <b>document ID</b> or a <b>share link</b>. No account. Our server decrypts the record, rebuilds the exact bytes and runs <b>five checks</b>:</p>
+  <table>
+    <tr><th style="width:6%">#</th><th style="width:36%">Check (the exact label on screen)</th><th>What it proves</th></tr>
+    <tr><td>1</td><td>Issued document on record</td><td>TechCorp really issued it</td></tr>
+    <tr><td>2</td><td>Content unchanged since signing</td><td>The rebuilt fingerprint matches the signed one</td></tr>
+    <tr><td>3</td><td>Manager signature</td><td>Marcus's seal and the company signature are valid</td></tr>
+    <tr><td>4</td><td>HR co-signature</td><td>Hannah's seal and the company signature are valid</td></tr>
+    <tr><td>5</td><td>Not revoked or expired</td><td>Still active</td></tr>
+  </table>
+  <ul>
+    <li><span class="bw">Minimal disclosure</span><span class="m">: the answer contains the verdict, issuer and signers, and never a key, salt, hash, seal or signature.</span></li>
+    <li><b>Share links</b> are free; Alice can set an expiry and a view limit, or switch a link off at any time.</li>
+    <li>The blockchain shows as a <b>badge</b> ("pending" or "timestamped on-chain"). It never decides the verdict.</li>
+  </ul>
+  <div class="box quiet"><div class="label">Know, don't volunteer</div>Verification needs our server to be up. That is the trade-off of keeping personal keys secret. The on-chain timestamp stays public either way.</div>
+</section>
+
+<!-- ============================== 6. BLOCKCHAIN ============================== -->
+<section>
+  <h2><span class="n">7</span><span class="tm">TM4</span>Blockchain (slide 12)</h2>
+  <figure class="side"><img src="diagrams/merkle.png" alt="Merkle tree: letter fingerprints hashed in pairs up to one Merkle root, sent in one transaction"></figure>
+  <ul>
+    <li><span class="bw">Merkle tree</span><span class="m">: pair up fingerprints and hash each pair, repeating until one value, the </span><span class="bw">Merkle root</span><span class="m">, is left.</span> Only the 32-byte root goes on-chain, so there is <b>no personal data on the blockchain</b> and <b>one transaction covers any number of letters</b>.</li>
+    <li><span class="bw">Merkle proof</span><span class="m">: the few sibling hashes that link one letter to the root.</span> For 100,000 letters it is just 17 hashes (544 bytes) and checks in about 0.045 ms.</li>
+    <li><span class="bw">Smart contract</span><span class="m">: a program that lives on the blockchain.</span> Ours, <b>AnchorRegistry</b> (Solidity), has <code>anchorRoot</code>, <code>verifyRoot</code>, <code>revokeDocument</code> and <code>isRevoked</code>. Only our authorised wallet can write; anyone can read.</li>
+    <li><span class="bw">Polygon PoS</span><span class="m">: an Ethereum-compatible blockchain with low fees.</span> We use its <span class="bw">testnet</span><span class="m"> Amoy (chain ID 80002): the real network software, with free test tokens.</span> Each anchor costs about 0.0035 test POL in <span class="bw">gas</span><span class="m"> (the transaction fee).</span></li>
+    <li><span class="bw">Immutable</span><span class="m"> and </span><span class="bw">tamper-evident</span><span class="m">: once written, nobody (including us) can silently change or back-date a root.</span> This is <span class="bw">timestamping</span>, the idea from Haber &amp; Stornetta (1991).</li>
+    <li>Before anchoring, an <b>integrity gate</b> re-decrypts and re-hashes every candidate; anything that doesn't match is skipped.</li>
+    <li><b>Revocation:</b> the database is authoritative and shows Revoked at once; a <code>DocumentRevoked</code> event follows on-chain as a public trail.</li>
+  </ul>
+  <div class="box say"><div class="label">Say it on stage</div>The chain is a <b>receipt, not the judge</b>. We anchor a 32-byte Merkle root per batch, so cost stays constant and no personal data is ever on-chain. Anyone can call verifyRoot on PolygonScan and the blockchain itself answers "exists: true".</div>
+</section>
+
+<!-- ============================== 7. AI ============================== -->
+<section class="page">
+  <h2><span class="n">8</span><span class="tm">TM4</span>AI matching (slide 13)</h2>
+  <ol class="steps">
+    <li><b>Consent.</b> Off by default; Alice opts in (<span class="bw">privacy by design</span>). She can switch discovery off at any time.</li>
+    <li><b>Read skills.</b> An <span class="bw">LLM</span><span class="m"> (large language model)</span>, Llama 3.3 70B through <b>Groq</b>, lists the skills in her verified letters. A keyword fallback runs if Groq is unavailable.</li>
+    <li><b>Into numbers.</b> <b>MiniLM</b> (all-MiniLM-L6-v2) turns text into an <span class="bw">embedding</span><span class="m">: 384 numbers where similar meanings sit close together.</span></li>
+    <li><b>Search.</b> <b>pgvector</b> finds profiles by <span class="bw">cosine similarity</span><span class="m"> (how closely two vectors point the same way).</span></li>
+    <li><b>Rank and explain.</b> Six features: embedding similarity, skill overlap, seniority fit, industry overlap, years of experience, recency. <span class="bw">LightGBM</span><span class="m"> (gradient-boosted decision trees)</span> scores them, and <span class="bw">SHAP</span><span class="m"> splits each score into how much every feature added.</span> That is <span class="bw">explainable AI (XAI)</span>.</li>
+  </ol>
+  <div class="box quiet"><div class="label">Know, don't volunteer</div>The ranker is a <b>transparent baseline</b>: hand-tuned weights for the six features, fitted into LightGBM so that TreeSHAP can explain each score. It has not learned from real hiring outcomes yet. If asked: "it is a transparent baseline; the next step is training on recruiter feedback (interested / not interested), which the system already records."</div>
+</section>
+
+<!-- ============================== 8. SECURITY EXTRAS ============================== -->
+<section>
+  <h2><span class="n">9</span><span class="tm all">All</span>Other security you can mention</h2>
+  <div class="cols">
+    <div class="card"><h3>Access</h3><ul>
+      <li><span class="bw">RBAC</span><span class="m"> (role-based access control)</span>: ORG_ADMIN, MANAGER, HR, HOLDER, RECRUITER, plus the public verifier.</li>
+      <li><span class="bw">JWT</span><span class="m"> (signed login token)</span> signed RS256; refresh token in an <span class="bw">HttpOnly cookie</span><span class="m"> (scripts can't read it)</span>, rotated on use.</li>
+      <li>Passwords hashed with <span class="bw">bcrypt</span>; external managers use single-use 15-minute <b>magic links</b>.</li>
+      <li><span class="bw">Multi-tenancy</span><span class="m">: every query is scoped to the user's organisation.</span></li>
+    </ul></div>
+    <div class="card"><h3>Attacks and evidence</h3><ul>
+      <li><span class="bw">Parameterised queries</span><span class="m">: SQL injection text is stored as plain text, never run.</span></li>
+      <li>A payload guard refuses <span class="bw">prototype pollution</span><span class="m"> (<code>__proto__</code> tricks)</span>, HTML markup (<span class="bw">XSS</span>) and malformed IDs.</li>
+      <li><span class="bw">Rate limiting</span> on login; errors never leak table names.</li>
+      <li><span class="bw">Audit log</span><span class="m">: every sign, issue, verify and revoke is recorded.</span></li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ============================== 9. CODE MAP ============================== -->
+<section class="page">
+  <h2><span class="n">10</span><span class="tm all">All</span>Code map (one <span class="bw">monorepo</span><span class="m">, many packages in one Git repository</span>)</h2>
+  <table>
+    <tr><th style="width:22%">Folder</th><th>What lives there</th></tr>
+    <tr><td><code>client/</code></td><td>React app, one folder per feature: <code>document</code>, <code>verification</code>, <code>share-link</code>, <code>employee-key</code>, <code>anchoring</code>, <code>recruiter</code>, <code>audit</code>…</td></tr>
+    <tr><td><code>server/</code></td><td>NestJS API. <code>src/modules/</code> = features; <code>src/services/</code> = adapters (blockchain, storage, email, key-management, ai); <code>prisma/schema.prisma</code> = the database model.</td></tr>
+    <tr><td><code>ai-service/</code></td><td>FastAPI: <code>extraction.py</code> (Groq), <code>embeddings.py</code> (MiniLM), <code>ranking.py</code> (LightGBM + SHAP).</td></tr>
+    <tr><td><code>contracts/</code></td><td><code>AnchorRegistry.sol</code>, Hardhat tests, the Amoy deployment record.</td></tr>
+    <tr><td><code>e2e/</code></td><td>Playwright browser tests of the whole chain: request → sign → approve → verify.</td></tr>
+    <tr><td><code>demo-recording/</code></td><td>The script that drove a real browser on production and recorded the 9:49 video.</td></tr>
+  </table>
+  <h3>Eight files worth naming if asked "where is that in the code?"</h3>
+  <table>
+    <tr><th style="width:46%">File</th><th>What it does</th></tr>
+    <tr><td><code>server/src/common/crypto/document-bytes.ts</code></td><td>Our byte format for a letter</td></tr>
+    <tr><td><code>server/src/modules/employee-key/</code></td><td>PBKDF2 personal keys and the step-up lockout</td></tr>
+    <tr><td><code>server/src/modules/document/document-seal.ts</code></td><td>HMAC seal + RSA signature for manager and HR</td></tr>
+    <tr><td><code>server/src/prisma/encryption/field-encryption.extension.ts</code></td><td>Encrypts fields automatically on every database write</td></tr>
+    <tr><td><code>server/src/modules/verification/verification-checks.ts</code></td><td>The five checks</td></tr>
+    <tr><td><code>server/src/modules/merkle/merkle.service.ts</code></td><td>Builds the batch, runs the integrity gate, anchors the root (<code>merkle.cron.ts</code> schedules it nightly)</td></tr>
+    <tr><td><code>server/src/services/blockchain/polygon-anchor.service.ts</code></td><td>Sends the root to Polygon with ethers.js</td></tr>
+    <tr><td><code>contracts/contracts/AnchorRegistry.sol</code></td><td>The smart contract</td></tr>
+  </table>
+  <p><b>Testing:</b> 399 server unit tests (Jest) and 18 smart-contract tests (Hardhat) pass. There are also API end-to-end tests, including attack tests (SQL injection, prototype pollution, script injection), Playwright browser tests, and pytest for the AI service.</p>
+  <p><b>Deployment:</b> pushing to <code>main</code> deploys the client to Vercel and the API and AI service to Render; the database and storage are on Supabase.</p>
+  <div class="box quiet"><div class="label">Know, don't volunteer</div>Billing, a verifier API and bulk issuance exist dormant in the code but were deliberately cut from the product. Free hosting can be slow on the first request after a quiet period, so wake the site 10 minutes before (the talk track has the command). In the deployed config the company-domain DNS check runs in simulated mode.</div>
+</section>
+
+<!-- ============================== 11. Q&A ============================== -->
+<section class="page">
+  <h2><span class="n">11</span><span class="tm all">All</span>Q&amp;A drill: likely questions, short answers</h2>
+  <div class="cols">
+  <dl class="qa">
+    <dt>What is new compared with existing work?</dt>
+    <dd>Two named people approve each employment document with personal keys, data stays private and erasable, and it is a deployed system, not a prototype.</dd>
+    <dt>How is this different from DigiLocker?</dt>
+    <dd>DigiLocker holds documents from government and institutional issuers. We cover letters from private employers, with two-person approval, public timestamps, and verification for anyone without an account. Linking with DigiLocker is in our future scope.</dd>
+    <dt>Why use a blockchain at all if the server decides?</dt>
+    <dd>For an independent, public, tamper-evident timestamp: proof that the record existed then and was never back-dated or quietly changed, even by us.</dd>
+    <dt>What if Polygon is down?</dt>
+    <dd>Verification still works; only the badge says "unreachable". The chain is a receipt, not the judge.</dd>
+    <dt>Why Polygon and not Ethereum? Why a testnet?</dt>
+    <dd>Same Solidity and tools, much lower fees, fast blocks. Amoy uses free test tokens; moving to mainnet is a configuration change and a contract deployment.</dd>
+    <dt>Why not store the documents on-chain?</dt>
+    <dd>A chain can't delete, and personal data must be erasable (GDPR, DPDP). Only a 32-byte root goes on-chain. Erasing an account deletes the content, PDF and salt, so the hash on-chain links to nothing: <span class="bw">crypto-shredding</span>.</dd>
+    <dt>Hashing vs encryption?</dt>
+    <dd>A hash is a one-way fingerprint; encryption is a two-way lock with a key. We hash to detect changes and encrypt to keep data private.</dd>
+    <dt>Why both HMAC and RSA?</dt>
+    <dd>HMAC is the person's own seal (only their key); RSA is the company's signature. Together, each signature is one named person's act on behalf of the company.</dd>
+    <dt>Why 600,000 PBKDF2 rounds?</dt>
+    <dd>It is the OWASP recommendation for PBKDF2-SHA256: slow enough to make guessing expensive.</dd>
+    <dt>What if someone edits the database directly?</dt>
+    <dd>The fingerprint and signatures stop matching, so check 2 fails, and the integrity gate refuses to anchor it.</dd>
+  </dl>
+  <dl class="qa">
+    <dt>What if the database is stolen?</dt>
+    <dd>It only holds <code>cvenc:v1</code> ciphertext; the master key is not in the database.</dd>
+    <dt>What if the master key is lost or leaked?</dt>
+    <dd>It must be backed up like any root secret; with the wrong key the server returns an error rather than a wrong verdict. Moving it into a cloud KMS is the next step.</dd>
+    <dt>Can the manager and HR collude?</dt>
+    <dd>Two insiders together could, as on paper, but both are named, audited and revocable. We prevent any <i>single</i> person from issuing.</dd>
+    <dt>Same person as manager and HR?</dt>
+    <dd>The server refuses: the approver must be a different user.</dd>
+    <dt>How does revocation work if the chain is immutable?</dt>
+    <dd>The database status is authoritative; the chain adds a revocation event, so the history shows both issue and revoke.</dd>
+    <dt>How does it scale?</dt>
+    <dd>One transaction per batch whatever its size; proofs grow only logarithmically (17 hashes for 100,000 letters).</dd>
+    <dt>How is the AI explainable?</dt>
+    <dd>SHAP shows each feature's contribution to the score, so every match has a plain reason.</dd>
+    <dt>Is the AI trained?</dt>
+    <dd>It is a transparent baseline over six features; training on recruiter feedback is the next step.</dd>
+    <dt>How did you test it?</dt>
+    <dd>399 server and 18 contract unit tests, API attack tests, and Playwright browser tests of the whole flow.</dd>
+    <dt>Is the demo real?</dt>
+    <dd>Yes: recorded on the live production site, with real Polygon transactions and a real email. We can open the site now.</dd>
+  </dl>
+  </div>
+</section>
+
+<!-- ============================== 12. NUMBERS + GLOSSARY ============================== -->
+<section class="page">
+  <h2><span class="n">12</span><span class="tm all">All</span>Numbers to remember</h2>
+  <table>
+    <tr><th>Number</th><th>Meaning</th><th>Number</th><th>Meaning</th></tr>
+    <tr><td><b>600,000</b></td><td>PBKDF2 rounds</td><td><b>5 / 15 min</b></td><td>wrong tries before signing locks</td></tr>
+    <tr><td><b>32 bytes</b></td><td>salt, SHA-256 output, Merkle root</td><td><b>64</b></td><td>hex characters in a fingerprint</td></tr>
+    <tr><td><b>RSA-2048</b></td><td>company signing key</td><td><b>AES-256-GCM</b></td><td>storage encryption</td></tr>
+    <tr><td><b>5</b></td><td>verification checks</td><td><b>7</b></td><td>document statuses</td></tr>
+    <tr><td><b>5 + 1</b></td><td>roles + the public verifier</td><td><b>90 days</b></td><td>letter validity (recommendations: none)</td></tr>
+    <tr><td><b>544 B / 0.045 ms</b></td><td>Merkle proof for 100,000 letters</td><td><b>≈ 0.0035 POL</b></td><td>gas per anchor batch (testnet)</td></tr>
+    <tr><td><b>80002</b></td><td>Polygon Amoy chain ID</td><td><b>0x483f…Cb12a</b></td><td>our AnchorRegistry contract</td></tr>
+    <tr><td><b>Midnight IST</b></td><td>nightly anchoring (plus "Anchor now")</td><td><b>384</b></td><td>numbers in a MiniLM embedding</td></tr>
+    <tr><td><b>399 + 18</b></td><td>server + contract unit tests passing</td><td><b>9:49</b></td><td>length of the demo video</td></tr>
+  </table>
+
+</section>
+
+<section>
+  <h2><span class="n">13</span><span class="tm all">All</span>Glossary</h2>
+  <div class="gloss">
+    <p><span class="bw">AAD</span> extra context bound into encryption (e.g. the field name), so ciphertext can't be reused elsewhere.</p>
+    <p><span class="bw">AES-256-GCM</span> fast symmetric encryption with a built-in tamper check.</p>
+    <p><span class="bw">Anchoring</span> writing a fingerprint (our Merkle root) to a blockchain as a timestamp.</p>
+    <p><span class="bw">Audit log</span> a record of who did what, and when.</p>
+    <p><span class="bw">bcrypt</span> slow password hashing, so stolen hashes are hard to crack.</p>
+    <p><span class="bw">Cosine similarity</span> how alike two embeddings are (1 = same direction).</p>
+    <p><span class="bw">Cron job</span> code that runs on a schedule.</p>
+    <p><span class="bw">Crypto-shredding</span> erasing data by destroying what makes it readable or linkable (our salt).</p>
+    <p><span class="bw">Custodial key</span> a private key the service holds for its users.</p>
+    <p><span class="bw">Digital signature</span> proof, checkable with a public key, that a key holder approved exact data.</p>
+    <p><span class="bw">Docker</span> packages an app with everything it needs, so it runs the same anywhere.</p>
+    <p><span class="bw">Embedding</span> a list of numbers that captures meaning.</p>
+    <p><span class="bw">Envelope encryption</span> data keys encrypt the data; a master key encrypts the data keys.</p>
+    <p><span class="bw">ethers.js</span> the JavaScript library our server uses to talk to Polygon.</p>
+    <p><span class="bw">Four-eyes principle</span> two people must approve; one alone can't.</p>
+    <p><span class="bw">Gas</span> the fee paid for a blockchain transaction.</p>
+    <p><span class="bw">HKDF</span> derives purpose-specific keys from one master key.</p>
+    <p><span class="bw">HMAC</span> a keyed fingerprint: only the key holder can produce it.</p>
+    <p><span class="bw">Immutable</span> can't be changed once written.</p>
+    <p><span class="bw">JWT</span> a signed token that proves who is logged in.</p>
+    <p><span class="bw">LightGBM</span> a fast gradient-boosted decision-tree model.</p>
+    <p><span class="bw">LLM</span> a large language model (we use Llama 3.3 through Groq).</p>
+    <p><span class="bw">Merkle proof</span> the few hashes that link one item to the root.</p>
+    <p><span class="bw">Merkle root</span> one hash that summarises a whole batch.</p>
+    <p><span class="bw">Minimal disclosure</span> reveal only what the verifier needs.</p>
+    <p><span class="bw">Monorepo</span> all packages in one repository.</p>
+    <p><span class="bw">Multi-tenancy</span> many companies share the system, each sealed off from the others.</p>
+    <p><span class="bw">ORM</span> code talks to the database as typed objects (Prisma).</p>
+    <p><span class="bw">PBKDF2</span> stretches a secret into a key, slowly on purpose.</p>
+    <p><span class="bw">pgvector</span> PostgreSQL extension for storing and searching embeddings.</p>
+    <p><span class="bw">Polygon PoS</span> a low-fee, Ethereum-compatible public blockchain.</p>
+    <p><span class="bw">RBAC</span> permissions given by role.</p>
+    <p><span class="bw">REST API</span> the standard way the browser talks to the server over HTTP.</p>
+    <p><span class="bw">RSA-2048</span> public-key cryptography used for signatures.</p>
+    <p><span class="bw">Salt</span> random bytes added before hashing.</p>
+    <p><span class="bw">SHA-256</span> the hash function: any data → a 32-byte fingerprint.</p>
+    <p><span class="bw">SHAP</span> splits a model's score into each feature's contribution.</p>
+    <p><span class="bw">Smart contract</span> a program stored and run on a blockchain.</p>
+    <p><span class="bw">Solidity</span> the language Ethereum-style smart contracts are written in.</p>
+    <p><span class="bw">Step-up authentication</span> asking again for proof right before a sensitive action.</p>
+    <p><span class="bw">Tamper-evident</span> any change is detectable.</p>
+    <p><span class="bw">Testnet</span> a real blockchain network that runs on free test tokens.</p>
+    <p><span class="bw">Web 2.5</span> a normal web app that uses a blockchain only where it adds trust.</p>
+    <p><span class="bw">XAI</span> explainable AI: models whose decisions can be explained.</p>
+  </div>
+</section>
+
+</main></body>
+</html>
