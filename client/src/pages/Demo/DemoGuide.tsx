@@ -19,9 +19,9 @@ const DemoGuide = () => {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-10 lg:px-8">
       <PageHeader
-        eyebrow="Demo guide"
-        title="Run the whole story from here"
-        description="Where this deployment anchors, how it protects stored data, which accounts to use, and the click path from a request to a root on Polygon. Each step explains what the system is doing."
+        eyebrow="Live fallback"
+        title="Run the demo by hand"
+        description="If the video can't be played, follow the same eleven steps live. Open the site five minutes early so Render wakes up, and check the pre-flight before you start."
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

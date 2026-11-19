@@ -37,17 +37,19 @@ export function DemoClickPath() {
       <div>
         <h2 className="text-h2 text-foreground">Click path</h2>
         <p className="mt-0.5 text-body text-muted-foreground">
-          One document from request to on-chain proof. Each step links to the screen it happens on, with what the
-          system is doing underneath.
+          The recorded demo, step by step, with its video timestamp. Each step links to the screen it happens on.
         </p>
       </div>
       <ol className="flex flex-col border-t-2 border-rule-strong">
         {DEMO_STEPS.map((step, index) => (
           <li
             key={step.action}
-            className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 gap-y-2 border-b border-border py-4 last:border-b-0"
+            className="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-3 gap-y-2 border-b border-border py-4 last:border-b-0"
           >
-            <span className="tnum text-h2 text-subtle">{String(index + 1).padStart(2, '0')}</span>
+            <span className="flex flex-col">
+              <span className="tnum text-h2 text-subtle">{String(index + 1).padStart(2, '0')}</span>
+              <span className="tnum font-mono text-micro text-seal">{step.at}</span>
+            </span>
             <div className="flex min-w-0 flex-col gap-2">
               <p className="label-micro">
                 {step.actor}
