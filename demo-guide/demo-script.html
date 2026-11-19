@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CareerVault Demo Script</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --ink: #1F2937; --muted: #4B5563; --subtle: #6B7280; --rule: #E5E7EB;
+    --maroon: #A42530; --tint: #F8EDEE; --grey: #F3F4F6; --card: #F9FAFB;
+    --green: #15803D; --green-t: #EAF5EE; --red: #B4231F; --red-t: #FBEAEA;
+  }
+  @page { size: A4; margin: 14mm 14mm 15mm 14mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: var(--ink); font: 10.5pt/1.42 Arial, Helvetica, sans-serif; }
+  main { max-width: 182mm; margin: 0 auto; }
+  h1 { font-size: 24pt; margin: 0 0 3pt; color: var(--maroon); }
+  h2 { font-size: 14pt; margin: 0 0 5pt; break-after: avoid; }
+  h2 .t { display: inline-block; min-width: 76pt; color: var(--maroon); font-variant-numeric: tabular-nums; }
+  p { margin: 0 0 6pt; }
+  ul { margin: 0 0 6pt; padding-left: 15pt; }
+  li { margin: 0 0 2.5pt; }
+  section { margin: 0 0 13pt; break-inside: avoid; }
+  .page { break-before: page; }
+  .lede { color: var(--muted); font-size: 11pt; margin-bottom: 9pt; }
+  .tm { display: inline-block; background: var(--maroon); color: #fff; font-size: 8pt; font-weight: 700; letter-spacing: .03em;
+        padding: 1.5pt 6pt; border-radius: 8pt; vertical-align: 2pt; white-space: nowrap; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8pt 12pt; margin: 4pt 0 8pt; }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 5pt; padding: 7pt 9pt; break-inside: avoid; }
+  .card h3 { font-size: 10.5pt; margin: 0 0 4pt; }
+  .card.mine { background: var(--green-t); border-color: #CFE6D7; }
+  .card.mine h3 { color: var(--green); }
+  .card.theirs h3 { color: var(--maroon); }
+  .card ul { font-size: 9.6pt; }
+  table.lanes { width: 100%; border-collapse: collapse; font-size: 9.3pt; margin: 3pt 0 6pt; }
+  table.lanes th { background: var(--maroon); color: #fff; text-align: left; padding: 3pt 6pt; }
+  table.lanes td { border-bottom: 1px solid var(--rule); padding: 3pt 6pt; vertical-align: top; }
+  table.lanes tr:nth-child(even) td { background: var(--card); }
+  .box { border-radius: 5pt; padding: 8pt 10pt; margin: 4pt 0 8pt; break-inside: avoid; }
+  .box .label { font-size: 8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 3pt; }
+  .say { background: var(--tint); }
+  .say .label { color: var(--maroon); }
+  .say p { font-size: 11.5pt; font-weight: 700; line-height: 1.45; margin: 0 0 4pt; }
+  .quiet { background: var(--grey); }
+  .quiet .label { color: var(--subtle); }
+  /* Cue table: when you see X, say Y. */
+  table.cues { width: 100%; border-collapse: collapse; margin: 2pt 0 4pt; }
+  table.cues td { padding: 4pt 6pt; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  table.cues tr { break-inside: avoid; }
+  table.cues td.at { width: 11%; color: var(--maroon); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.cues td.see { width: 29%; color: var(--muted); font-size: 9.4pt; }
+  table.cues td.line { font-weight: 700; font-size: 11pt; }
+  table.cues tr.opt td.line { font-weight: 400; color: var(--subtle); font-style: italic; }
+  table.cues tr.hush td.line { font-weight: 400; color: var(--subtle); }
+  .hook { display: inline-block; background: var(--maroon); color: #fff; font-size: 7.6pt; font-weight: 700; font-style: normal;
+          padding: 1pt 5pt; border-radius: 7pt; margin-left: 4pt; vertical-align: 1.5pt; white-space: nowrap; }
+  .leave { font-size: 8.8pt; color: var(--subtle); margin: 0 0 2pt; }
+  .leave b { color: var(--maroon); }
+  .who { display: inline-flex; width: 15pt; height: 15pt; border-radius: 50%; color: #fff; font-size: 8pt; font-weight: 700;
+         align-items: center; justify-content: center; vertical-align: -2pt; margin-right: 4pt; }
+  .A { background: #2563EB; } .M { background: #7C3AED; } .H { background: #0F766E; } .O { background: #B45309; } .R { background: #BE185D; } .B { background: #475569; }
+  .small { font-size: 8.8pt; color: var(--subtle); }
+  .qa dt { font-weight: 700; margin-top: 6pt; }
+  .qa dd { margin: 1pt 0 0 0; }
+  .qa dd::before { content: "→ "; color: var(--maroon); font-weight: 700; }
+</style>
+</head>
+<body><main>
+
+<!-- ============================== PAGE 1: HOW TO USE THIS ============================== -->
+<section>
+  <h1>Demo script</h1>
+  <p class="lede"><span class="tm">TEAM MEMBER 2</span>&nbsp; Slide 6 and the whole recorded demo, 9 min 49 s. You come in after Team Member 1's
+    "Meet TechCorp" slide and hand over to Team Member 3's architecture slide.</p>
+
+  <div class="cols">
+    <div class="card mine">
+      <h3>Your lane: what happens on screen</h3>
+      <ul>
+        <li><b>Who</b> is on screen. The label in the bottom-left corner always names the person signed in.</li>
+        <li><b>What</b> they do, in their own terms: asks, signs, issues, shares, checks, anchors, revokes, searches.</li>
+        <li><b>Why it matters</b> to that person in that moment.</li>
+        <li><b>That it is real:</b> the live site, our real database, the public PolygonScan explorer.</li>
+      </ul>
+    </div>
+    <div class="card theirs">
+      <h3>Their lane: how it works (don't explain it)</h3>
+      <ul>
+        <li>Stats, prior work, the goals, the status names: <b>TM1</b>, already said.</li>
+        <li>Architecture, PBKDF2 / HMAC / RSA, the lockout, two-person rule, SHA-256: <b>TM3</b>.</li>
+        <li>AES encryption, the five checks one by one, Merkle tree, "receipt not judge", the AI models, results, future: <b>TM4</b>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <p>The script below is timed to the video. <b>Bold lines</b> are what you say. <span style="color:var(--subtle);font-style:italic">Grey italic lines are optional</span>:
+    drop them if you fall behind. Grey "stay quiet" rows are moments to let the screen talk (typing, loading).
+    A <span class="hook" style="margin-left:0">→ TM3</span> or <span class="hook" style="margin-left:0">→ TM4</span> tag marks a moment that teammate explains after the video: point at it, don't explain it.</p>
+
+  <table class="lanes">
+    <tr><th style="width:24%">If the screen shows…</th><th style="width:38%">Say this (your lane)</th><th>Not this (it belongs to)</th></tr>
+    <tr><td>Marcus's step-up and the refusal</td><td>"He has to prove it's really him. A wrong answer is refused."</td><td>PBKDF2, 600,000 rounds, HMAC, RSA, 5 tries in 15 minutes (TM3, slide 8)</td></tr>
+    <tr><td>Hannah approving</td><td>"HR checks it and approves, with her own details."</td><td>"The server refuses the same person", SHA-256 fingerprints (TM3, slide 9)</td></tr>
+    <tr><td>Supabase table, content column</td><td>"Not one readable word."</td><td>AES-256-GCM, master key, envelope encryption, what cvenc means (TM4, slide 10)</td></tr>
+    <tr><td>Verified, 5 / 5</td><td>"Five checks, all passed, in seconds."</td><td>Naming the five checks (TM4, slide 11)</td></tr>
+    <tr><td>Anchor now, PolygonScan</td><td>"A public timestamp. Polygon itself answers: exists, true."</td><td>Merkle tree, root, one transaction per batch, "the chain is a receipt" (TM4, slide 12)</td></tr>
+    <tr><td>Riya's match</td><td>"A 68% match, with a plain reason, from verified letters only."</td><td>Groq, MiniLM, pgvector, LightGBM, SHAP, consent rules (TM4, slide 13)</td></tr>
+  </table>
+
+  <div class="box quiet">
+    <div class="label">Before you start</div>
+    <ul style="margin:0">
+      <li>Play <b>careervault-demo-prod-2026-11-16-06-19.mp4</b> from the laptop (a copy, not over Wi-Fi), full screen, sound off. Do Not Disturb on.</li>
+      <li>Never pause the video. If an evaluator asks something mid-video: "We'll come right to that after the video," and keep going.</li>
+      <li>Watch the screen, not the paper. The times are cues; the bottom-left label tells you who is on screen.</li>
+      <li>At about 03:36 a small Supabase message flashes for 3 seconds. Keep talking; nobody will notice.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 6 ============================== -->
+<section class="page">
+  <h2><span class="t">Slide 6</span>Before you press play &nbsp;<span class="small">(about 25 s)</span></h2>
+  <div class="box say">
+    <div class="label">Say, with slide 6 on screen</div>
+    <p>Thank you. You've just met the people at TechCorp. Now you'll see them in action, on our live, deployed website.</p>
+    <p>This is one continuous recording, with no edits and no cuts. The first half is Alice's letter being issued. The second half is the proof, and what we built on top of it.</p>
+    <p>While it plays, I'll tell you who is on screen and what they're doing. Right after the video, my teammates will open up what happened inside each step.</p>
+  </div>
+  <p class="small">Then switch to the video and press play.</p>
+</section>
+
+<!-- ============================== 00:00 ============================== -->
+<section>
+  <h2><span class="t">00:00</span>The landing page</h2>
+  <table class="cues">
+    <tr><td class="at">00:00</td><td class="see">Home page; "Document verified" card on the right</td><td class="line">This is CareerVault, live on the internet. On the right is what every check ends in: a document marked verified.</td></tr>
+    <tr><td class="at">00:12</td><td class="see">"Five steps from request to proof"</td><td class="line">The page walks a visitor through the same journey you're about to watch.</td></tr>
+    <tr class="opt"><td class="at">00:24</td><td class="see">"Start from your side of the document"</td><td class="line">There's a way in for each side: employees, employers, and whoever is checking.</td></tr>
+    <tr><td class="at">00:30</td><td class="see">"Have a share link? Check it."</td><td class="line">And this box is for anyone, an employer or a recruiter, to check a document. No account needed.</td></tr>
+  </table>
+  <p class="leave">Leave alone: the fake-letter problem and the statistics (<b>TM1</b> already said them).</p>
+</section>
+
+<!-- ============================== 00:40 ============================== -->
+<section>
+  <h2><span class="t">00:40</span><span class="who A">A</span>Alice requests her letter</h2>
+  <table class="cues">
+    <tr><td class="at">00:42</td><td class="see">Sign-in; label "Holder · Alice Holder"</td><td class="line">Watch the label in the bottom-left corner: it always tells you who is signed in. First, Alice.</td></tr>
+    <tr><td class="at">00:54</td><td class="see">"Request a document": Experience Letter</td><td class="line">Alice doesn't upload a letter, and she doesn't write one. She only asks TechCorp for it.</td></tr>
+    <tr><td class="at">01:00</td><td class="see">Organisation, manager, note, a ticked box</td><td class="line">She adds a note, and ticks one box: recruiters may later find her skills. Remember that box; it comes back at the very end.</td></tr>
+    <tr><td class="at">01:06</td><td class="see">"Review your request"</td><td class="line">She reviews it, and sends it.</td></tr>
+    <tr><td class="at">01:18</td><td class="see">"Request sent"</td><td class="line">From here on, the letter is in TechCorp's hands.</td></tr>
+  </table>
+</section>
+
+<!-- ============================== 01:24 ============================== -->
+<section>
+  <h2><span class="t">01:24</span><span class="who M">M</span>Marcus signs, after a step-up check</h2>
+  <table class="cues">
+    <tr><td class="at">01:24</td><td class="see">Sign-in; label "Manager · Marcus"</td><td class="line">Now Marcus, her manager.</td></tr>
+    <tr><td class="at">01:30</td><td class="see">His inbox</td><td class="line">Alice's request is waiting in his inbox.</td></tr>
+    <tr><td class="at">01:36</td><td class="see">He types her code, designation, dates, summary</td><td class="line">Marcus fills in the facts himself: her employee code, her designation, her joining date, and a short summary of her work. The company writes the letter, not Alice.</td></tr>
+    <tr class="hush"><td class="at">01:42</td><td class="see">Typing continues</td><td class="line">Stay quiet; let them read what he types.</td></tr>
+    <tr><td class="at">01:54</td><td class="see">"Confirm it is you"</td><td class="line">Before anything is signed, he has to prove it's really him: his date of birth, an ID, and three personal answers.</td></tr>
+    <tr><td class="at">02:06</td><td class="see">Red message: "Those details do not match"</td><td class="line">Watch: one answer is wrong… and it's refused. Nothing is signed.</td></tr>
+    <tr><td class="at">02:12</td><td class="see">He types them again</td><td class="line">He corrects it…</td></tr>
+    <tr><td class="at">02:24</td><td class="see">"Signed and sent to HR"; progress bar</td><td class="line">…and now it's signed and on its way to HR. The tracker shows it: requested, manager signed, HR next. <span class="hook">→ TM3</span></td></tr>
+  </table>
+  <p class="leave">Teaser (optional): "What his answers actually do, Team Member 3 will show you in a few minutes."
+    Leave alone: PBKDF2, the seal, RSA, the lockout (<b>TM3, slide 8</b>).</p>
+</section>
+
+<!-- ============================== 02:36 ============================== -->
+<section>
+  <h2><span class="t">02:36</span><span class="who H">H</span>Hannah co-signs and issues</h2>
+  <table class="cues">
+    <tr><td class="at">02:36</td><td class="see">Sign-in; label "HR · Hannah"</td><td class="line">Now Hannah, from HR.</td></tr>
+    <tr><td class="at">02:42</td><td class="see">Approvals: one letter waiting</td><td class="line">One letter is waiting for her: Alice's, already signed by Marcus.</td></tr>
+    <tr><td class="at">02:48</td><td class="see">The letter: "Return" or "Approve &amp; issue"</td><td class="line">She can send it back to Marcus, or approve it.</td></tr>
+    <tr><td class="at">02:54</td><td class="see">"Approve and issue": her details</td><td class="line">She approves, and she too has to prove who she is, with her own details.</td></tr>
+    <tr><td class="at">03:06</td><td class="see">"Document issued to the holder"; ISSUED</td><td class="line">Issued. Two people at TechCorp have now signed this letter, each in their own name. <span class="hook">→ TM3</span></td></tr>
+    <tr><td class="at">03:18</td><td class="see">Supabase: storage folders, then four PDFs</td><td class="line">Now a quick look backstage. This is our real production storage. Here is the PDF of every issued letter, Alice's included.</td></tr>
+    <tr><td class="at">03:34</td><td class="see">Supabase: the documents table <span class="small">(3 s message at ~03:36: keep talking)</span></td><td class="line">And this is the real database table of documents. Look at the content column…</td></tr>
+    <tr><td class="at">03:48</td><td class="see">Content column: "cvenc:v1:…"</td><td class="line">That is Alice's letter, as our database holds it. Not one readable word. How we lock it, Team Member 4 will show you. <span class="hook">→ TM4</span></td></tr>
+  </table>
+  <p class="leave">Leave alone: "a different person must approve, the server enforces it", the fingerprint re-check (<b>TM3, slide 9</b>); AES-256-GCM and the keys (<b>TM4, slide 10</b>).</p>
+</section>
+
+<!-- ============================== 04:00 ============================== -->
+<section>
+  <h2><span class="t">04:00</span><span class="who A">A</span>Alice shares it, and anyone verifies it</h2>
+  <table class="cues">
+    <tr><td class="at">04:00</td><td class="see">Sign-in as Alice</td><td class="line">Back to Alice.</td></tr>
+    <tr><td class="at">04:18</td><td class="see">Her letter: issued by TechCorp, both signers</td><td class="line">Her letter is in her wallet now: issued by TechCorp, signed by Marcus, co-signed by Hannah.</td></tr>
+    <tr><td class="at">04:30</td><td class="see">The PDF on TechCorp's letterhead</td><td class="line">She can download it as a formal PDF: TechCorp's letterhead, both signers, and a verification panel, so even a printed copy points back to the original.</td></tr>
+    <tr><td class="at">04:48</td><td class="see">"Share link ready"</td><td class="line">Then she creates a share link. It's free, and she can switch it off at any time.</td></tr>
+    <tr><td class="at">04:54</td><td class="see">"Running verification…"</td><td class="line">Now put yourself in her new employer's shoes. They open the link. No account, no login.</td></tr>
+    <tr><td class="at">05:00</td><td class="see">Green: "Document verified", 5 / 5</td><td class="line">Five checks, all passed: verified. That took seconds, not weeks. <span class="hook">→ TM4</span></td></tr>
+    <tr><td class="at">05:06</td><td class="see">Small badge: "On-chain timestamp pending"</td><td class="line">Notice the small badge: on-chain timestamp, pending. Hold that thought.</td></tr>
+    <tr class="opt"><td class="at">05:12</td><td class="see">Scrolling the letter's details</td><td class="line">Below, the letter's details exactly as TechCorp issued them.</td></tr>
+    <tr class="opt"><td class="at">05:24</td><td class="see">Verified again, by document ID</td><td class="line">The same check works with just the document ID.</td></tr>
+    <tr><td class="at">05:36</td><td class="see">Alice's wallet: "Anchoring in the next batch"</td><td class="line">Back in her wallet, the letter is waiting for the next batch to go on the blockchain.</td></tr>
+  </table>
+  <p class="leave">Leave alone: naming the five checks, and "it never returns a key or a hash" (<b>TM4, slide 11</b>).
+    Don't mention an email: the video doesn't show one.</p>
+</section>
+
+<!-- ============================== 05:42 ============================== -->
+<section>
+  <h2><span class="t">05:42</span><span class="who O">O</span>Olivia anchors it on Polygon</h2>
+  <table class="cues">
+    <tr><td class="at">05:42</td><td class="see">Sign-in; label "Org admin · Olivia"</td><td class="line">Now Olivia, TechCorp's admin. Remember "pending"?</td></tr>
+    <tr><td class="at">05:54</td><td class="see">Analytics: "Blockchain anchoring", "Anchor now"</td><td class="line">This runs by itself every midnight. For the demo, she presses "Anchor now".</td></tr>
+    <tr><td class="at">06:00</td><td class="see">Green: "Anchored 1 document on-chain"</td><td class="line">Done. The letter now has a public timestamp on the Polygon blockchain.</td></tr>
+    <tr><td class="at">06:12</td><td class="see">The letter's "On-chain proof": network, block, time</td><td class="line">Alice's letter now shows its proof: the network, the block number, the time.</td></tr>
+    <tr><td class="at">06:18</td><td class="see">PolygonScan: transaction details, "Success"</td><td class="line">And this isn't our website any more. This is PolygonScan, the public blockchain explorer. Anyone in the world can open this transaction.</td></tr>
+    <tr><td class="at">06:36</td><td class="see">PolygonScan: "Read Contract", verifyRoot</td><td class="line">Now we don't take our own word for it. We ask the blockchain directly, through our contract's public function, whether this record exists.</td></tr>
+    <tr><td class="at">06:42</td><td class="see">Result: "exists (bool) : true"</td><td class="line">And Polygon itself answers: exists, true. <span class="hook">→ TM4</span></td></tr>
+    <tr><td class="at">07:00</td><td class="see">Verified 5 / 5, now "Timestamped on-chain"</td><td class="line">Check the letter again: same verdict, and the badge now says timestamped on-chain, with a link to the transaction.</td></tr>
+  </table>
+  <p class="leave">Teaser (optional): "How one transaction covers a whole batch of letters is coming up after the video."
+    Leave alone: Merkle tree, the root, "one transaction per batch", "the chain is a receipt, not the judge" (<b>TM4, slide 12</b>).</p>
+</section>
+
+<!-- ============================== 07:12 ============================== -->
+<section>
+  <h2><span class="t">07:12</span><span class="who H">H</span><span class="who B">B</span>Hannah revokes Bob's letter</h2>
+  <table class="cues">
+    <tr><td class="at">07:12</td><td class="see">Sign-in as Hannah</td><td class="line">One more thing every employer needs: taking a letter back.</td></tr>
+    <tr><td class="at">07:24</td><td class="see">Bob's letter: "Revoke this document"</td><td class="line">Bob's experience letter was issued with the wrong last working day. Hannah revokes it, with a reason and a note.</td></tr>
+    <tr><td class="at">07:30</td><td class="see">"Document revoked"</td><td class="line">Revoked.</td></tr>
+    <tr><td class="at">07:40</td><td class="see">Red: "Document revoked", 4 / 5, the date and reason</td><td class="line">Anyone who checks Bob's letter now sees it at once: revoked, with the date and the reason. It is genuine, but no longer valid.</td></tr>
+    <tr><td class="at">07:48</td><td class="see">PolygonScan events: "DocumentRevoked" on top</td><td class="line">And the revocation is on public record too: at the top, "DocumentRevoked"; below it, the anchor we just made.</td></tr>
+  </table>
+  <p class="leave">Leave alone: "our database decides, the chain follows" (<b>TM4, slide 12</b>).</p>
+</section>
+
+<!-- ============================== 08:12 ============================== -->
+<section>
+  <h2><span class="t">08:12</span><span class="who O">O</span>The admin view</h2>
+  <table class="cues">
+    <tr><td class="at">08:12</td><td class="see">Olivia: the organisation page</td><td class="line">Olivia again: the company's view.</td></tr>
+    <tr><td class="at">08:24</td><td class="see">Members and their roles</td><td class="line">Who is in TechCorp, and each person's role.</td></tr>
+    <tr><td class="at">08:30</td><td class="see">Audit log</td><td class="line">And the audit log: every request, signature, issue, check and revoke, with who and when, even the failed checks on Bob's revoked letter.</td></tr>
+  </table>
+</section>
+
+<!-- ============================== 08:36 ============================== -->
+<section>
+  <h2><span class="t">08:36</span><span class="who R">R</span>Built on top: Riya finds Alice</h2>
+  <table class="cues">
+    <tr><td class="at">08:36</td><td class="see">Sign-in; label "Recruiter · Riya"</td><td class="line">Last, Riya, a recruiter. This part is built on top of verified documents.</td></tr>
+    <tr><td class="at">08:48</td><td class="see">"Backend Engineer — Payments", "Find candidates"</td><td class="line">She has an opening for a backend engineer, and she clicks "Find candidates".</td></tr>
+    <tr><td class="at">08:54</td><td class="see">Alice Holder, 68% match, "Why this rank"</td><td class="line">Alice comes up: a 68% match, with a plain reason for the score, based only on her verified letters. <span class="hook">→ TM4</span></td></tr>
+    <tr><td class="at">09:12</td><td class="see">Alice: her talent profile, extracted skills</td><td class="line">And from Alice's side: her talent profile, with the skills read from her letters. That's the box she ticked at the very start.</td></tr>
+    <tr class="hush"><td class="at">09:40</td><td class="see">Back on the home page; video ends at 09:49</td><td class="line">Let the last frame land, then say the handover.</td></tr>
+  </table>
+  <p class="leave">Leave alone: the model names, "off by default", "she can switch it off any time" (<b>TM4, slide 13</b>); what each person gained (<b>TM4, slide 14</b>).</p>
+
+  <div class="box say">
+    <div class="label">Handover, as the video ends</div>
+    <p>So that was one letter: requested, signed, issued, verified and anchored, and for Bob, revoked. All on our live site.</p>
+    <p>Team Member 3 will now take you behind the screen.</p>
+  </div>
+</section>
+
+<!-- ============================== Q&A ============================== -->
+<section>
+  <h2><span class="t">Q&amp;A</span>Questions about the demo itself</h2>
+  <dl class="qa">
+    <dt>Is that really live, or a mock-up?</dt>
+    <dd>It is our production site, recorded on 16 November. The database, the file storage and the Polygon transactions are all real; you can open the same transactions on PolygonScan today.</dd>
+    <dt>Why is it a recording and not live?</dt>
+    <dd>So the whole journey fits in ten minutes without waiting on typing or the network. A scripted browser drove the real site in one continuous take, with no edits.</dd>
+    <dt>What did Marcus get wrong at the step-up?</dt>
+    <dd>One of his three security answers. The letter was not signed until all his details matched.</dd>
+    <dt>Why did verification say "timestamp pending" at first?</dt>
+    <dd>The letter is valid the moment it is issued. The public timestamp comes with the next batch, which Olivia triggered with "Anchor now". Then hand over to Team Member 4 for the detail.</dd>
+    <dt>Why does Bob's letter show 4 of 5 checks?</dt>
+    <dd>It is genuine: issued by TechCorp, unchanged, both signatures valid. The fifth check, "not revoked", fails, so the verdict is Revoked.</dd>
+  </dl>
+</section>
+
+</main></body>
+</html>
