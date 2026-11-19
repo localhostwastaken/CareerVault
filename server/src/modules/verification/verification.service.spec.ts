@@ -289,6 +289,56 @@ describe('VerificationService — tampering', () => {
   });
 });
 
+describe('VerificationService — verdict precedence (INVALID > REVOKED > EXPIRED)', () => {
+  const PAST = new Date('2020-01-01T00:00:00.000Z');
+
+  it('reports a genuine document past its expiry as EXPIRED', async () => {
+    const result = await service({
+      doc: { expiresAt: PAST },
+    }).verifyByDocumentId(IDENTITY.id);
+
+    expect(result.verdict).toBe('EXPIRED');
+  });
+
+  it('reports a tampered document past its expiry as INVALID, not EXPIRED', async () => {
+    const result = await service({
+      doc: { expiresAt: PAST, contentJson: { ...CONTENT, designation: 'CTO' } },
+    }).verifyByDocumentId(IDENTITY.id);
+
+    expect(result.verdict).toBe('INVALID');
+    expect(statusOf(result, 'integrity')).toBe('fail');
+  });
+
+  it('reports an expired document with a swapped seal as INVALID', async () => {
+    const result = await service({
+      doc: { expiresAt: PAST, hrSeal: 'ff'.repeat(32) },
+    }).verifyByDocumentId(IDENTITY.id);
+
+    expect(result.verdict).toBe('INVALID');
+    expect(statusOf(result, 'hrSignature')).toBe('fail');
+  });
+
+  it('reports a tampered revoked document as INVALID, not REVOKED', async () => {
+    const result = await service({
+      doc: {
+        status: 'REVOKED',
+        revokedAt: PAST,
+        contentJson: { ...CONTENT, designation: 'CTO' },
+      },
+    }).verifyByDocumentId(IDENTITY.id);
+
+    expect(result.verdict).toBe('INVALID');
+  });
+
+  it('reports a genuine document that is both revoked and expired as REVOKED', async () => {
+    const result = await service({
+      doc: { status: 'REVOKED', revokedAt: PAST, expiresAt: PAST },
+    }).verifyByDocumentId(IDENTITY.id);
+
+    expect(result.verdict).toBe('REVOKED');
+  });
+});
+
 describe('VerificationService — status and disclosure', () => {
   it('reports a revoked document as REVOKED with its reason', async () => {
     const result = await service({

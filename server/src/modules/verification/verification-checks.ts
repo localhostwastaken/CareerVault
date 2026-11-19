@@ -111,9 +111,14 @@ export async function runChecks(
     },
   ];
 
+  // Precedence (NOT_FOUND and unreadable records are settled earlier, in the service):
+  //   INVALID > REVOKED > EXPIRED > VERIFIED
+  // A record that fails integrity or either signer check is INVALID whatever its status, so
+  // a tampered document can never read as a genuine one that was merely revoked or expired.
   const coreOk = isIssued && integrityOk && managerOk && hrOk;
-  let verdict: Verdict = coreOk ? 'VERIFIED' : 'INVALID';
-  if (revoked) verdict = 'REVOKED';
+  let verdict: Verdict = 'VERIFIED';
+  if (!coreOk) verdict = 'INVALID';
+  else if (revoked) verdict = 'REVOKED';
   else if (expired) verdict = 'EXPIRED';
 
   return {
